@@ -250,6 +250,56 @@ export function maxStrandDeviation(options?: FuzzOptions): number {
 // Strands
 // ---------------------------------------------------------------------------
 
+/**
+ * A smooth path through the sampled points.
+ *
+ * Joining samples with straight `L` segments leaves visible corners at the
+ * sample rate we use — 16 points over a 600px string is a 40px joint, and a
+ * filament is supposed to read as fibre rather than as a chain of sticks. Hard
+ * corners are also what makes fuzz look like geometry instead of wool.
+ *
+ * This is uniform Catmull-Rom converted to cubic beziers. Catmull-Rom rather
+ * than a B-spline because it passes exactly *through* every sample: a B-spline
+ * approximates its control points, which would round off the endpoints and pull
+ * the string visibly short of its tacks.
+ *
+ * The phantom points at each end are clamped to the first and last samples, so
+ * the curve starts and ends exactly on them and cannot overshoot the pin.
+ */
+function smoothPath(xs: readonly number[], ys: readonly number[], tension = 1): string {
+  const count = xs.length
+  if (count === 0) return ''
+  if (count === 1) return `M ${round2(xs[0])} ${round2(ys[0])}`
+  if (count === 2) {
+    return `M ${round2(xs[0])} ${round2(ys[0])} L ${round2(xs[1])} ${round2(ys[1])}`
+  }
+
+  // The /6 is the standard Catmull-Rom-to-Bezier constant; the tension scales
+  // it, so a caller can round the strands off more or less.
+  const k = tension / 6
+  let d = `M ${round2(xs[0])} ${round2(ys[0])}`
+
+  for (let i = 0; i < count - 1; i++) {
+    const x0 = xs[i > 0 ? i - 1 : 0]
+    const y0 = ys[i > 0 ? i - 1 : 0]
+    const x1 = xs[i]
+    const y1 = ys[i]
+    const x2 = xs[i + 1]
+    const y2 = ys[i + 1]
+    const x3 = xs[i + 2 < count ? i + 2 : count - 1]
+    const y3 = ys[i + 2 < count ? i + 2 : count - 1]
+
+    const c1x = x1 + (x2 - x0) * k
+    const c1y = y1 + (y2 - y0) * k
+    const c2x = x2 - (x3 - x1) * k
+    const c2y = y2 - (y3 - y1) * k
+
+    d += ` C ${round2(c1x)} ${round2(c1y)}, ${round2(c2x)} ${round2(c2y)}, ${round2(x2)} ${round2(y2)}`
+  }
+
+  return d
+}
+
 function buildStrands(
   from: Point,
   to: Point,
@@ -290,19 +340,19 @@ function buildStrands(
   const strands: YarnStrand[] = []
   for (let s = 0; s < opts.strands; s++) {
     const centrality = 1 - Math.abs(positionInFan(s, opts.strands)) * 2
-    let d = ''
 
+    const xs = new Array<number>(samples)
+    const ys = new Array<number>(samples)
     for (let i = 0; i < samples; i++) {
       const offset = offsetAt(i / steps, s, opts.strands, seed, opts)
-      const x = round2(baseX[i] + normalX[i] * offset)
-      const y = round2(baseY[i] + normalY[i] * offset)
-      d += i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`
+      xs[i] = baseX[i] + normalX[i] * offset
+      ys[i] = baseY[i] + normalY[i] * offset
     }
 
     strands.push({
       // The centre filament is the thickest and most opaque; the outer ones are
       // hairlines, which is what the eye reads as wool rather than as a rope.
-      d,
+      d: smoothPath(xs, ys),
       width: opts.width * (0.55 + 0.45 * centrality),
       opacity: 0.35 + 0.55 * centrality,
     })

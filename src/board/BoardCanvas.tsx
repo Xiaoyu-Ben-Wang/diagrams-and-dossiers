@@ -62,8 +62,14 @@ export interface BoardCanvasProps {
    * A left-click that landed on bare board rather than on anything in it.
    * Reported in viewport coordinates; the caller converts to board space, since
    * only it knows what should be created there.
+   *
+   * Modifier state comes along because the canvas has no business deciding what
+   * a click means — whether it places a pin or does nothing is the application's
+   * call, and it changes with the tool.
    */
-  onBackgroundClick?: (point: Point) => void
+  onBackgroundClick?: (click: { point: Point; ctrlKey: boolean; metaKey: boolean }) => void
+  /** Switches the cursor to a crosshair, so the active tool is visible. */
+  pinMode?: boolean
 }
 
 /** Pointer travel, in pixels, above which a press is a drag rather than a click. */
@@ -118,6 +124,7 @@ export function BoardCanvas({
   fitTo,
   backdrop,
   onBackgroundClick,
+  pinMode = false,
 }: BoardCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const panRef = useRef<PanState | null>(null)
@@ -290,7 +297,11 @@ export function BoardCanvas({
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (event.button !== 0 || event.target !== event.currentTarget) return
       const bounds = event.currentTarget.getBoundingClientRect()
-      onBackgroundClick?.({ x: event.clientX - bounds.left, y: event.clientY - bounds.top })
+      onBackgroundClick?.({
+        point: { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+      })
     },
     [onBackgroundClick],
   )
@@ -311,7 +322,10 @@ export function BoardCanvas({
       onClick={handleClick}
       // The browser menu would otherwise fire on every right-drag release.
       onContextMenu={(event) => event.preventDefault()}
-      style={{ touchAction: 'none', cursor: panRef.current ? 'grabbing' : 'default' }}
+      style={{
+        touchAction: 'none',
+        cursor: panRef.current ? 'grabbing' : pinMode ? 'crosshair' : 'default',
+      }}
       data-testid="board-canvas"
     >
       {/* Rendered even before the first measurement lands. Guarding on a

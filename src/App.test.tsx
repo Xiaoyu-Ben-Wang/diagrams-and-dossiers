@@ -184,6 +184,56 @@ describe('App — routing', () => {
   })
 })
 
+describe('App — pin mode', () => {
+  const freePins = (container: HTMLElement) =>
+    container.querySelectorAll('[data-status="free"]').length
+
+  it('does not pin on a plain click by default', () => {
+    // A board you can accidentally pin while trying to select something is a
+    // board you stop trusting.
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'))
+    expect(freePins(container)).toBe(0)
+  })
+
+  it('pins on a ctrl-click without any mode', () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true })
+    expect(freePins(container)).toBe(1)
+  })
+
+  it('pins on a cmd-click too, since ctrl-click is the macOS context menu', () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { metaKey: true })
+    expect(freePins(container)).toBe(1)
+  })
+
+  it('pins on a plain click once pin mode is on', () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByLabelText('Pin mode'))
+    fireEvent.click(screen.getByTestId('board-canvas'))
+    expect(freePins(container)).toBe(1)
+  })
+
+  it('stops pinning when pin mode is switched back off', () => {
+    const { container } = render(<App />)
+    const toggle = screen.getByLabelText('Pin mode')
+    fireEvent.click(toggle)
+    fireEvent.click(toggle)
+
+    fireEvent.click(screen.getByTestId('board-canvas'))
+    expect(freePins(container)).toBe(0)
+  })
+
+  it('announces its pressed state', () => {
+    render(<App />)
+    const toggle = screen.getByLabelText('Pin mode')
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+  })
+})
+
 describe('App — preferences', () => {
   it('opens the preferences panel from the top bar', () => {
     render(<App />)

@@ -19,12 +19,71 @@ const FROM: Point = { x: 40, y: 120 }
 const TO: Point = { x: 640, y: 300 }
 
 /** Pull the vertices back out of the emitted path, in order. */
+/**
+ * The points the strand actually passes through.
+ *
+ * Parsed per command, keeping only anchors: a cubic's two control points are
+ * handles, not positions on the string, so treating every number pair as a
+ * vertex would measure the curve's shape rather than where it goes. The anchors
+ * are the samples, and they are unchanged by smoothing.
+ */
 function vertices(d: string): Point[] {
-  const numbers = d.match(/-?\d+(?:\.\d+)?/g) ?? []
+  const tokens = d.match(/[MC]|-?\d+(?:\.\d+)?/g) ?? []
   const points: Point[] = []
-  for (let i = 0; i + 1 < numbers.length; i += 2) {
-    points.push({ x: Number(numbers[i]), y: Number(numbers[i + 1]) })
+  let i = 0
+
+  while (i < tokens.length) {
+    const command = tokens[i]
+    if (command === 'M') {
+      points.push({ x: Number(tokens[i + 1]), y: Number(tokens[i + 2]) })
+      i += 3
+    } else if (command === 'C') {
+      // c1x c1y c2x c2y x y — only the last pair is on the curve.
+      points.push({ x: Number(tokens[i + 5]), y: Number(tokens[i + 6]) })
+      i += 7
+    } else {
+      i += 1
+    }
   }
+
+  return points
+}
+
+/** Densely sampled points along the drawn curve, control points included. */
+function curvePoints(d: string, perSegment = 10): Point[] {
+  const tokens = d.match(/[MC]|-?\d+(?:\.\d+)?/g) ?? []
+  const points: Point[] = []
+  let cursor = { x: 0, y: 0 }
+  let i = 0
+
+  while (i < tokens.length) {
+    const command = tokens[i]
+    if (command === 'M') {
+      cursor = { x: Number(tokens[i + 1]), y: Number(tokens[i + 2]) }
+      points.push(cursor)
+      i += 3
+    } else if (command === 'C') {
+      const c1 = { x: Number(tokens[i + 1]), y: Number(tokens[i + 2]) }
+      const c2 = { x: Number(tokens[i + 3]), y: Number(tokens[i + 4]) }
+      const end = { x: Number(tokens[i + 5]), y: Number(tokens[i + 6]) }
+      const from = cursor
+
+      for (let step = 1; step <= perSegment; step++) {
+        const t = step / perSegment
+        const inv = 1 - t
+        points.push({
+          x: inv ** 3 * from.x + 3 * inv * inv * t * c1.x + 3 * inv * t * t * c2.x + t ** 3 * end.x,
+          y: inv ** 3 * from.y + 3 * inv * inv * t * c1.y + 3 * inv * t * t * c2.y + t ** 3 * end.y,
+        })
+      }
+
+      cursor = end
+      i += 7
+    } else {
+      i += 1
+    }
+  }
+
   return points
 }
 
@@ -149,6 +208,17 @@ describe('strandOffset', () => {
   })
 })
 
+/** Perpendicular distance from a point to a line segment. */
+function distanceToSegment(point: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const lengthSquared = dx * dx + dy * dy
+  if (lengthSquared < 1e-12) return Math.hypot(point.x - a.x, point.y - a.y)
+
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared))
+  return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy))
+}
+
 describe('fuzzyStrands', () => {
   it('keeps the fan within the strand cap', () => {
     const strands = fuzzyStrands(FROM, TO, DEFAULT_SLACK, 1)
@@ -206,6 +276,39 @@ describe('fuzzyStrands', () => {
         // wander off the curve even where the two ends are free.
         expect(Math.hypot(point.x - base.x, point.y - base.y)).toBeLessThanOrEqual(bound + 0.02)
       })
+    }
+  })
+
+  it('draws curves rather than a polyline', () => {
+    // Regression. Joining the samples with straight `L` segments left visible
+    // corners — 16 points over a 600px string is a 40px joint, and a filament
+    // is supposed to read as fibre, not as a chain of sticks.
+    const strands = fuzzyStrands(FROM, TO, DEFAULT_SLACK, 5)
+    for (const strand of strands) {
+      expect(strand.d).toContain('C')
+      expect(strand.d).not.toMatch(/L -?\d/)
+    }
+  })
+
+  it('stays close to the straight chords it replaced', () => {
+    // Smoothing must round the corners, not invent new shape: the curve should
+    // hug the polyline it replaces. Catmull-Rom can overshoot between samples,
+    // and a strand that bulges away from its own samples would read as noise.
+    const strands = fuzzyStrands(FROM, TO, DEFAULT_SLACK, 5)
+    const anchors = (d: string) => vertices(d)
+
+    for (const strand of strands) {
+      const points = anchors(strand.d)
+      const curve = curvePoints(strand.d, 24)
+
+      for (const point of curve) {
+        // Distance to the nearest chord of the original polyline.
+        let nearest = Number.POSITIVE_INFINITY
+        for (let i = 0; i < points.length - 1; i++) {
+          nearest = Math.min(nearest, distanceToSegment(point, points[i], points[i + 1]))
+        }
+        expect(nearest).toBeLessThan(1)
+      }
     }
   })
 

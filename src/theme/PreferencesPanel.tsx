@@ -44,11 +44,22 @@ const YARN_OPTIONS: readonly ChoiceOption<YarnStyle>[] = [
   { value: 'realistic', label: 'Realistic', hint: 'Fibre, fuzz and noise' },
 ]
 
-const SURFACE_LABELS: Record<BoardSurface, string> = {
+/**
+ * A label, or one per theme where the surface is a different material in each.
+ * The whiteboard is the only one: it is a whiteboard in the light and the
+ * blackboard beside it in the dark.
+ */
+const SURFACE_LABELS: Record<BoardSurface, string | Record<ThemeMode, string>> = {
   cork: 'Cork',
   leather: 'Dark leather',
   felt: 'Green felt',
   slate: 'Slate',
+  whiteboard: { light: 'Whiteboard', dark: 'Blackboard' },
+}
+
+function surfaceLabel(surface: BoardSurface, theme: ThemeMode): string {
+  const label = SURFACE_LABELS[surface]
+  return typeof label === 'string' ? label : label[theme]
 }
 
 /** Native radio inputs keep arrow-key navigation and the group semantics for free. */
@@ -240,7 +251,7 @@ export function PreferencesPanel({ open, onClose, onClearBoard }: PreferencesPan
 
   const surfaceOptions: readonly ChoiceOption<BoardSurface>[] = SURFACES.map((surface) => ({
     value: surface,
-    label: SURFACE_LABELS[surface],
+    label: surfaceLabel(surface, preferences.theme),
     swatch: surfaceColor(surface, preferences.theme),
   }))
 

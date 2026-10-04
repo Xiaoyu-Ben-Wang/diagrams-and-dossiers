@@ -179,6 +179,12 @@ export function App() {
   const [paperRect, setPaperRect] = useState<Rect | null>(null)
   /** The editor only appears once a document has been selected. */
   const [documentSelected, setDocumentSelected] = useState(false)
+  /**
+   * Pin mode inverts the gesture: with it on, a plain left-click places a pin.
+   * Off by default, because a board you can accidentally pin while trying to
+   * select something is a board you stop trusting.
+   */
+  const [pinMode, setPinMode] = useState(false)
   /** Where the article sits in board space. Its own position, like any object. */
   const [paperPos, setPaperPos] = useState<Point>({ x: 0, y: 0 })
   const paperPosRef = useRef(paperPos)
@@ -374,11 +380,15 @@ export function App() {
   }, [])
 
   const handleBackgroundClick = useCallback(
-    (point: Point) => {
+    ({ point, ctrlKey, metaKey }: { point: Point; ctrlKey: boolean; metaKey: boolean }) => {
+      // Ctrl (or Cmd, since Ctrl-click is the context menu on macOS) is the
+      // gesture that always places a pin; pin mode is what lets you drop the
+      // modifier. Anything else on bare board is not a pin.
+      if (!pinMode && !ctrlKey && !metaKey) return
       // The canvas reports viewport coordinates; a pin needs board ones.
       createFreePin(screenToBoard(cameraRef.current, point))
     },
-    [createFreePin],
+    [createFreePin, pinMode],
   )
 
   const handleArticleClick = useCallback(
@@ -390,9 +400,10 @@ export function App() {
         navigate({ name: 'wiki', slug: link.resolved ? link.slug : null })
         return
       }
+      if (!pinMode && !event.ctrlKey && !event.metaKey) return
       pinAt(event.clientX, event.clientY)
     },
-    [navigate, pinAt],
+    [navigate, pinAt, pinMode],
   )
 
   const runClock = useCallback(() => {
@@ -669,6 +680,29 @@ export function App() {
           <>
             <button
               type="button"
+              onClick={() => setPinMode((previous) => !previous)}
+              aria-pressed={pinMode}
+              aria-label="Pin mode"
+              title={
+                pinMode
+                  ? 'Pin mode on — click anywhere to place a pin'
+                  : 'Pin mode off — ctrl-click to place a pin'
+              }
+              className={`flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs transition ${
+                pinMode
+                  ? 'border-brass bg-brass/25 text-board-ink'
+                  : 'border-brass/40 bg-cork-700/70 text-board-ink-soft hover:border-brass'
+              }`}
+            >
+              <span
+                aria-hidden
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ background: pinMode ? 'var(--color-brass)' : 'currentColor' }}
+              />
+              Pin<span className="hidden sm:inline">&nbsp;mode</span>
+            </button>
+            <button
+              type="button"
               onClick={() =>
                 setSource((current) =>
                   current.replace(
@@ -732,6 +766,7 @@ export function App() {
                 onCameraChange={setCamera}
                 onContextTarget={handleContextTarget}
                 onBackgroundClick={handleBackgroundClick}
+                pinMode={pinMode}
                 className="min-h-0 flex-1"
                 fitTo={paperRect ? [paperRect] : undefined}
                 backdrop={(viewport) => (

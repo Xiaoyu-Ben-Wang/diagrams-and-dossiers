@@ -91,7 +91,7 @@ describe('parsePreferences', () => {
   })
 
   it('fills missing keys from defaults', () => {
-    expect(parsePreferences({ surface: 'felt' })).toEqual({ ...DEFAULT_PREFERENCES, surface: 'felt' })
+    expect(parsePreferences({ surface: 'whiteboard' })).toEqual({ ...DEFAULT_PREFERENCES, surface: 'whiteboard' })
   })
 
   it('ignores unknown keys', () => {
@@ -116,7 +116,7 @@ describe('preference storage', () => {
   })
 
   it('round-trips a full preference set', () => {
-    const wanted: Preferences = { theme: 'light', surface: 'felt', yarnStyle: 'realistic' }
+    const wanted: Preferences = { theme: 'light', surface: 'whiteboard', yarnStyle: 'realistic' }
     savePreferences(wanted)
     expect(loadPreferences()).toEqual(wanted)
   })
@@ -178,8 +178,10 @@ describe('preference store', () => {
   })
 
   it('persists what it accepted', () => {
-    setPreferences({ surface: 'leather' })
-    expect(loadPreferences().surface).toBe('leather')
+    // A surface that both still exists and differs from the default, so this
+    // proves persistence rather than coincidence.
+    setPreferences({ surface: 'slate' })
+    expect(loadPreferences().surface).toBe('slate')
   })
 
   it('rejects a patch carrying an unknown value', () => {
@@ -195,7 +197,7 @@ describe('preference store', () => {
   })
 
   it('returns to defaults on reset and saves that', () => {
-    setPreferences({ theme: 'light', surface: 'felt', yarnStyle: 'realistic' })
+    setPreferences({ theme: 'light', surface: 'whiteboard', yarnStyle: 'realistic' })
     resetPreferences()
     expect(getPreferences()).toEqual(DEFAULT_PREFERENCES)
     expect(loadPreferences()).toEqual(DEFAULT_PREFERENCES)
@@ -222,7 +224,7 @@ describe('a throwing localStorage', () => {
   })
 
   it('saves without propagating', () => {
-    expect(() => savePreferences({ theme: 'light', surface: 'felt', yarnStyle: 'realistic' })).not.toThrow()
+    expect(() => savePreferences({ theme: 'light', surface: 'whiteboard', yarnStyle: 'realistic' })).not.toThrow()
   })
 
   it('still updates the in-memory store so the board keeps working', () => {

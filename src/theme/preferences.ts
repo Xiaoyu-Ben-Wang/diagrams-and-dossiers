@@ -17,7 +17,7 @@ import { useSyncExternalStore } from 'react'
 export const THEMES = ['light', 'dark'] as const
 export type ThemeMode = (typeof THEMES)[number]
 
-export const SURFACES = ['cork', 'leather', 'felt', 'slate'] as const
+export const SURFACES = ['cork', 'leather', 'felt', 'slate', 'whiteboard'] as const
 export type BoardSurface = (typeof SURFACES)[number]
 
 /**
@@ -111,8 +111,12 @@ const THEME_PALETTES: Record<ThemeMode, ThemePalette> = {
  * class actually paints with, plus a base colour for canvas renderers that
  * would rather not read four gradients out of computed styles.
  *
- * The light variants are not dimmed dark ones: a green felt blotter in a lit
- * room is pale green, and slate is pale grey.
+ * Cork is the colour, not the speckled texture: the board's texture is the
+ * grid, the dust and the candlelight, all of which move with the camera. A
+ * static grain underneath them reads as a second, broken grid.
+ *
+ * The light variants are not dimmed dark ones: the same board in a lit room is
+ * genuinely paler, not the dark one with the brightness turned up.
  */
 const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
   cork: {
@@ -127,10 +131,46 @@ const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
     dark: { cork900: '#0c1912', cork700: '#13291c', cork500: '#1e3c2a', cork300: '#2e5a42', base: '#1e3c2a' },
     light: { cork900: '#9fbfa6', cork700: '#b6cfbb', cork500: '#cfe0d2', cork300: '#7fa189', base: '#cfe0d2' },
   },
+  /**
+   * The only surface that changes material with the theme rather than just
+   * getting lighter: a whiteboard under a light theme is a whiteboard, and
+   * under a dark one it is the blackboard next to it. Both are the same board —
+   * a writable panel — which is why they share one option instead of being two.
+   */
+  whiteboard: {
+    // Whiteboard. Chrome stays slightly cooler than the board so the top bar
+    // does not dissolve into it.
+    light: { cork900: '#c9ced4', cork700: '#dde1e5', cork500: '#f7f9fa', cork300: '#a8b0b8', base: '#f7f9fa' },
+    // Blackboard: chalkboard green-black, not pure black. Pure black reads as
+    // switched-off screen; a chalkboard has colour in it.
+    dark: { cork900: '#0a0e0c', cork700: '#131a16', cork500: '#1e2a24', cork300: '#33443b', base: '#1e2a24' },
+  },
   slate: {
     dark: { cork900: '#12161b', cork700: '#1c232a', cork500: '#2a333d', cork300: '#3f4b58', base: '#2a333d' },
     light: { cork900: '#b4bcc4', cork700: '#c6ccd3', cork500: '#dbe0e5', cork300: '#8e97a1', base: '#dbe0e5' },
   },
+}
+
+/**
+ * A grid-dot colour that reads against whatever the board is.
+ *
+ * Derived from the surface rather than from the theme, because those disagree
+ * on exactly the surface that matters: a whiteboard is white in a dark room, so
+ * a theme-derived dot would be light-on-light and vanish. Luminance decides,
+ * which also means a surface added later gets a sensible grid for free.
+ */
+export function gridDotFor(surface: BoardSurface, theme: ThemeMode): string {
+  const base = SURFACE_RAMPS[surface][theme].base
+  const value = Number.parseInt(base.slice(1), 16)
+  const r = (value >> 16) & 0xff
+  const g = (value >> 8) & 0xff
+  const b = value & 0xff
+
+  // Rec. 709 luma, normalised. The threshold is deliberately not 0.5 — a
+  // mid-grey board wants light dots, and it only takes a slight darkening
+  // before a dark dot stops reading at all.
+  const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+  return luma > 0.42 ? 'rgb(20 12 6 / 0.22)' : 'rgb(255 240 214 / 0.16)'
 }
 
 /** The swatch colour for a surface, honouring which theme it is being shown in. */
@@ -157,6 +197,7 @@ export function preferenceVariables(preferences: Preferences): Record<string, st
     '--color-wax': theme.wax,
     '--color-brass': theme.brass,
     '--board-surface': surface.base,
+    '--grid-dot-color': gridDotFor(preferences.surface, preferences.theme),
     '--color-board-ink': theme.boardInk,
     '--color-board-ink-soft': theme.boardInkSoft,
   }

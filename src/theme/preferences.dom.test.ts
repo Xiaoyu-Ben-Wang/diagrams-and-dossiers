@@ -38,7 +38,7 @@ function luminance(hex: string): number {
 
 describe('applyPreferences in a document', () => {
   it('writes every preference token as a custom property on the root', () => {
-    setPreferences({ theme: 'light', surface: 'felt', yarnStyle: 'realistic' })
+    setPreferences({ theme: 'light', surface: 'whiteboard', yarnStyle: 'realistic' })
 
     const root = document.documentElement
     const expected = preferenceVariables(getPreferences())
@@ -47,16 +47,16 @@ describe('applyPreferences in a document', () => {
     }
 
     expect(root.dataset.theme).toBe('light')
-    expect(root.dataset.surface).toBe('felt')
+    expect(root.dataset.surface).toBe('whiteboard')
     expect(root.dataset.yarnStyle).toBe('realistic')
   })
 
   it('repaints when a surface changes', () => {
-    setPreferences({ surface: 'felt' })
-    const felt = document.documentElement.style.getPropertyValue('--color-cork-500')
+    setPreferences({ surface: 'whiteboard' })
+    const whiteboard = document.documentElement.style.getPropertyValue('--color-cork-500')
 
     setPreferences({ surface: 'slate' })
-    expect(document.documentElement.style.getPropertyValue('--color-cork-500')).not.toBe(felt)
+    expect(document.documentElement.style.getPropertyValue('--color-cork-500')).not.toBe(whiteboard)
   })
 
   it('defaults dark cork to exactly what index.css declares', () => {
