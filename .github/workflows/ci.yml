@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref — a fast-moving branch shouldn't queue
+# up a backlog of stale checks.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npx vite build
+
+  # Added in Phase 0 once the Supabase project exists. This is the test that
+  # keeps the DM layer honest: authenticate as a player and assert zero rows
+  # come back for visibility = 'dm'. An automated leak test is the only thing
+  # that catches a policy regression introduced months later.
+  #
+  # rls-leak-test:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: supabase/setup-cli@v1
+  #     - run: supabase start
+  #     - run: supabase db reset
+  #     - run: npm run test:rls

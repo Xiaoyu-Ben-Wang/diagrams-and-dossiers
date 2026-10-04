@@ -10,8 +10,12 @@ note.
 
 ## Status
 
-**Design phase.** The architecture is written and committed; no application code yet.
-See [`docs/architecture.md`](docs/architecture.md) for the full design.
+**Phase 1, in progress.** The architecture is written and committed, and the load-bearing piece
+— text anchoring — is built and tested. A demo board renders a real markdown article where you
+can pin any word, edit the article around it, and watch the pin find its way back.
+
+Not yet built: accounts, persistence, realtime, yarn, the timeline. See
+[`docs/architecture.md`](docs/architecture.md) for the full design.
 
 ## What it does
 
@@ -53,9 +57,28 @@ React 19 · TypeScript · Vite · Tailwind v4 · Supabase · `motion` · CodeMir
 
 ## Development
 
-Not yet scaffolded — see the build order in
-[§10 of the architecture](docs/architecture.md#10-stack-layout-and-build-order). The first thing
-built is the markdown offset projection layer, because every pin depends on it.
+```bash
+npm install
+npm run dev        # the demo board at localhost:5173
+npm test           # 48 tests over the anchoring layer
+npm run typecheck
+```
+
+**Try the thesis:** click a word in the article to pin it, then press *Insert a sentence above*.
+The pin moves with its words and stays brass-coloured. Press *Delete the pinned sentence* and the
+pin goes red and drops into the loose-pins tray rather than silently landing somewhere wrong.
+
+### Where things live
+
+| Path | What it is |
+|---|---|
+| `src/markdown/projection.ts` | What an "offset" means. Both sides of the system use this, so they cannot disagree. |
+| `src/anchors/create.ts` | Turning a click into an anchor, including word snapping. |
+| `src/anchors/resolve.ts` | The resolution ladder: exact → windowed → global → orphaned. |
+| `src/anchors/dom.ts` | The bridge to real DOM nodes, and the block-separator rule. |
+| `src/App.tsx` | The demo board. |
+
+Start with `projection.ts` — everything else depends on the definition it sets.
 
 ## Documentation
 

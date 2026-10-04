@@ -1,0 +1,247 @@
+@import 'tailwindcss';
+
+/*
+ * "The Candlelit Case Room" — design tokens.
+ *
+ * Cork, parchment, iron-gall ink, brass, wax. Textures are built from plain CSS
+ * gradients rather than SVG filters: `feTurbulence` re-rasterizes on every frame
+ * it's animated, and a full-board paper filter is the single biggest perf trap
+ * in this design. Gradients composite for free.
+ */
+@theme {
+  --color-cork-900: #2e1f14;
+  --color-cork-700: #4a3320;
+  --color-cork-500: #6b4a2f;
+  --color-cork-300: #8c6544;
+
+  --color-parchment-100: #f7efdd;
+  --color-parchment-200: #efe3c8;
+  --color-parchment-300: #e3d2ae;
+  --color-parchment-edge: #c9b48a;
+
+  --color-ink: #241a12;
+  --color-ink-soft: #4a382a;
+  --color-wax: #8c2f1e;
+  --color-brass: #c9a227;
+
+  --color-yarn-crimson: #a3302b;
+  --color-yarn-indigo: #2e4a7d;
+  --color-yarn-emerald: #2f6b4f;
+  --color-yarn-gold: #b8912f;
+  --color-yarn-violet: #5b3a72;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-cork-900);
+  color: var(--color-parchment-100);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Cork: layered radial gradients at coprime sizes so the grain never tiles
+   visibly. Two gradients, no blur, no filter — cheap enough to paint once. */
+.cork {
+  background-color: var(--color-cork-500);
+  background-image:
+    radial-gradient(circle at 17% 23%, rgb(0 0 0 / 0.18) 0 1.5px, transparent 2px),
+    radial-gradient(circle at 71% 61%, rgb(255 255 255 / 0.05) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 43% 87%, rgb(0 0 0 / 0.14) 0 1.2px, transparent 1.8px),
+    radial-gradient(ellipse at 50% 0%, rgb(255 196 110 / 0.09), transparent 70%);
+  background-size:
+    23px 23px,
+    17px 17px,
+    31px 31px,
+    100% 100%;
+}
+
+/* Parchment: warm vertical falloff plus a soft vignette at the edges. */
+.parchment {
+  background-color: var(--color-parchment-100);
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgb(201 180 138 / 0.22), transparent 60%),
+    radial-gradient(ellipse at 50% 100%, rgb(201 180 138 / 0.3), transparent 55%);
+  color: var(--color-ink);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.5) inset,
+    0 18px 40px -12px rgb(0 0 0 / 0.55),
+    0 2px 6px rgb(0 0 0 / 0.3);
+}
+
+/* A brass tack: small, shiny, casting a tight shadow onto the paper. */
+.tack {
+  background:
+    radial-gradient(circle at 32% 28%, #f4e2a1, var(--color-brass) 45%, #7a5f12 100%);
+  box-shadow:
+    0 2px 3px rgb(0 0 0 / 0.45),
+    0 0 0 1px rgb(0 0 0 / 0.25),
+    0 0 10px rgb(201 162 39 / 0.35);
+}
+
+.tack[data-status='repaired'] {
+  background: radial-gradient(circle at 32% 28%, #ffd9a0, #d98a2b 45%, #7a4a12 100%);
+  box-shadow:
+    0 2px 3px rgb(0 0 0 / 0.45),
+    0 0 0 1px rgb(0 0 0 / 0.25),
+    0 0 12px rgb(217 138 43 / 0.5);
+}
+
+.tack[data-status='orphaned'] {
+  background: radial-gradient(circle at 32% 28%, #d98a7d, var(--color-wax) 45%, #4a1410 100%);
+  box-shadow:
+    0 2px 3px rgb(0 0 0 / 0.5),
+    0 0 0 1px rgb(0 0 0 / 0.3),
+    0 0 12px rgb(140 47 30 / 0.55);
+}
+
+/* The mark the pin leaves on the text it's anchored to. */
+.anchor-mark {
+  border-radius: 2px;
+  background: rgb(201 162 39 / 0.22);
+  box-shadow: 0 0 0 1px rgb(201 162 39 / 0.3);
+}
+
+.editor {
+  background: rgb(20 13 8 / 0.55);
+  color: var(--color-parchment-200);
+  border: 1px solid rgb(201 180 138 / 0.22);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.editor:focus {
+  outline: none;
+  border-color: rgb(201 162 39 / 0.5);
+  box-shadow: 0 0 0 3px rgb(201 162 39 / 0.12);
+}
+
+/* Prose styling for rendered markdown, kept modest — the article should read
+   like it was typed on the parchment, not dropped in from a design system. */
+.article {
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  line-height: 1.72;
+  font-size: 1.0625rem;
+}
+.article h1,
+.article h2,
+.article h3 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.6em 0 0.6em;
+  letter-spacing: -0.01em;
+}
+.article h1 {
+  font-size: 1.9rem;
+  margin-top: 0;
+  border-bottom: 1px solid rgb(201 180 138 / 0.5);
+  padding-bottom: 0.3em;
+}
+.article h2 {
+  font-size: 1.35rem;
+}
+.article h3 {
+  font-size: 1.1rem;
+  font-style: italic;
+}
+.article p,
+.article ul,
+.article ol,
+.article blockquote,
+.article table {
+  margin: 0 0 1.1em;
+}
+.article ul,
+.article ol {
+  padding-left: 1.4em;
+}
+.article ul {
+  list-style: disc;
+}
+.article ol {
+  list-style: decimal;
+}
+.article li {
+  margin-bottom: 0.3em;
+}
+.article strong {
+  font-weight: 700;
+}
+.article em {
+  font-style: italic;
+}
+.article blockquote {
+  border-left: 3px solid var(--color-parchment-edge);
+  padding-left: 1em;
+  font-style: italic;
+  color: var(--color-ink-soft);
+}
+.article code {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.875em;
+  background: rgb(201 180 138 / 0.32);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+.article pre {
+  background: rgb(46 31 20 / 0.9);
+  color: var(--color-parchment-200);
+  padding: 0.9em 1em;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.article pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+.article table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.95rem;
+}
+.article th,
+.article td {
+  border: 1px solid rgb(201 180 138 / 0.6);
+  padding: 0.4em 0.6em;
+  text-align: left;
+}
+.article th {
+  background: rgb(201 180 138 / 0.25);
+  font-weight: 600;
+}
+
+/* Repeatedly-animated entrance for a freshly placed pin. Transform and opacity
+   only, so it stays on the compositor. */
+@keyframes tack-in {
+  0% {
+    transform: scale(2.2) translateY(-2px);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.94) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.tack-enter {
+  animation: tack-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tack-enter {
+    animation: none;
+  }
+}
