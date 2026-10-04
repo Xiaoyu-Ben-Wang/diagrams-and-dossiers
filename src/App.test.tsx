@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { App } from './App'
@@ -59,5 +59,36 @@ describe('App', () => {
     render(<App />)
     const editor = screen.getByLabelText('Article markdown source') as HTMLTextAreaElement
     expect(editor.value).toContain('# The Drowned Bell')
+  })
+
+  it('switches to the wiki view, hiding the source editor', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'wiki' }))
+
+    // The reader renders the same article...
+    expect(screen.getByLabelText('Notes in this article')).toBeTruthy()
+    // ...but the board's editing surface is gone.
+    expect(screen.queryByLabelText('Article markdown source')).toBeNull()
+  })
+
+  it('switches back to the board', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'wiki' }))
+    fireEvent.click(screen.getByRole('button', { name: 'board' }))
+
+    expect(screen.getByLabelText('Article markdown source')).toBeTruthy()
+  })
+
+  it('keeps the chronology ribbon visible in both views', () => {
+    render(<App />)
+    expect(screen.getByTestId('timeline-ribbon')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'wiki' }))
+    expect(screen.getByTestId('timeline-ribbon')).toBeTruthy()
+  })
+
+  it('says so when the article has no notes yet', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'wiki' }))
+    expect(screen.getByText(/No notes in this article yet/)).toBeTruthy()
   })
 })

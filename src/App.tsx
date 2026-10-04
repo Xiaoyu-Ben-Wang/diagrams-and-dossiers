@@ -13,6 +13,7 @@ import {
 } from './anchors/dom'
 import { resolveAnchor } from './anchors/resolve'
 import type { TextAnchor } from './anchors/types'
+import { WikiView } from './wiki/WikiView'
 import { TimelineRibbon } from './board/TimelineRibbon'
 import { activeAt, buildTimeline, clusterTimeline, type TimelineEntry } from './board/timeline'
 import {
@@ -125,6 +126,7 @@ export function App() {
   const [fontsLoaded, setFontsLoaded] = useState(() => !globalThis.document?.fonts)
   const [cursor, setCursor] = useState(CAMPAIGN_EPOCH)
   const [playing, setPlaying] = useState(false)
+  const [view, setView] = useState<'board' | 'wiki'>('board')
 
   const articleRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -441,6 +443,28 @@ export function App() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {/* The same article, the same pins, two renderings. */}
+            <div
+              className="flex overflow-hidden rounded border border-brass/40"
+              role="group"
+              aria-label="View"
+            >
+              {(['board', 'wiki'] as const).map((option) => (
+                <button
+                  key={option}
+                  onClick={() => setView(option)}
+                  aria-pressed={view === option}
+                  className={`px-3 py-1.5 text-sm capitalize transition ${
+                    view === option
+                      ? 'bg-brass/25 text-parchment-100'
+                      : 'bg-cork-700/70 text-parchment-300 hover:text-parchment-100'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+
             <button
               onClick={insertAbove}
               className="rounded border border-brass/40 bg-cork-700/70 px-3 py-1.5 text-sm text-parchment-200 transition hover:border-brass hover:bg-cork-700"
@@ -462,6 +486,20 @@ export function App() {
           </div>
         </header>
 
+        {view === 'wiki' ? (
+          <WikiView
+            html={html}
+            pins={placed.map((item) => ({
+              id: item.id,
+              anchor: item.anchor,
+              dateLabel: item.dateLabel,
+            }))}
+            activeIds={activeIds}
+            dimming={dimming}
+            fontsLoaded={fontsLoaded}
+            onShowOnBoard={() => setView('board')}
+          />
+        ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
           <section className="flex flex-col">
             <h2 className="mb-2 text-xs font-semibold tracking-[0.14em] text-brass uppercase">
@@ -653,6 +691,7 @@ export function App() {
             )}
           </section>
         </div>
+        )}
 
         <div className="mt-7">
           <TimelineRibbon
