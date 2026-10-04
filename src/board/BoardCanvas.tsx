@@ -24,7 +24,15 @@ import {
   type ReactNode,
 } from 'react'
 
-import { fitBounds, panBy, zoomAt, type Camera, type Rect, type Viewport } from './camera'
+import {
+  fitBounds,
+  panBy,
+  rectFromPoints,
+  zoomAt,
+  type Camera,
+  type Rect,
+  type Viewport,
+} from './camera'
 import type { Point } from './yarn'
 
 export interface BoardContextTarget {
@@ -70,6 +78,12 @@ export interface BoardCanvasProps {
   onBackgroundClick?: (click: { point: Point; ctrlKey: boolean; metaKey: boolean }) => void
   /** Switches the cursor to a crosshair, so the active tool is visible. */
   pinMode?: boolean
+  /**
+   * Report a rubber-band selection as it is dragged, in viewport coordinates,
+   * and null when it ends. Left-dragging bare board selects; it is the same
+   * button that pans, separated by which one is held.
+   */
+  onMarquee?: (rect: Rect | null) => void
 }
 
 /** Pointer travel, in pixels, above which a press is a drag rather than a click. */
@@ -125,6 +139,7 @@ export function BoardCanvas({
   backdrop,
   onBackgroundClick,
   pinMode = false,
+  onMarquee,
 }: BoardCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const panRef = useRef<PanState | null>(null)
@@ -143,6 +158,10 @@ export function BoardCanvas({
    */
   const [interacting, setInteracting] = useState(false)
   const settleTimer = useRef(0)
+
+  /** The live rubber band, in viewport coordinates. */
+  const [marquee, setMarquee] = useState<Rect | null>(null)
+  const marqueeRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null)
 
   const markInteracting = useCallback(() => {
     setInteracting(true)
@@ -228,27 +247,57 @@ export function BoardCanvas({
     changeRef.current(fitted)
   }, [fitTo])
 
-  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    // Button 1 is middle, 2 is right. Left is reserved for the board itself —
-    // pinning, selecting, drawing yarn.
-    if (event.button !== 1 && event.button !== 2) return
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      // Left on bare board starts a rubber-band selection. Objects inside the
+      // board stop the event themselves, so anything reaching here with button
+      // 0 is empty cork.
+      if (event.button === 0) {
+        if (!onMarquee || event.target !== event.currentTarget) return
+        const bounds = event.currentTarget.getBoundingClientRect()
+        marqueeRef.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX - bounds.left,
+          startY: event.clientY - bounds.top,
+        }
+        capturePointer(event.currentTarget, event.pointerId)
+        return
+      }
 
-    event.preventDefault()
-    panRef.current = {
-      pointerId: event.pointerId,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      travel: 0,
-      button: event.button,
-      startTarget: event.target,
-    }
+      // Button 1 is middle, 2 is right. Right-drag and middle-drag pan.
+      if (event.button !== 1 && event.button !== 2) return
 
-    capturePointer(event.currentTarget, event.pointerId)
-  }, [])
+      event.preventDefault()
+      panRef.current = {
+        pointerId: event.pointerId,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        travel: 0,
+        button: event.button,
+        startTarget: event.target,
+      }
 
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const pan = panRef.current
-    if (!pan || pan.pointerId !== event.pointerId) return
+      capturePointer(event.currentTarget, event.pointerId)
+    },
+    [onMarquee],
+  )
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const band = marqueeRef.current
+      if (band && band.pointerId === event.pointerId) {
+        const bounds = event.currentTarget.getBoundingClientRect()
+        const rect = rectFromPoints(
+          { x: band.startX, y: band.startY },
+          { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+        )
+        setMarquee(rect)
+        onMarquee?.(rect)
+        return
+      }
+
+      const pan = panRef.current
+      if (!pan || pan.pointerId !== event.pointerId) return
 
     const dx = event.clientX - pan.lastX
     const dy = event.clientY - pan.lastY
@@ -259,12 +308,22 @@ export function BoardCanvas({
     pan.lastX = event.clientX
     pan.lastY = event.clientY
 
-    markInteractingRef.current()
-    changeRef.current(panBy(cameraRef.current, dx, dy))
-  }, [])
+      markInteractingRef.current()
+      changeRef.current(panBy(cameraRef.current, dx, dy))
+    },
+    [onMarquee],
+  )
 
   const handlePointerUp = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      if (marqueeRef.current?.pointerId === event.pointerId) {
+        marqueeRef.current = null
+        setMarquee(null)
+        releasePointer(event.currentTarget, event.pointerId)
+        onMarquee?.(null)
+        return
+      }
+
       const pan = panRef.current
       if (!pan || pan.pointerId !== event.pointerId) return
 
@@ -282,7 +341,7 @@ export function BoardCanvas({
         })
       }
     },
-    [onContextTarget],
+    [onContextTarget, onMarquee],
   )
 
   /**
@@ -306,10 +365,20 @@ export function BoardCanvas({
     [onBackgroundClick],
   )
 
-  const handlePointerCancel = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const pan = panRef.current
-    if (pan && pan.pointerId === event.pointerId) panRef.current = null
-  }, [])
+  const handlePointerCancel = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const pan = panRef.current
+      if (pan && pan.pointerId === event.pointerId) panRef.current = null
+
+      const band = marqueeRef.current
+      if (band && band.pointerId === event.pointerId) {
+        marqueeRef.current = null
+        setMarquee(null)
+        onMarquee?.(null)
+      }
+    },
+    [onMarquee],
+  )
 
   return (
     <div
@@ -347,6 +416,19 @@ export function BoardCanvas({
       >
         {children}
       </div>
+
+      {marquee && (
+        <div
+          className="marquee"
+          data-testid="marquee"
+          style={{
+            left: marquee.x,
+            top: marquee.y,
+            width: marquee.width,
+            height: marquee.height,
+          }}
+        />
+      )}
 
       <ZoomReadout camera={camera} onCameraChange={onCameraChange} />
     </div>

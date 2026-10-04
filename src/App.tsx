@@ -22,7 +22,14 @@ import { GridLayer } from './board/GridLayer'
 import { PaperEditor } from './board/PaperEditor'
 import { PinEditor } from './board/PinEditor'
 import { TimelineRibbon } from './board/TimelineRibbon'
-import { fitBounds, IDENTITY_CAMERA, screenToBoard, type Camera, type Rect } from './board/camera'
+import {
+  fitBounds,
+  IDENTITY_CAMERA,
+  rectsIntersect,
+  screenToBoard,
+  type Camera,
+  type Rect,
+} from './board/camera'
 import { activeAt, buildTimeline, clusterTimeline, type TimelineEntry } from './board/timeline'
 import {
   colorForPair,
@@ -72,6 +79,11 @@ const DEMO_ARTICLES = [
 const SLACK = 0.18
 const SNAP_RADIUS = 34
 const PAPER_WIDTH = 720
+/** Post-it footprint, shared by the renderer and by fit-bounds. */
+const POST_IT_WIDTH = 168
+const POST_IT_HEIGHT = 128
+/** Half-extent of a free pin's footprint, which is just a tack. */
+const PIN_RADIUS = 10
 
 const CAMPAIGN_EPOCH = Date.UTC(2026, 0, 10)
 const SESSION_GAP_MS = 14 * 24 * 60 * 60 * 1000
@@ -185,6 +197,11 @@ export function App() {
    * select something is a board you stop trusting.
    */
   const [pinMode, setPinMode] = useState(false)
+  /**
+   * Ids of selected objects. Only things that can move are selectable — a pin
+   * anchored to a word has no position of its own to drag.
+   */
+  const [selection, setSelection] = useState<ReadonlySet<string>>(new Set())
   /** Where the article sits in board space. Its own position, like any object. */
   const [paperPos, setPaperPos] = useState<Point>({ x: 0, y: 0 })
   const paperPosRef = useRef(paperPos)
@@ -324,35 +341,7 @@ export function App() {
     [],
   )
 
-  const pinAt = useCallback(
-    (clientX: number, clientY: number) => {
-      const projection = projectionRef.current
-      const element = articleRef.current
-      if (!projection || !element) return
 
-      const range = caretRangeFromPoint(clientX, clientY)
-      if (!range || !element.contains(range.startContainer)) return
-
-      const flatRange = domRangeToFlatRange(projection, range)
-      if (!flatRange) return
-
-      const anchor = createAnchor(projection.flat.text, flatRange.start, flatRange.end)
-      if (!anchor.quote) return
-
-      setPlaced((previous) => [
-        ...previous,
-        {
-          id: crypto.randomUUID(),
-          anchor,
-          board: null,
-          body: '',
-          occurredAt: CAMPAIGN_EPOCH + previous.length * SESSION_GAP_MS,
-          dateLabel: nextDateLabel(previous.length),
-        },
-      ])
-    },
-    [nextDateLabel],
-  )
 
   /** Stick a pin straight into the board, at a point in board space. */
   const createFreePin = useCallback(
@@ -379,16 +368,69 @@ export function App() {
     return screenToBoard(cameraRef.current, { x: clientX - box.left, y: clientY - box.top })
   }, [])
 
+  /**
+   * Place a pin at a screen position — the single pin gesture.
+   *
+   * Where it lands decides what kind of pin it is: over the article it anchors
+   * to the word under the cursor, and anywhere else it is stuck into the board.
+   * Both outcomes are a pin, so both callers (ctrl-click anywhere, and the
+   * context menu's "Add pin") go through here rather than each deciding.
+   *
+   * It used to bail silently when the caret was not inside the article, which
+   * made right-clicking bare board and choosing "Add pin" do nothing at all.
+   */
+  const pinAt = useCallback(
+    (clientX: number, clientY: number) => {
+      const projection = projectionRef.current
+      const element = articleRef.current
+
+      const range = element ? caretRangeFromPoint(clientX, clientY) : null
+      if (projection && element && range && element.contains(range.startContainer)) {
+        const flatRange = domRangeToFlatRange(projection, range)
+        const anchor = flatRange
+          ? createAnchor(projection.flat.text, flatRange.start, flatRange.end)
+          : null
+
+        if (anchor?.quote) {
+          setPlaced((previous) => [
+            ...previous,
+            {
+              id: crypto.randomUUID(),
+              anchor,
+              board: null,
+              body: '',
+              occurredAt: CAMPAIGN_EPOCH + previous.length * SESSION_GAP_MS,
+              dateLabel: nextDateLabel(previous.length),
+            },
+          ])
+          return
+        }
+      }
+
+      // Not over readable text — the caret is in a gap, or on bare cork.
+      createFreePin(worldPoint(clientX, clientY))
+    },
+    [createFreePin, nextDateLabel, worldPoint],
+  )
+
   const handleBackgroundClick = useCallback(
     ({ point, ctrlKey, metaKey }: { point: Point; ctrlKey: boolean; metaKey: boolean }) => {
       // Ctrl (or Cmd, since Ctrl-click is the context menu on macOS) is the
       // gesture that always places a pin; pin mode is what lets you drop the
       // modifier. Anything else on bare board is not a pin.
-      if (!pinMode && !ctrlKey && !metaKey) return
-      // The canvas reports viewport coordinates; a pin needs board ones.
-      createFreePin(screenToBoard(cameraRef.current, point))
+      if (!pinMode && !ctrlKey && !metaKey) {
+        // A plain click on bare cork is a deselect, which is what every canvas
+        // does and what people reach for without thinking.
+        setSelection(new Set())
+        return
+      }
+      // The canvas reports viewport coordinates; pinAt wants screen ones, and
+      // converts itself. Undo the canvas's local offset.
+      const box = document.querySelector('[data-testid="board-canvas"]')?.getBoundingClientRect()
+      if (!box) return
+      pinAt(point.x + box.left, point.y + box.top)
     },
-    [createFreePin, pinMode],
+    [pinAt, pinMode],
   )
 
   const handleArticleClick = useCallback(
@@ -422,9 +464,13 @@ export function App() {
     (event: React.PointerEvent, pin: PinView) => {
       event.stopPropagation()
       event.preventDefault()
-      if (!pin.rect) return
 
-      const origin = tackPoint(pin.rect)
+      // Board space, matching what moveString computes. This was paper-local
+      // while the target was board-space, so the live string was drawn from
+      // near the board origin instead of from the tack.
+      const origin = pinPoint(pin, paperPosRef.current)
+      if (!origin) return
+
       originRef.current = origin
       targetRef.current = origin
       springRef.current = { x: createSpring(origin.x, 220, 22), y: createSpring(origin.y, 220, 22) }
@@ -480,6 +526,98 @@ export function App() {
   useEffect(() => () => cancelAnimationFrame(frameRef.current), [])
 
   /** Right-click: a pin opens its editor, bare board opens the context menu. */
+  /**
+   * Turn a rubber band into a selection.
+   *
+   * The band arrives in viewport coordinates and the objects live in board
+   * space, so both the origin and the size have to be converted — dividing only
+   * the origin would make the band select the right thing at 100% and the wrong
+   * thing at every other zoom.
+   */
+  const handleMarquee = useCallback(
+    (rect: Rect | null) => {
+      if (!rect) return
+
+      const zoom = cameraRef.current.zoom || 1
+      const origin = screenToBoard(cameraRef.current, { x: rect.x, y: rect.y })
+      const band: Rect = {
+        x: origin.x,
+        y: origin.y,
+        width: rect.width / zoom,
+        height: rect.height / zoom,
+      }
+
+      const hits = new Set<string>()
+
+      for (const note of postIts) {
+        if (rectsIntersect(band, { x: note.x, y: note.y, width: POST_IT_WIDTH, height: POST_IT_HEIGHT })) {
+          hits.add(note.id)
+        }
+      }
+
+      for (const pin of placed) {
+        if (!pin.board) continue
+        // A pin has no area, so it is a zero-size rect at its point.
+        if (rectsIntersect(band, { x: pin.board.x, y: pin.board.y, width: 0, height: 0 })) {
+          hits.add(pin.id)
+        }
+      }
+
+      setSelection(hits)
+    },
+    [placed, postIts],
+  )
+
+  /** Move everything selected by a board-space delta. */
+  const moveSelection = useCallback((delta: Point) => {
+    setPostIts((previous) =>
+      previous.map((note) =>
+        selection.has(note.id) ? { ...note, x: note.x + delta.x, y: note.y + delta.y } : note,
+      ),
+    )
+    setPlaced((previous) =>
+      previous.map((pin) =>
+        pin.board && selection.has(pin.id)
+          ? { ...pin, board: { x: pin.board.x + delta.x, y: pin.board.y + delta.y } }
+          : pin,
+      ),
+    )
+  }, [selection])
+
+  /**
+   * Frame everything on the board, not just the document.
+   *
+   * Pins stuck into the cork and post-its laid beside the paper are the whole
+   * point of a board — fitting to the document alone would deliberately hide
+   * the things you pinned around it.
+   */
+  const fitBoard = useCallback(() => {
+    const canvas = document.querySelector('[data-testid="board-canvas"]')
+    const box = canvas?.getBoundingClientRect()
+    if (!box || box.width === 0) return
+
+    const targets: Rect[] = []
+    if (paperRect) targets.push(paperRect)
+
+    for (const pin of placed) {
+      if (!pin.board) continue
+      targets.push({
+        x: pin.board.x - PIN_RADIUS,
+        y: pin.board.y - PIN_RADIUS,
+        width: PIN_RADIUS * 2,
+        height: PIN_RADIUS * 2,
+      })
+    }
+
+    for (const note of postIts) {
+      targets.push({ x: note.x, y: note.y, width: POST_IT_WIDTH, height: POST_IT_HEIGHT })
+    }
+
+    if (targets.length === 0) return
+    const fitted = fitBounds(targets, { width: box.width, height: box.height }, 56)
+    if (fitted) setCamera(fitted)
+  }, [paperRect, placed, postIts])
+
   const handleContextTarget = useCallback((target: BoardContextTarget) => {
     const element = target.target instanceof Element ? target.target : null
     const pinId = element?.closest('[data-pin-id]')?.getAttribute('data-pin-id')
@@ -529,13 +667,36 @@ export function App() {
 
   const dragPostIt = useCallback(
     (id: string, delta: Point) => {
+      // Dragging one of several selected objects moves the whole set; dragging
+      // an unselected one moves only it.
+      if (selection.has(id)) {
+        moveSelection(delta)
+        return
+      }
       setPostIts((previous) =>
         previous.map((item) =>
           item.id === id ? { ...item, x: item.x + delta.x, y: item.y + delta.y } : item,
         ),
       )
     },
-    [],
+    [selection, moveSelection],
+  )
+
+  const dragPin = useCallback(
+    (id: string, delta: Point) => {
+      if (selection.has(id)) {
+        moveSelection(delta)
+        return
+      }
+      setPlaced((previous) =>
+        previous.map((pin) =>
+          pin.id === id && pin.board
+            ? { ...pin, board: { x: pin.board.x + delta.x, y: pin.board.y + delta.y } }
+            : pin,
+        ),
+      )
+    },
+    [selection, moveSelection],
   )
 
   const setPinBody = useCallback((id: string, body: string) => {
@@ -649,15 +810,9 @@ export function App() {
         {
           id: 'fit',
           label: 'Zoom to fit',
-          hint: 'Frame the document',
+          hint: 'Frame everything on the board',
           disabled: !paperRect,
-          onSelect: () => {
-            const canvas = document.querySelector('[data-testid="board-canvas"]')
-            const box = canvas?.getBoundingClientRect()
-            if (!paperRect || !box || box.width === 0) return
-            const fitted = fitBounds([paperRect], { width: box.width, height: box.height }, 56)
-            if (fitted) setCamera(fitted)
-          },
+          onSelect: fitBoard,
         },
         {
           id: 'prefs',
@@ -701,34 +856,6 @@ export function App() {
               />
               Pin<span className="hidden sm:inline">&nbsp;mode</span>
             </button>
-            <button
-              type="button"
-              onClick={() =>
-                setSource((current) =>
-                  current.replace(
-                    '\n\n**Session 12**',
-                    '\n\nIt rained the whole crossing, and the lanterns guttered.\n\n**Session 12**',
-                  ),
-                )
-              }
-              className="rounded border border-brass/40 bg-cork-700/70 px-2.5 py-1 text-xs text-board-ink transition hover:border-brass"
-            >
-              Insert a sentence above
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setSource((current) =>
-                  current.replace(
-                    /The \[\[The Black Coin\|Black Coin\]\][^\n]*\n?[^\n]*\n?/,
-                    'Nobody would say the name aloud.\n',
-                  ),
-                )
-              }
-              className="rounded border border-brass/40 bg-cork-700/70 px-2.5 py-1 text-xs text-board-ink transition hover:border-brass"
-            >
-              Delete the pinned sentence
-            </button>
           </>
         )}
       </TopBar>
@@ -766,6 +893,9 @@ export function App() {
                 onCameraChange={setCamera}
                 onContextTarget={handleContextTarget}
                 onBackgroundClick={handleBackgroundClick}
+                // Pin mode claims the left button for pinning, so the rubber
+                // band stands down rather than fighting it for the same drag.
+                onMarquee={pinMode ? undefined : handleMarquee}
                 pinMode={pinMode}
                 className="min-h-0 flex-1"
                 fitTo={paperRect ? [paperRect] : undefined}
@@ -812,6 +942,7 @@ export function App() {
 
                   <path
                     ref={livePathRef}
+                    data-testid="live-yarn"
                     fill="none"
                     stroke={YARN_HEX[colorForPair(dragFrom ?? 'a', 'b')]}
                     strokeWidth={2.5}
@@ -911,21 +1042,13 @@ export function App() {
                     share the note editor and the yarn. */}
                 {freePins.map((pin) =>
                   pin.board ? (
-                    <button
+                    <FreePin
                       key={`free-${pin.id}`}
-                      type="button"
-                      data-pin-id={pin.id}
-                      onPointerDown={(event) => beginString(event, pin)}
-                      className="tack tack-enter absolute h-3.5 w-3.5 cursor-crosshair rounded-full"
-                      data-status="free"
-                      style={{
-                        left: pin.board.x - 7,
-                        top: pin.board.y - 7,
-                        touchAction: 'none',
-                        opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.2,
-                      }}
-                      title={pin.body || 'Empty pin — right-click to write'}
-                      aria-label={`Pin on the board${pin.body ? `: ${pin.body}` : ''}`}
+                      pin={pin}
+                      zoom={camera.zoom}
+                      selected={selection.has(pin.id)}
+                      dimmed={dimming && !activeIds.has(pin.id)}
+                      onDrag={dragPin}
                     />
                   ) : null,
                 )}
@@ -935,6 +1058,7 @@ export function App() {
                     key={note.id}
                     note={note}
                     zoom={camera.zoom}
+                    selected={selection.has(note.id)}
                     onDrag={dragPostIt}
                     onChange={setPostItBody}
                     onRemove={(id) =>
@@ -1024,6 +1148,55 @@ function Legend({ colour, label }: { colour: string; label: string }) {
 
 
 /**
+ * A pin stuck into the cork.
+ *
+ * Dragging it moves it, and dragging a selected one moves the whole selection.
+ * Note this is the opposite of an anchored pin's tack, which starts a string —
+ * an anchored pin has no position of its own to move, so its tack is free to be
+ * the yarn handle. A free pin needs a body first, so moving wins the gesture.
+ */
+function FreePin({
+  pin,
+  zoom,
+  selected,
+  dimmed,
+  onDrag,
+}: {
+  pin: PinView
+  zoom: number
+  selected: boolean
+  dimmed: boolean
+  onDrag: (id: string, delta: Point) => void
+}) {
+  const drag = useBoardDrag({
+    zoom,
+    onDrag: (delta) => onDrag(pin.id, delta),
+  })
+
+  if (!pin.board) return null
+
+  return (
+    <button
+      type="button"
+      data-pin-id={pin.id}
+      {...drag}
+      className={`tack tack-enter absolute h-3.5 w-3.5 cursor-grab rounded-full active:cursor-grabbing ${
+        selected ? 'is-selected' : ''
+      }`}
+      data-status="free"
+      style={{
+        left: pin.board.x - 7,
+        top: pin.board.y - 7,
+        touchAction: 'none',
+        opacity: dimmed ? 0.2 : 1,
+      }}
+      title={pin.body || 'Empty pin — drag to move, right-click to write'}
+      aria-label={`Pin on the board${pin.body ? `: ${pin.body}` : ''}`}
+    />
+  )
+}
+
+/**
  * A post-it on the board.
  *
  * Its own component because it needs a drag hook, and hooks cannot live inside
@@ -1033,12 +1206,14 @@ function Legend({ colour, label }: { colour: string; label: string }) {
 function PostIt({
   note,
   zoom,
+  selected,
   onDrag,
   onChange,
   onRemove,
 }: {
   note: PostIt
   zoom: number
+  selected: boolean
   onDrag: (id: string, delta: Point) => void
   onChange: (id: string, body: string) => void
   onRemove: (id: string) => void
@@ -1050,11 +1225,11 @@ function PostIt({
 
   return (
     <div
-      className="post-it absolute rounded-sm p-2"
+      className={`post-it absolute rounded-sm p-2 ${selected ? 'is-selected' : ''}`}
       style={{
         left: note.x,
         top: note.y,
-        width: 168,
+        width: POST_IT_WIDTH,
         background: note.color,
       }}
     >

@@ -11,6 +11,8 @@ import {
   MAX_ZOOM,
   MIN_ZOOM,
   panBy,
+  rectFromPoints,
+  rectsIntersect,
   screenToBoard,
   unionRect,
   zoomAt,
@@ -229,6 +231,64 @@ describe('camerasDiffer', () => {
   it('notices a real move', () => {
     expect(camerasDiffer({ x: 0, y: 0, zoom: 1 }, { x: 40, y: 0, zoom: 1 })).toBe(true)
     expect(camerasDiffer({ x: 0, y: 0, zoom: 1 }, { x: 0, y: 0, zoom: 1.5 })).toBe(true)
+  })
+})
+
+describe('rectFromPoints', () => {
+  it('normalises corners given in any order', () => {
+    const expected = { x: 10, y: 20, width: 30, height: 40 }
+    expect(rectFromPoints({ x: 10, y: 20 }, { x: 40, y: 60 })).toEqual(expected)
+    expect(rectFromPoints({ x: 40, y: 60 }, { x: 10, y: 20 })).toEqual(expected)
+  })
+
+  it('never produces a negative extent', () => {
+    // Dragging up and to the left is the case that would.
+    const rect = rectFromPoints({ x: 100, y: 100 }, { x: 20, y: 30 })
+    expect(rect.width).toBeGreaterThanOrEqual(0)
+    expect(rect.height).toBeGreaterThanOrEqual(0)
+  })
+
+  it('handles a rect collapsed to a point', () => {
+    expect(rectFromPoints({ x: 5, y: 5 }, { x: 5, y: 5 })).toEqual({
+      x: 5,
+      y: 5,
+      width: 0,
+      height: 0,
+    })
+  })
+})
+
+describe('rectsIntersect', () => {
+  const box = { x: 0, y: 0, width: 100, height: 100 }
+
+  it('detects an overlap', () => {
+    expect(rectsIntersect(box, { x: 50, y: 50, width: 100, height: 100 })).toBe(true)
+  })
+
+  it('detects containment either way round', () => {
+    expect(rectsIntersect(box, { x: 10, y: 10, width: 10, height: 10 })).toBe(true)
+    expect(rectsIntersect({ x: 10, y: 10, width: 10, height: 10 }, box)).toBe(true)
+  })
+
+  it('rejects a rect that misses entirely', () => {
+    expect(rectsIntersect(box, { x: 200, y: 200, width: 10, height: 10 })).toBe(false)
+  })
+
+  it('rejects a rect that only aligns on one axis', () => {
+    expect(rectsIntersect(box, { x: 50, y: 500, width: 10, height: 10 })).toBe(false)
+  })
+
+  it('counts touching edges as intersecting', () => {
+    expect(rectsIntersect(box, { x: 100, y: 0, width: 10, height: 10 })).toBe(true)
+  })
+
+  it('catches a zero-size rect whose point is inside', () => {
+    // A pin has no area; a marquee dragged across it must still pick it up.
+    expect(rectsIntersect(box, { x: 50, y: 50, width: 0, height: 0 })).toBe(true)
+  })
+
+  it('misses a zero-size rect whose point is outside', () => {
+    expect(rectsIntersect(box, { x: 500, y: 50, width: 0, height: 0 })).toBe(false)
   })
 })
 

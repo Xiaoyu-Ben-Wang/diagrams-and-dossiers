@@ -186,6 +186,39 @@ export function easeInOut(t: number): number {
 }
 
 /**
+ * The rect spanned by two corners, in any order.
+ *
+ * Marquee selection produces corners in whatever order the pointer travelled,
+ * so normalising here keeps "drag up and to the left" from producing a
+ * negative-width rect that intersects nothing.
+ */
+export function rectFromPoints(a: Point, b: Point): Rect {
+  return {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    width: Math.abs(b.x - a.x),
+    height: Math.abs(b.y - a.y),
+  }
+}
+
+/**
+ * Whether two rects overlap at all.
+ *
+ * Touching edges count as intersecting, and a zero-size rect — a pin, which has
+ * no extent of its own — is inside a marquee when its point is. That is the
+ * behaviour you want: dragging a box across a pin should pick it up even though
+ * the pin has no area.
+ */
+export function rectsIntersect(a: Rect, b: Rect): boolean {
+  return (
+    a.x <= b.x + b.width &&
+    a.x + a.width >= b.x &&
+    a.y <= b.y + b.height &&
+    a.y + a.height >= b.y
+  )
+}
+
+/**
  * Whether a board-space rect is worth rendering.
  *
  * Culling by AABB is what keeps a board with hundreds of pins smooth — and it

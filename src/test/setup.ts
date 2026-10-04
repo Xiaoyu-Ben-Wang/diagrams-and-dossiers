@@ -38,6 +38,32 @@ if (typeof window !== 'undefined') {
     } as unknown as typeof ResizeObserver
   }
 
+  /**
+   * jsdom has no layout, so a Range reports no client rects and every anchored
+   * pin resolves to no position. That made the entire anchored path — the one
+   * most of the board's behaviour lives on — untestable.
+   *
+   * A fixed box is a lie, but a useful one: it is the same lie every test sees,
+   * so positions are predictable and relative assertions hold. Anything that
+   * depends on real text metrics still has to be checked in a browser.
+   */
+  if (typeof Range !== 'undefined') {
+    Range.prototype.getClientRects = function getClientRects() {
+      const rect = {
+        x: 100,
+        y: 50,
+        left: 100,
+        top: 50,
+        right: 180,
+        bottom: 70,
+        width: 80,
+        height: 20,
+        toJSON: () => ({}),
+      }
+      return Object.assign([rect], { item: (i: number) => (i === 0 ? rect : null) }) as unknown as DOMRectList
+    }
+  }
+
   // PointerEvent is a superset of MouseEvent, so extending it mirrors the real
   // implementation.
   if (typeof globalThis.PointerEvent === 'undefined' && typeof globalThis.MouseEvent !== 'undefined') {

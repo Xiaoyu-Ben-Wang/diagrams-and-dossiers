@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { App } from './App'
@@ -231,6 +231,145 @@ describe('App — pin mode', () => {
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
     fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-pressed')).toBe('true')
+  })
+})
+
+describe('App — placing pins', () => {
+  const freePins = (container: HTMLElement) =>
+    container.querySelectorAll('[data-status="free"]').length
+
+  /** Right-click somewhere, which opens the context menu. */
+  function rightClick(element: Element, clientX = 400, clientY = 300): void {
+    fireEvent.pointerDown(element, { button: 2, pointerId: 3, clientX, clientY })
+    fireEvent.pointerUp(element, { button: 2, pointerId: 3, clientX, clientY })
+  }
+
+  it('places a pin from the context menu, even over bare board', () => {
+    // Regression: this silently did nothing whenever the right-click was not
+    // over article text, because the pin helper bailed instead of falling back
+    // to sticking the pin into the board.
+    const { container } = render(<App />)
+    rightClick(screen.getByTestId('board-canvas'))
+
+    fireEvent.click(screen.getByText('Add pin'))
+    expect(freePins(container)).toBe(1)
+  })
+
+  it('offers the context menu on bare board', () => {
+    render(<App />)
+    rightClick(screen.getByTestId('board-canvas'))
+    expect(screen.getByText('Create post-it')).toBeTruthy()
+  })
+
+  it('creates a post-it from the context menu', () => {
+    const { container } = render(<App />)
+    rightClick(screen.getByTestId('board-canvas'))
+
+    fireEvent.click(screen.getByText('Create post-it'))
+    expect(container.querySelectorAll('[aria-label="Post-it note"]').length).toBe(1)
+  })
+
+  it('draws the live string from the tack it started at', async () => {
+    // Regression: the drag origin was computed in paper coordinates while the
+    // drag target and the yarn layer had moved to board coordinates, so the
+    // string was drawn from near the board origin instead of from the tack.
+    //
+    // This needs an ANCHORED pin, which needs a caret query jsdom does not
+    // implement — so it is stubbed here rather than globally, since a global
+    // stub would make every click anchor to the article and would quietly
+    // break the free-pin tests above.
+    const { container } = render(<App />)
+    const article = container.querySelector('.article')!
+
+    const caret = (document as Document & { caretRangeFromPoint?: unknown })
+      .caretRangeFromPoint
+    ;(document as Document & { caretRangeFromPoint?: unknown }).caretRangeFromPoint = () => {
+      const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT)
+      const text = walker.nextNode() as Text | null
+      if (!text) return null
+      const range = document.createRange()
+      range.setStart(text, 0)
+      range.collapse(true)
+      return range
+    }
+
+    try {
+      fireEvent.click(article, { ctrlKey: true, clientX: 120, clientY: 60 })
+
+      const tack = container.querySelector('button[data-pin-id]') as HTMLElement
+      expect(tack).not.toBeNull()
+
+      fireEvent.pointerDown(tack, { button: 0, pointerId: 7, clientX: 181, clientY: 52 })
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+      })
+
+      // The stubbed range box is 100..180 by 50..70, so the tack sits at 181,52
+      // and the paper is at the board origin.
+      expect(screen.getByTestId('live-yarn').getAttribute('d')).toMatch(/^M 181 52/)
+    } finally {
+      ;(document as Document & { caretRangeFromPoint?: unknown }).caretRangeFromPoint = caret
+    }
+  })
+
+  it('selects objects inside the rubber band', () => {
+    const { container } = render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 })
+    expect(container.querySelectorAll('.is-selected').length).toBe(0)
+
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 9, clientX: 250, clientY: 150 })
+    fireEvent.pointerMove(canvas, { pointerId: 9, clientX: 350, clientY: 250 })
+
+    expect(container.querySelectorAll('.is-selected').length).toBe(1)
+  })
+
+  it('shows the rubber band while it is being dragged', () => {
+    render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 9, clientX: 250, clientY: 150 })
+    fireEvent.pointerMove(canvas, { pointerId: 9, clientX: 350, clientY: 250 })
+
+    expect(screen.getByTestId('marquee')).toBeTruthy()
+  })
+
+  it('hides the rubber band on release', () => {
+    render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 9, clientX: 250, clientY: 150 })
+    fireEvent.pointerMove(canvas, { pointerId: 9, clientX: 350, clientY: 250 })
+    fireEvent.pointerUp(canvas, { pointerId: 9, clientX: 350, clientY: 250 })
+
+    expect(screen.queryByTestId('marquee')).toBeNull()
+  })
+
+  it('clears the selection on a plain click', () => {
+    const { container } = render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 })
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 9, clientX: 250, clientY: 150 })
+    fireEvent.pointerMove(canvas, { pointerId: 9, clientX: 350, clientY: 250 })
+    fireEvent.pointerUp(canvas, { pointerId: 9, clientX: 350, clientY: 250 })
+    expect(container.querySelectorAll('.is-selected').length).toBe(1)
+
+    fireEvent.click(canvas, { clientX: 10, clientY: 10 })
+    expect(container.querySelectorAll('.is-selected').length).toBe(0)
+  })
+
+  it('does not rubber-band in pin mode, where a drag is a pin', () => {
+    // The two gestures share the left button; pin mode is what chooses.
+    render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+    fireEvent.click(screen.getByLabelText('Pin mode'))
+
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 9, clientX: 250, clientY: 150 })
+    fireEvent.pointerMove(canvas, { pointerId: 9, clientX: 350, clientY: 250 })
+
+    expect(screen.queryByTestId('marquee')).toBeNull()
   })
 })
 
