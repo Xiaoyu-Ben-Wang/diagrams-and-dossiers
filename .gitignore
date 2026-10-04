@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+build/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Supabase local dev
+supabase/.branches
+supabase/.temp
+
+# Cloudflare
+.wrangler/
+worker/dist/
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Generated assets (baked textures are rebuilt, not committed)
+public/textures/generated/

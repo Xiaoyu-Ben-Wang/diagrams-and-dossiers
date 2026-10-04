@@ -1,0 +1,19 @@
+# Normalize line endings across the WSL/Windows boundary.
+# This matters here specifically: the repo lives on a Windows-mounted
+# path but is edited from Linux, so without this Git sees spurious
+# whole-file modifications.
+* text=auto eol=lf
+
+# Binary assets — never touch these
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+
+# Lockfiles are generated; keep them out of diffs and merge conflicts
+package-lock.json linguist-generated=true -diff
