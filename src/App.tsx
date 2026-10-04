@@ -96,6 +96,13 @@ interface PinView {
   id: string
   quote: string
   body: string
+  /**
+   * Manual offset from wherever the pin would otherwise sit, in board space.
+   * An anchored pin's position is derived from the words it holds, so nudging
+   * it is stored as a delta rather than by overwriting a position it does not
+   * really have.
+   */
+  nudge: Point
   /** 'free' is a pin stuck straight into the board rather than into text. */
   status: 'exact' | 'repaired' | 'orphaned' | 'free'
   detail: string
@@ -109,6 +116,8 @@ interface PlacedPin {
   id: string
   /** Set for a pin anchored to a quote. Null for a free board pin. */
   anchor: TextAnchor | null
+  /** Manual offset, set by "Move pin". Absent means none. */
+  nudge?: Point
   /** Set for a free board pin. Null for an anchored one. */
   board: Point | null
   body: string
@@ -162,8 +171,14 @@ function tackPoint(rect: AnchorRect): Point {
  * render rather than drawing it to the origin.
  */
 function pinPoint(pin: PinView, paper: Point): Point | null {
-  if (pin.rect) return { x: paper.x + tackPoint(pin.rect).x, y: paper.y + tackPoint(pin.rect).y }
-  if (pin.board) return pin.board
+  if (pin.rect) {
+    const tack = tackPoint(pin.rect)
+    return {
+      x: paper.x + tack.x + pin.nudge.x,
+      y: paper.y + tack.y + pin.nudge.y,
+    }
+  }
+  if (pin.board) return { x: pin.board.x + pin.nudge.x, y: pin.board.y + pin.nudge.y }
   return null
 }
 
@@ -202,6 +217,8 @@ export function App() {
    * anchored to a word has no position of its own to drag.
    */
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set())
+  /** The pin currently being repositioned, or null. A mode, not a permanent tool. */
+  const [movingPin, setMovingPin] = useState<string | null>(null)
   /** Where the article sits in board space. Its own position, like any object. */
   const [paperPos, setPaperPos] = useState<Point>({ x: 0, y: 0 })
   const paperPosRef = useRef(paperPos)
@@ -282,7 +299,12 @@ export function App() {
 
     setPins(
       placed.map((item) => {
-        const base = { id: item.id, quote: item.anchor?.quote ?? '', body: item.body }
+        const base = {
+          id: item.id,
+          quote: item.anchor?.quote ?? '',
+          body: item.body,
+          nudge: item.nudge ?? { x: 0, y: 0 },
+        }
 
         // A pin stuck into the board has no quote to resolve; its position is
         // simply its position.
@@ -418,6 +440,13 @@ export function App() {
       // Ctrl (or Cmd, since Ctrl-click is the context menu on macOS) is the
       // gesture that always places a pin; pin mode is what lets you drop the
       // modifier. Anything else on bare board is not a pin.
+      // A click on bare cork finishes any reposition in progress, before it
+      // means anything else.
+      if (movingPin) {
+        setMovingPin(null)
+        return
+      }
+
       if (!pinMode && !ctrlKey && !metaKey) {
         // A plain click on bare cork is a deselect, which is what every canvas
         // does and what people reach for without thinking.
@@ -430,7 +459,7 @@ export function App() {
       if (!box) return
       pinAt(point.x + box.left, point.y + box.top)
     },
-    [pinAt, pinMode],
+    [pinAt, pinMode, movingPin],
   )
 
   const handleArticleClick = useCallback(
@@ -462,6 +491,12 @@ export function App() {
 
   const beginString = useCallback(
     (event: React.PointerEvent, pin: PinView) => {
+      // Left button only. Stopping propagation on every button swallowed the
+      // right-click before the canvas ever saw it, which is why right-clicking
+      // a pin did nothing — the button that opens its editor was being eaten
+      // here.
+      if (event.button !== 0) return
+
       event.stopPropagation()
       event.preventDefault()
 
@@ -524,6 +559,17 @@ export function App() {
   )
 
   useEffect(() => () => cancelAnimationFrame(frameRef.current), [])
+
+  // Repositioning is a mode, so it needs an exit that does not require finding
+  // the pin again. Escape is the one people reach for.
+  useEffect(() => {
+    if (!movingPin) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setMovingPin(null)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [movingPin])
 
   /** Right-click: a pin opens its editor, bare board opens the context menu. */
   /**
@@ -681,6 +727,27 @@ export function App() {
     },
     [selection, moveSelection],
   )
+
+  /**
+   * Reposition a pin by a board-space delta.
+   *
+   * A free pin's position is its own, so it just moves. An anchored pin's
+   * position is derived from the words it holds, so the delta is kept as an
+   * offset — which is what makes the move temporary: the pin still belongs to
+   * its quote and will follow it, just nudged.
+   */
+  const movePinBy = useCallback((id: string, delta: Point) => {
+    setPlaced((previous) =>
+      previous.map((pin) => {
+        if (pin.id !== id) return pin
+        if (pin.board) {
+          return { ...pin, board: { x: pin.board.x + delta.x, y: pin.board.y + delta.y } }
+        }
+        const nudge = pin.nudge ?? { x: 0, y: 0 }
+        return { ...pin, nudge: { x: nudge.x + delta.x, y: nudge.y + delta.y } }
+      }),
+    )
+  }, [])
 
   const setPinBody = useCallback((id: string, body: string) => {
     setPlaced((previous) => previous.map((item) => (item.id === id ? { ...item, body } : item)))
@@ -953,7 +1020,7 @@ export function App() {
                     data-testid="paper-tab"
                     {...paperDrag}
                     aria-pressed={documentSelected}
-                    className={`absolute -top-7 left-0 rounded-t px-3 py-1 text-[11px] transition ${
+                    className={`drag-bar absolute -top-7 left-0 rounded-t px-3 py-1 text-[11px] transition ${
                       documentSelected
                         ? 'bg-brass/80 text-cork-900'
                         : 'bg-parchment-200/85 text-ink-soft hover:bg-parchment-200'
@@ -998,21 +1065,17 @@ export function App() {
 
                       {anchored.map((pin) =>
                         pin.rect ? (
-                          <button
+                          <Tack
                             key={`tack-${pin.id}`}
-                            type="button"
-                            data-pin-id={pin.id}
-                            onPointerDown={(event) => beginString(event, pin)}
-                            className="tack tack-enter pointer-events-auto absolute h-3.5 w-3.5 cursor-crosshair rounded-full transition-opacity duration-300"
-                            data-status={pin.status}
-                            style={{
-                              left: pin.rect.x + pin.rect.width - 6,
-                              top: pin.rect.y - 5,
-                              touchAction: 'none',
-                              opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.2,
-                            }}
-                            title={`${pin.quote} — ${pin.detail}`}
-                            aria-label={`Pin on "${pin.quote}", ${pin.detail}`}
+                            pin={pin}
+                            x={pin.rect.x + pin.rect.width - 6 + pin.nudge.x}
+                            y={pin.rect.y - 5 + pin.nudge.y}
+                            selected={selection.has(pin.id)}
+                            dimmed={dimming && !activeIds.has(pin.id)}
+                            moving={movingPin === pin.id}
+                            zoom={camera.zoom}
+                            onStartYarn={(event) => beginString(event, pin)}
+                            onMove={movePinBy}
                           />
                         ) : null,
                       )}
@@ -1025,12 +1088,17 @@ export function App() {
                     share the note editor and the yarn. */}
                 {freePins.map((pin) =>
                   pin.board ? (
-                    <FreePin
+                    <Tack
                       key={`free-${pin.id}`}
                       pin={pin}
+                      x={pin.board.x - 7 + pin.nudge.x}
+                      y={pin.board.y - 7 + pin.nudge.y}
                       selected={selection.has(pin.id)}
                       dimmed={dimming && !activeIds.has(pin.id)}
-                      onPointerDown={(event) => beginString(event, pin)}
+                      moving={movingPin === pin.id}
+                      zoom={camera.zoom}
+                      onStartYarn={(event) => beginString(event, pin)}
+                      onMove={movePinBy}
                     />
                   ) : null,
                 )}
@@ -1087,6 +1155,17 @@ export function App() {
         </footer>
       )}
 
+      {movingPin && (
+        <div
+          className="pointer-events-none fixed inset-x-0 top-3 z-40 flex justify-center"
+          role="status"
+        >
+          <span className="rounded-full border border-brass/50 bg-cork-900/90 px-3 py-1 text-xs text-board-ink shadow-lg">
+            Drag the pin to reposition it · <span className="text-board-ink-soft">Esc to finish</span>
+          </span>
+        </div>
+      )}
+
       {contextMenu && (
         <ContextMenu
           x={contextMenu.clientX}
@@ -1106,6 +1185,12 @@ export function App() {
           y={editingPin.y}
           onChange={(body) => setPinBody(editingPin.id, body)}
           onDelete={() => removePin(editingPin.id)}
+          onMove={() => {
+            // Hand the pin to the board and get the editor out of the way —
+            // you cannot drag something accurately with a card over it.
+            setMovingPin(editingPin.id)
+            setEditingPin(null)
+          }}
           onClose={() => setEditingPin(null)}
         />
       )}
@@ -1130,47 +1215,68 @@ function Legend({ colour, label }: { colour: string; label: string }) {
 
 
 /**
- * A pin stuck into the cork.
+ * A brass tack — the same object whether it is holding a word or a patch of
+ * cork, so the drag means the same thing on both and you never have to work out
+ * which kind you are looking at.
  *
- * Dragging it starts a string, exactly like an anchored pin's tack. A pin is a
- * place yarn attaches to, not a thing you shove around — so the drag gesture
- * means the same thing wherever the pin happens to be, and you never have to
- * remember which kind of pin you are looking at.
+ * Normally dragging one runs a string. While it is the pin being repositioned,
+ * the drag moves it instead: a mode rather than a second button, because
+ * "connect" and "move" on the same target would otherwise be indistinguishable.
  *
- * That does mean a lone free pin cannot be repositioned by dragging it. Moving
- * pins is done by selecting them along with something draggable and moving the
- * selection.
+ * `data-described` drives a ring around tacks that have something written on
+ * them, so an annotated pin is findable at a glance across a crowded board.
  */
-function FreePin({
+function Tack({
   pin,
+  x,
+  y,
   selected,
   dimmed,
-  onPointerDown,
+  moving,
+  zoom,
+  onStartYarn,
+  onMove,
 }: {
   pin: PinView
+  x: number
+  y: number
   selected: boolean
   dimmed: boolean
-  onPointerDown: (event: React.PointerEvent) => void
+  moving: boolean
+  zoom: number
+  onStartYarn: (event: React.PointerEvent) => void
+  onMove: (id: string, delta: Point) => void
 }) {
-  if (!pin.board) return null
+  const drag = useBoardDrag({
+    zoom,
+    onDrag: (delta) => onMove(pin.id, delta),
+  })
+
+  const described = pin.body.trim().length > 0
 
   return (
     <button
       type="button"
       data-pin-id={pin.id}
-      onPointerDown={onPointerDown}
-      className={`tack tack-enter absolute h-3.5 w-3.5 cursor-crosshair rounded-full ${
-        selected ? 'is-selected' : ''
-      }`}
-      data-status="free"
+      data-described={described ? 'true' : undefined}
+      {...(moving ? drag : { onPointerDown: onStartYarn })}
+      className={`tack tack-enter absolute h-3.5 w-3.5 rounded-full ${
+        moving ? 'cursor-grabbing' : 'cursor-crosshair'
+      } ${selected ? 'is-selected' : ''}`}
+      data-status={pin.status}
       style={{
-        left: pin.board.x - 7,
-        top: pin.board.y - 7,
+        left: x,
+        top: y,
         touchAction: 'none',
         opacity: dimmed ? 0.2 : 1,
       }}
-      title={pin.body || 'Empty pin — drag to another pin to connect, right-click to write'}
-      aria-label={`Pin on the board${pin.body ? `: ${pin.body}` : ''}`}
+      aria-label={
+        described
+          ? `Pin: ${pin.body}`
+          : pin.quote
+            ? `Pin on "${pin.quote}", ${pin.detail}`
+            : 'Pin on the board, no description yet'
+      }
     />
   )
 }
@@ -1216,7 +1322,7 @@ function PostIt({
           text inside the note. */}
       <div
         {...drag}
-        className="mb-1 h-3 cursor-grab rounded-sm bg-black/5 active:cursor-grabbing"
+        className="drag-bar mb-1 h-2.5 rounded-sm"
         title="Drag to move"
         aria-label="Drag post-it"
       />

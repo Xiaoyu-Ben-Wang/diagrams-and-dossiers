@@ -21,6 +21,8 @@ export interface PinEditorProps {
   y: number
   onChange: (body: string) => void
   onDelete: () => void
+  /** Hand the pin over to the board to be repositioned. */
+  onMove: () => void
   onClose: () => void
 }
 
@@ -36,6 +38,7 @@ export function PinEditor({
   y,
   onChange,
   onDelete,
+  onMove,
   onClose,
 }: PinEditorProps) {
   const cardRef = useRef<HTMLDivElement>(null)
@@ -126,13 +129,23 @@ export function PinEditor({
       />
 
       <footer className="flex items-center justify-between border-t border-parchment-edge/50 px-3 py-2">
-        <button
-          type="button"
-          onClick={onDelete}
-          className="text-[11px] text-wax/80 transition hover:text-wax"
-        >
-          Remove pin
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onMove}
+            className="text-[11px] text-ink-soft/70 transition hover:text-ink"
+            title="Close this and drag the pin to reposition it"
+          >
+            Move pin
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="text-[11px] text-wax/80 transition hover:text-wax"
+          >
+            Remove pin
+          </button>
+        </div>
         <button
           type="button"
           onClick={onClose}

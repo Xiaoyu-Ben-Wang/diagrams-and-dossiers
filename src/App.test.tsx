@@ -395,6 +395,93 @@ describe('App — placing pins', () => {
   })
 })
 
+describe('App — pin descriptions', () => {
+  /** Right-click the first tack, which opens its editor. */
+  function openPinEditor(container: HTMLElement): void {
+    const tack = container.querySelector('button[data-pin-id]') as HTMLElement
+    expect(tack).not.toBeNull()
+    fireEvent.pointerDown(tack, { button: 2, pointerId: 4, clientX: 181, clientY: 52 })
+    fireEvent.pointerUp(tack, { button: 2, pointerId: 4, clientX: 181, clientY: 52 })
+  }
+
+  it('marks a pin once it has a description', () => {
+    // Otherwise a board with fifty pins gives you no way to find the ones
+    // somebody bothered to write on.
+    const { container } = render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 })
+
+    const tack = container.querySelector('button[data-pin-id]') as HTMLElement
+    expect(tack.getAttribute('data-described')).toBeNull()
+
+    openPinEditor(container)
+    fireEvent.change(screen.getByLabelText('Pin note'), {
+      target: { value: 'The ferryman was lying.' },
+    })
+
+    expect(
+      (container.querySelector('button[data-pin-id]') as HTMLElement).getAttribute('data-described'),
+    ).toBe('true')
+  })
+
+  it('does not count whitespace as a description', () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })
+    openPinEditor(container)
+
+    fireEvent.change(screen.getByLabelText('Pin note'), { target: { value: '   \n  ' } })
+    expect(
+      (container.querySelector('button[data-pin-id]') as HTMLElement).getAttribute('data-described'),
+    ).toBeNull()
+  })
+
+  it('offers Move pin in the editor', () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })
+    openPinEditor(container)
+
+    expect(screen.getByText('Move pin')).toBeTruthy()
+  })
+
+  it('closes the editor and prompts for the drag when Move pin is chosen', () => {
+    // You cannot drag a pin accurately with a card sitting over it.
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })
+    openPinEditor(container)
+
+    fireEvent.click(screen.getByText('Move pin'))
+
+    expect(screen.queryByTestId('pin-editor')).toBeNull()
+    expect(screen.getByRole('status').textContent).toMatch(/Drag the pin/)
+  })
+
+  it('finishes the move on Escape', () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })
+    openPinEditor(container)
+    fireEvent.click(screen.getByText('Move pin'))
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('repositions the pin when dragged in move mode', async () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })
+    openPinEditor(container)
+    fireEvent.click(screen.getByText('Move pin'))
+
+    const tack = container.querySelector('button[data-pin-id]') as HTMLElement
+    const before = tack.style.left
+
+    fireEvent.pointerDown(tack, { button: 0, pointerId: 12, clientX: 300, clientY: 200 })
+    fireEvent.pointerMove(tack, { pointerId: 12, clientX: 340, clientY: 200 })
+
+    const after = (container.querySelector('button[data-pin-id]') as HTMLElement).style.left
+    expect(after).not.toBe(before)
+  })
+})
+
 describe('App — preferences', () => {
   it('opens the preferences panel from the top bar', () => {
     render(<App />)
