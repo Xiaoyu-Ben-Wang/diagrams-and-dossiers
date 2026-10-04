@@ -312,6 +312,49 @@ describe('App — placing pins', () => {
     }
   })
 
+  it('connects two pins on the board with a string', () => {
+    // The whole point of the board: drag from one pin to another and get yarn.
+    const { container } = render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 })
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 })
+
+    const tacks = container.querySelectorAll('button[data-pin-id]')
+    expect(tacks.length).toBe(2)
+
+    fireEvent.pointerDown(tacks[0], { button: 0, pointerId: 21, clientX: 300, clientY: 200 })
+    // The pointer travels across the board, not over any one element.
+    fireEvent.pointerMove(canvas, { pointerId: 21, clientX: 520, clientY: 260 })
+    fireEvent.pointerUp(canvas, { pointerId: 21, clientX: 520, clientY: 260 })
+
+    // A string is a <g> of strand paths, and none exist until a connection is
+    // made.
+    const yarn = container.querySelectorAll('svg[aria-hidden="true"] g')
+    expect(yarn.length).toBeGreaterThan(0)
+  })
+
+  it('draws yarn above the article, not behind it', () => {
+    // A string running behind a pinned document reads as a mistake.
+    const { container } = render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 })
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 })
+
+    const tacks = container.querySelectorAll('button[data-pin-id]')
+    fireEvent.pointerDown(tacks[0], { button: 0, pointerId: 31, clientX: 300, clientY: 200 })
+    fireEvent.pointerMove(canvas, { pointerId: 31, clientX: 520, clientY: 260 })
+    fireEvent.pointerUp(canvas, { pointerId: 31, clientX: 520, clientY: 260 })
+
+    const yarn = container.querySelector('svg[aria-hidden="true"]') as SVGElement
+    const paper = screen.getByTestId('paper')
+
+    // The yarn must come after the paper in document order, since these are
+    // absolutely positioned siblings and later wins.
+    expect(yarn.compareDocumentPosition(paper) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+  })
+
   it('starts a string from a pin drag rather than a selection', async () => {
     // A pin is a place yarn attaches to, so the drag means the same thing on a
     // free pin as on an anchored one. The band is for bare board only.

@@ -60,6 +60,19 @@ describe('PinTooltip', () => {
     expect(screen.getByRole('tooltip')).toBeTruthy()
   })
 
+  it('honours a tuned delay from the caller', () => {
+    render(<PinTooltip pin={PIN} anchor={anchor} delay={40} />)
+    act(() => {
+      vi.advanceTimersByTime(39)
+    })
+    expect(screen.queryByRole('tooltip')).toBeNull()
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(screen.getByRole('tooltip')).toBeTruthy()
+  })
+
   it('shows within 200ms by default, far ahead of the native tooltip', () => {
     // The whole reason the card exists: ~1s of `title` is too slow to scan by.
     expect(PIN_TOOLTIP_DELAY_MS).toBeLessThan(200)
@@ -88,9 +101,48 @@ describe('PinTooltip', () => {
     expect(screen.queryByRole('tooltip')).toBeNull()
   })
 
+  it('renders nothing without an anchor to measure', () => {
+    render(<PinTooltip pin={PIN} anchor={null} />)
+    act(() => {
+      vi.advanceTimersByTime(PIN_TOOLTIP_DELAY_MS * 2)
+    })
+    expect(screen.queryByRole('tooltip')).toBeNull()
+  })
+
   it('renders through a portal so the board viewport cannot clip it', () => {
     show()
     expect(screen.getByRole('tooltip').parentElement).toBe(document.body)
+  })
+
+  it('applies the measured placement to the card', () => {
+    // jsdom reports every box as zero, so the component stays unplaced and the
+    // wiring from measurement to inline style would go untested. Stand in fake
+    // boxes — a 14px tack, a 240x96 card — to hold it to that contract.
+    const stub = Element.prototype.getBoundingClientRect
+    Element.prototype.getBoundingClientRect = function measured(this: Element) {
+      const box =
+        this === anchor
+          ? { left: 500, top: 300, width: 14, height: 14 }
+          : { left: 0, top: 0, width: 240, height: 96 }
+      return {
+        ...box,
+        right: box.left + box.width,
+        bottom: box.top + box.height,
+        x: box.left,
+        y: box.top,
+        toJSON: () => box,
+      } as DOMRect
+    }
+    try {
+      show()
+      const card = screen.getByRole('tooltip')
+      expect(card.classList.contains('pin-tooltip--placed')).toBe(true)
+      expect(card.style.left).toBe('387px')
+      expect(card.style.top).toBe('324px')
+      expect(card.style.getPropertyValue('--tail-x')).toBe('120px')
+    } finally {
+      Element.prototype.getBoundingClientRect = stub
+    }
   })
 
   it('carries the id its tack points aria-describedby at', () => {
@@ -101,14 +153,18 @@ describe('PinTooltip', () => {
   it('omits the quote when the pin has none', () => {
     show({ ...PIN, quote: '' })
 
-    expect(screen.queryByText(/already broken/)).toBeNull()
+    // The quote element itself, not just its text: a free pin must not carry
+    // an empty quote line.
+    const card = screen.getByRole('tooltip')
+    expect(card.querySelector('.pin-tooltip__quote')).toBeNull()
     expect(screen.getByText(/Marnie swears she locked it/)).toBeTruthy()
   })
 
   it('omits the description when the note is empty', () => {
     show({ ...PIN, body: '' })
 
-    expect(screen.queryByText(/Marnie swears/)).toBeNull()
+    const card = screen.getByRole('tooltip')
+    expect(card.querySelector('.pin-tooltip__body')).toBeNull()
     expect(screen.getByText(/already broken/)).toBeTruthy()
   })
 })
@@ -143,6 +199,19 @@ describe('dismissal', () => {
     show()
     fireEvent.scroll(window)
     expect(screen.queryByRole('tooltip')).toBeNull()
+  })
+
+  it('hides when a scrolling pane around the board scrolls', () => {
+    show()
+    const pane = document.createElement('div')
+    document.body.appendChild(pane)
+
+    // A real scroll does not bubble, so only a capture listener on window can
+    // hear a pane's scroll — the plain window-target scroll above would pass
+    // even without capture.
+    fireEvent(pane, new Event('scroll'))
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    pane.remove()
   })
 
   it('shows again when the pointer re-enters after Escape', () => {

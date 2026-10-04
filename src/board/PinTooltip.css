@@ -1,10 +1,9 @@
 /* The pin hover card: a scrap of parchment held beside a tack.
  *
- * Text uses the ink tokens, NOT --color-board-ink. The card's background is
- * the parchment ramp, which is fixed across themes, while board-ink is
- * theme-aware and would go pale-on-pale against parchment in dark mode. The
- * board-ink pair belongs to text laid directly on the board, which this is
- * not. */
+ * Text uses the ink tokens, NOT --color-board-ink. Board-ink flips to a pale
+ * value for the dark theme, which on this card's parchment ground would be
+ * pale-on-pale; ink stays dark in both themes, like every other sheet's type.
+ * Board-ink is for text laid directly on the board, which this card is not. */
 
 .pin-tooltip {
   position: fixed;
@@ -21,7 +20,7 @@
   /* A hair off square at one corner: machine-cut rectangles read as a browser
      tooltip. */
   border-radius: 3px 7px 3px 6px;
-  border-left: 2px solid rgb(201 162 39 / 0.75);
+  border-left: 2px solid color-mix(in srgb, var(--color-brass) 75%, transparent);
   background-color: var(--color-parchment-100);
   background-image: linear-gradient(155deg, rgb(255 255 255 / 0.45), transparent 52%);
   box-shadow:
@@ -94,7 +93,7 @@
 .pin-tooltip__date {
   margin: 5px 0 0;
   padding-top: 4px;
-  border-top: 1px solid rgb(201 180 138 / 0.5);
+  border-top: 1px solid color-mix(in srgb, var(--color-parchment-edge) 50%, transparent);
   color: var(--color-ink-soft);
   font-size: 10px;
   letter-spacing: 0.07em;

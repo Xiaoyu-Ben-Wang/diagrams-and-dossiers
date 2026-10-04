@@ -241,6 +241,10 @@ export function App() {
   const frameRef = useRef<number>(0)
   const cameraRef = useRef(camera)
   cameraRef.current = camera
+  const dragFromRef = useRef(dragFrom)
+  dragFromRef.current = dragFrom
+  const pinsRef = useRef(pins)
+  pinsRef.current = pins
 
   const resolveWikiTarget = useCallback((target: string) => {
     const wanted = slugify(target)
@@ -521,22 +525,22 @@ export function App() {
     [runClock],
   )
 
-  const moveString = useCallback(
-    (event: React.PointerEvent) => {
-      if (!dragFrom) return
-      targetRef.current = worldPoint(event.clientX, event.clientY)
-    },
-    [dragFrom, worldPoint],
-  )
+  /**
+   * Complete a string drag at a screen position.
+   *
+   * Takes coordinates rather than an event because it is driven from window
+   * listeners, which fire wherever the pointer happens to be.
+   */
+  const finishString = useCallback(
+    (clientX: number, clientY: number) => {
+      const from = dragFromRef.current
+      if (!from) return
 
-  const endString = useCallback(
-    (event: React.PointerEvent) => {
-      if (!dragFrom) return
-      const drop = worldPoint(event.clientX, event.clientY)
+      const drop = worldPoint(clientX, clientY)
 
       let nearest: { id: string; distance: number } | null = null
-      for (const pin of pins) {
-        if (pin.id === dragFrom) continue
+      for (const pin of pinsRef.current) {
+        if (pin.id === from) continue
         const point = pinPoint(pin, paperPosRef.current)
         if (!point) continue
         const distance = Math.hypot(point.x - drop.x, point.y - drop.y)
@@ -546,7 +550,6 @@ export function App() {
       }
 
       if (nearest) {
-        const from = dragFrom
         const to = nearest.id
         setStrings((previous) => {
           const exists = previous.some(
@@ -559,10 +562,37 @@ export function App() {
 
       cancelAnimationFrame(frameRef.current)
       originRef.current = null
+      dragFromRef.current = null
       setDragFrom(null)
     },
-    [dragFrom, worldPoint, pins],
+    [worldPoint],
   )
+
+  /**
+   * The string drag runs on WINDOW, not on the board or the article.
+   *
+   * It used to hang off the article's own wrapper, which meant a drag only
+   * tracked while the pointer stayed inside the paper — so a string between two
+   * pins stuck in the cork never completed at all, and even a pin-to-pin drag
+   * was abandoned the moment the pointer crossed the paper's edge.
+   */
+  useEffect(() => {
+    if (!dragFrom) return
+
+    const onMove = (event: PointerEvent): void => {
+      targetRef.current = worldPoint(event.clientX, event.clientY)
+    }
+    const onUp = (event: PointerEvent): void => finishString(event.clientX, event.clientY)
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [dragFrom, worldPoint, finishString])
 
   useEffect(() => () => cancelAnimationFrame(frameRef.current), [])
 
@@ -963,53 +993,6 @@ export function App() {
                   <GridLayer camera={camera} viewport={viewport} />
                 )}
               >
-                <svg
-                  className="pointer-events-none absolute top-0 left-0 overflow-visible"
-                  width={1}
-                  height={1}
-                  aria-hidden="true"
-                >
-                  {drawableStrings.map((string) => (
-                    <g
-                      key={string.id}
-                      className="transition-opacity duration-300"
-                      style={{
-                        opacity:
-                          !dimming || (activeIds.has(string.fromId) && activeIds.has(string.toId))
-                            ? 1
-                            : 0.12,
-                      }}
-                    >
-                      {yarnStrands(
-                        preferences.yarnStyle,
-                        string.from,
-                        string.to,
-                        SLACK,
-                        seedFromKey(string.id),
-                      ).map((strand, index) => (
-                        <path
-                          key={index}
-                          d={strand.d}
-                          fill="none"
-                          stroke={YARN_HEX[string.color]}
-                          strokeWidth={strand.width}
-                          strokeOpacity={strand.opacity}
-                          strokeLinecap="round"
-                        />
-                      ))}
-                    </g>
-                  ))}
-
-                  <path
-                    ref={livePathRef}
-                    data-testid="live-yarn"
-                    fill="none"
-                    stroke={YARN_HEX[colorForPair(dragFrom ?? 'a', 'b')]}
-                    strokeWidth={2.5}
-                    strokeLinecap="round"
-                    opacity={dragFrom ? 0.95 : 0}
-                  />
-                </svg>
 
                 <div
                   ref={paperRef}
@@ -1041,12 +1024,7 @@ export function App() {
                     {ARTICLE_TITLE}
                   </button>
 
-                  <div
-                    className="relative"
-                    onPointerMove={moveString}
-                    onPointerUp={endString}
-                    onPointerLeave={endString}
-                  >
+                  <div className="relative">
                     <div
                       ref={articleRef}
                       onClick={handleArticleClick}
@@ -1128,6 +1106,58 @@ export function App() {
                     }
                   />
                 ))}
+                <svg
+                  className="pointer-events-none absolute top-0 left-0 z-20 overflow-visible"
+                  width={1}
+                  height={1}
+                  aria-hidden="true"
+                >
+                  {drawableStrings.map((string) => (
+                    <g
+                      key={string.id}
+                      className="transition-opacity duration-300"
+                      style={{
+                        opacity:
+                          !dimming || (activeIds.has(string.fromId) && activeIds.has(string.toId))
+                            ? 1
+                            : 0.12,
+                      }}
+                    >
+                      {yarnStrands(
+                        preferences.yarnStyle,
+                        string.from,
+                        string.to,
+                        SLACK,
+                        seedFromKey(string.id),
+                      ).map((strand, index) => (
+                        <path
+                          key={index}
+                          d={strand.d}
+                          fill="none"
+                          stroke={YARN_HEX[string.color]}
+                          strokeWidth={strand.width}
+                          strokeOpacity={strand.opacity}
+                          strokeLinecap="round"
+                        />
+                      ))}
+                    </g>
+                  ))}
+
+                  <path
+                    ref={livePathRef}
+                    data-testid="live-yarn"
+                    fill="none"
+                    stroke={YARN_HEX[colorForPair(dragFrom ?? 'a', 'b')]}
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    opacity={dragFrom ? 0.95 : 0}
+                  />
+                </svg>
+                {/* Rendered LAST so it paints over everything. Yarn lies on
+                    top of the board the way it does on a real one — a string
+                    running behind a pinned document reads as a mistake. It
+                    stays pointer-events-none, so it never intercepts a click
+                    meant for a pin or a post-it. */}
               </BoardCanvas>
             </div>
           </>
