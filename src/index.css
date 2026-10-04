@@ -81,6 +81,21 @@ body {
     100% 100%;
 }
 
+/* The board viewport paints a FLAT surface, deliberately.
+ *
+ * The cork grain above is a fixed-size dot pattern that does not move with the
+ * camera. Letting it show through here put a static field of dots underneath the
+ * scaling grid — two dot layers at different scales, which reads as a rendering
+ * fault rather than as texture. The grid is the board's only pattern; the grain
+ * belongs to the chrome around it.
+ *
+ * The board still has texture from the ambient dust and the candle vignette,
+ * both of which are camera-aware. */
+.board-canvas {
+  background-color: var(--board-surface, var(--color-cork-500));
+  background-image: none;
+}
+
 /* A lit room needs less candle than a dark one. */
 :root[data-theme='light'] .app-shell,
 :root[data-theme='light'] .cork {

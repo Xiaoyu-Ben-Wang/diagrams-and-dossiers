@@ -20,6 +20,18 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/')
 })
 
+/**
+ * A tap: press and release without travel.
+ *
+ * The paper's tab both selects and drags, so it reads pointer events and tells
+ * the two apart by how far the pointer moved. `fireEvent.click` alone never
+ * reaches it.
+ */
+function tap(element: Element): void {
+  fireEvent.pointerDown(element, { button: 0, pointerId: 1, clientX: 10, clientY: 10 })
+  fireEvent.pointerUp(element, { button: 0, pointerId: 1, clientX: 10, clientY: 10 })
+}
+
 describe('App — the board', () => {
   it('renders without throwing', () => {
     render(<App />)
@@ -73,7 +85,7 @@ describe('App — document selection', () => {
 
   it('opens the editor when the document tab is clicked', () => {
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: /The Drowned Bell/ }))
+    tap(screen.getByTestId('paper-tab'))
 
     const editor = screen.getByTestId('paper-editor')
     expect(editor).toBeTruthy()
@@ -82,7 +94,7 @@ describe('App — document selection', () => {
 
   it('shows the formatting toolbar alongside the editor', () => {
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: /The Drowned Bell/ }))
+    tap(screen.getByTestId('paper-tab'))
 
     const toolbar = screen.getByTestId('markdown-toolbar')
     expect(within(toolbar).getByLabelText(/Bold/)).toBeTruthy()
@@ -92,16 +104,15 @@ describe('App — document selection', () => {
 
   it('closes the editor when the tab is clicked again', () => {
     render(<App />)
-    const tab = screen.getByRole('button', { name: /The Drowned Bell/ })
-    fireEvent.click(tab)
-    fireEvent.click(screen.getByRole('button', { name: /The Drowned Bell/ }))
+    tap(screen.getByTestId('paper-tab'))
+    tap(screen.getByTestId('paper-tab'))
 
     expect(screen.queryByTestId('paper-editor')).toBeNull()
   })
 
   it('applies a formatting action to the source', () => {
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: /The Drowned Bell/ }))
+    tap(screen.getByTestId('paper-tab'))
 
     const textarea = screen.getByLabelText('Article markdown source') as HTMLTextAreaElement
     textarea.setSelectionRange(0, 14)

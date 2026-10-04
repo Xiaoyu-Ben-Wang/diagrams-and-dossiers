@@ -25,6 +25,7 @@ import {
 } from 'react'
 
 import { fitBounds, panBy, zoomAt, type Camera, type Rect, type Viewport } from './camera'
+import type { Point } from './yarn'
 
 export interface BoardContextTarget {
   clientX: number
@@ -57,6 +58,12 @@ export interface BoardCanvasProps {
    * resolution. It's called on every render, so it must be cheap.
    */
   backdrop?: (viewport: Viewport) => ReactNode
+  /**
+   * A left-click that landed on bare board rather than on anything in it.
+   * Reported in viewport coordinates; the caller converts to board space, since
+   * only it knows what should be created there.
+   */
+  onBackgroundClick?: (point: Point) => void
 }
 
 /** Pointer travel, in pixels, above which a press is a drag rather than a click. */
@@ -110,11 +117,33 @@ export function BoardCanvas({
   onContextTarget,
   fitTo,
   backdrop,
+  onBackgroundClick,
 }: BoardCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const panRef = useRef<PanState | null>(null)
   const hasFittedRef = useRef(false)
   const [viewport, setViewport] = useState<Viewport>({ width: 0, height: 0 })
+
+  /**
+   * Whether a pan or zoom is in flight, so `will-change` can be on only then.
+   *
+   * A permanent `will-change: transform` promotes the world to its own
+   * composited layer, and the browser then rasterizes that layer once and
+   * *scales the bitmap* as you zoom — which is exactly what makes text and
+   * cards go soft. Dropping the hint once motion settles lets it re-rasterize
+   * crisply at the new scale, and costs nothing perceptible because nothing is
+   * moving while it happens.
+   */
+  const [interacting, setInteracting] = useState(false)
+  const settleTimer = useRef(0)
+
+  const markInteracting = useCallback(() => {
+    setInteracting(true)
+    window.clearTimeout(settleTimer.current)
+    settleTimer.current = window.setTimeout(() => setInteracting(false), 180)
+  }, [])
+
+  useEffect(() => () => window.clearTimeout(settleTimer.current), [])
 
   // The wheel listener reads the camera through a ref so it doesn't have to be
   // torn down and rebuilt on every frame of a zoom.
@@ -123,6 +152,9 @@ export function BoardCanvas({
 
   const changeRef = useRef(onCameraChange)
   changeRef.current = onCameraChange
+
+  const markInteractingRef = useRef(markInteracting)
+  markInteractingRef.current = markInteracting
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -140,6 +172,7 @@ export function BoardCanvas({
       const intensity = event.ctrlKey ? PINCH_INTENSITY : WHEEL_INTENSITY
       const factor = Math.exp(-event.deltaY * intensity)
 
+      markInteractingRef.current()
       changeRef.current(zoomAt(cameraRef.current, cursor, cameraRef.current.zoom * factor))
     }
 
@@ -219,6 +252,7 @@ export function BoardCanvas({
     pan.lastX = event.clientX
     pan.lastY = event.clientY
 
+    markInteractingRef.current()
     changeRef.current(panBy(cameraRef.current, dx, dy))
   }, [])
 
@@ -244,6 +278,23 @@ export function BoardCanvas({
     [onContextTarget],
   )
 
+  /**
+   * Bare-board clicks.
+   *
+   * The world wrapper is absolutely positioned and sized by its children, so a
+   * click outside the paper lands on the viewport itself. Comparing target to
+   * currentTarget is therefore enough to tell "empty board" from "something in
+   * it" without hit-testing every object.
+   */
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.button !== 0 || event.target !== event.currentTarget) return
+      const bounds = event.currentTarget.getBoundingClientRect()
+      onBackgroundClick?.({ x: event.clientX - bounds.left, y: event.clientY - bounds.top })
+    },
+    [onBackgroundClick],
+  )
+
   const handlePointerCancel = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const pan = panRef.current
     if (pan && pan.pointerId === event.pointerId) panRef.current = null
@@ -252,11 +303,12 @@ export function BoardCanvas({
   return (
     <div
       ref={viewportRef}
-      className={`relative overflow-hidden ${className ?? ''}`}
+      className={`board-canvas relative overflow-hidden ${className ?? ''}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      onClick={handleClick}
       // The browser menu would otherwise fire on every right-drag release.
       onContextMenu={(event) => event.preventDefault()}
       style={{ touchAction: 'none', cursor: panRef.current ? 'grabbing' : 'default' }}
@@ -273,7 +325,7 @@ export function BoardCanvas({
           // — the same transform `camera.ts` models.
           transform: `translate3d(${-camera.x * camera.zoom}px, ${-camera.y * camera.zoom}px, 0) scale(${camera.zoom})`,
           transformOrigin: '0 0',
-          willChange: 'transform',
+          willChange: interacting ? 'transform' : 'auto',
           position: 'absolute',
           top: 0,
           left: 0,
