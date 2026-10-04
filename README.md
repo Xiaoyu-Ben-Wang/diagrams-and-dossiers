@@ -10,12 +10,15 @@ note.
 
 ## Status
 
-**Phase 1, in progress.** The architecture is written and committed, and the load-bearing piece
-— text anchoring — is built and tested. A demo board renders a real markdown article where you
-can pin any word, edit the article around it, and watch the pin find its way back.
+**Phase 1, in progress.** The architecture is written and committed, and the front-end core is
+built: text anchoring, yarn, the camera, and the chronology ribbon.
 
-Not yet built: accounts, persistence, realtime, yarn, the timeline. See
-[`docs/architecture.md`](docs/architecture.md) for the full design.
+A demo board renders a real markdown article where you can pin any word, drag yarn between pins,
+scrub the campaign chronology, and watch pins find their way back when you edit the article
+around them.
+
+Not yet built: accounts, persistence, realtime, case files, the wiki view, and the ambient
+theme. See [`docs/architecture.md`](docs/architecture.md) for the full design.
 
 ## What it does
 
@@ -60,13 +63,20 @@ React 19 · TypeScript · Vite · Tailwind v4 · Supabase · `motion` · CodeMir
 ```bash
 npm install
 npm run dev        # the demo board at localhost:5173
-npm test           # 48 tests over the anchoring layer
+npm test           # 147 tests
 npm run typecheck
 ```
 
 **Try the thesis:** click a word in the article to pin it, then press *Insert a sentence above*.
 The pin moves with its words and stays brass-coloured. Press *Delete the pinned sentence* and the
 pin goes red and drops into the loose-pins tray rather than silently landing somewhere wrong.
+
+**Try the yarn:** drag from one brass tack to another. The string trails your cursor with spring
+lag, then sags.
+
+**Try the chronology:** each pin you place lands a session later than the last. Scrub the tape, or
+press *Play recap* to walk the campaign a session at a time. Pins and yarn that the party wouldn't
+know about yet dim out.
 
 ### Where things live
 
@@ -76,6 +86,10 @@ pin goes red and drops into the loose-pins tray rather than silently landing som
 | `src/anchors/create.ts` | Turning a click into an anchor, including word snapping. |
 | `src/anchors/resolve.ts` | The resolution ladder: exact → windowed → global → orphaned. |
 | `src/anchors/dom.ts` | The bridge to real DOM nodes, and the block-separator rule. |
+| `src/board/yarn.ts` | Rope sag, bezier control points, springs, stable colours. |
+| `src/board/camera.ts` | The board/screen transform and fit-bounds framing. |
+| `src/board/timeline.ts` | Ordering, scrubbing, and session clustering. |
+| `src/board/TimelineRibbon.tsx` | The tape strip. |
 | `src/App.tsx` | The demo board. |
 
 Start with `projection.ts` — everything else depends on the definition it sets.

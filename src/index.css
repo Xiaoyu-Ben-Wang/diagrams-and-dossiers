@@ -100,6 +100,23 @@ body {
     0 0 12px rgb(140 47 30 / 0.55);
 }
 
+/* The chronology ribbon: a strip of adding-machine tape with punched holes
+   along both edges. Two repeating radial gradients, no filters. */
+.tape {
+  background-color: var(--color-parchment-200);
+  background-image:
+    radial-gradient(circle at 6px 2px, rgb(46 31 20 / 0.55) 0 2px, transparent 2.5px),
+    radial-gradient(circle at 6px calc(100% - 2px), rgb(46 31 20 / 0.55) 0 2px, transparent 2.5px);
+  background-size:
+    13px 100%,
+    13px 100%;
+  background-repeat: repeat-x, repeat-x;
+  box-shadow:
+    inset 0 0 26px rgb(201 180 138 / 0.55),
+    inset 0 1px 0 rgb(255 255 255 / 0.6),
+    0 2px 8px rgb(0 0 0 / 0.35);
+}
+
 /* The mark the pin leaves on the text it's anchored to. */
 .anchor-mark {
   border-radius: 2px;

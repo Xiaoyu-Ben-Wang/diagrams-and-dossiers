@@ -205,6 +205,13 @@ export interface AnchorRect {
  * are subtly wrong and nothing in the code looks incorrect.
  */
 export function rangeToContainerRects(range: Range, container: Element): AnchorRect[] {
+  // Environments without layout (jsdom, some embedded webviews) have no
+  // `getClientRects`. Returning nothing lets callers degrade to "pin with no
+  // position" instead of throwing mid-render.
+  if (typeof range.getClientRects !== 'function' || typeof container.getBoundingClientRect !== 'function') {
+    return []
+  }
+
   const origin = container.getBoundingClientRect()
   return Array.from(range.getClientRects()).map((rect) => ({
     x: rect.left - origin.left,

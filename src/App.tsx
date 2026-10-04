@@ -13,6 +13,8 @@ import {
 } from './anchors/dom'
 import { resolveAnchor } from './anchors/resolve'
 import type { TextAnchor } from './anchors/types'
+import { TimelineRibbon } from './board/TimelineRibbon'
+import { activeAt, buildTimeline, clusterTimeline, type TimelineEntry } from './board/timeline'
 import {
   colorForPair,
   createSpring,
@@ -49,6 +51,16 @@ const SLACK = 0.18
 /** Pointer slop for "did they drop on that pin". */
 const SNAP_RADIUS = 34
 
+/**
+ * Demo dates. A real board takes these from the item's own `date_label` and
+ * `occurred_at`; here each pin lands a fortnight after the last, so the
+ * chronology fills in as you place pins and the session clustering has
+ * something honest to work with.
+ */
+const CAMPAIGN_EPOCH = Date.UTC(2026, 0, 10)
+const SESSION_GAP_MS = 14 * 24 * 60 * 60 * 1000
+const FIRST_SESSION = 12
+
 interface PinView {
   id: string
   quote: string
@@ -60,6 +72,10 @@ interface PinView {
 interface PlacedAnchor {
   id: string
   anchor: TextAnchor
+  /** Sortable date driving the chronology. */
+  occurredAt: number
+  /** What the ribbon displays verbatim. */
+  dateLabel: string
 }
 
 interface StringView {
@@ -103,7 +119,12 @@ export function App() {
   const [pins, setPins] = useState<PinView[]>([])
   const [strings, setStrings] = useState<StringView[]>([])
   const [dragFrom, setDragFrom] = useState<string | null>(null)
-  const [fontsLoaded, setFontsLoaded] = useState(false)
+  // Environments without the Font Loading API (jsdom, some embedded webviews)
+  // have no webfonts to wait for, so start settled. Waiting on a promise that
+  // will never resolve would leave the board permanently unmeasured.
+  const [fontsLoaded, setFontsLoaded] = useState(() => !globalThis.document?.fonts)
+  const [cursor, setCursor] = useState(CAMPAIGN_EPOCH)
+  const [playing, setPlaying] = useState(false)
 
   const articleRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -127,8 +148,9 @@ export function App() {
   // metrics puts every pin slightly wrong, and nothing in the code looks
   // incorrect — the failure is silent.
   useEffect(() => {
+    if (!document.fonts) return
     let cancelled = false
-    void Promise.resolve(document.fonts?.ready).then(() => {
+    void document.fonts.ready.then(() => {
       if (!cancelled) setFontsLoaded(true)
     })
     return () => {
@@ -202,7 +224,18 @@ export function App() {
     const anchor = createAnchor(projection.flat.text, flatRange.start, flatRange.end)
     if (!anchor.quote) return // clicked somewhere with no word to hold onto
 
-    setPlaced((previous) => [...previous, { id: crypto.randomUUID(), anchor }])
+    setPlaced((previous) => {
+      const session = FIRST_SESSION + previous.length
+      return [
+        ...previous,
+        {
+          id: crypto.randomUUID(),
+          anchor,
+          occurredAt: CAMPAIGN_EPOCH + previous.length * SESSION_GAP_MS,
+          dateLabel: `Session ${session}, 1492 DR`,
+        },
+      ]
+    })
   }, [])
 
   /** Pointer position in the article's coordinate space. */
@@ -320,17 +353,78 @@ export function App() {
     setStrings([])
   }, [])
 
+  const timeline = useMemo(
+    () =>
+      buildTimeline(
+        placed.map(
+          (item): TimelineEntry => ({
+            id: item.id,
+            occurredAt: item.occurredAt,
+            dateLabel: item.dateLabel,
+          }),
+        ),
+      ),
+    [placed],
+  )
+  const clusters = useMemo(() => clusterTimeline(timeline), [timeline])
+  const activeIds = useMemo(() => new Set(activeAt(timeline, cursor)), [timeline, cursor])
+
+  // The recap. Each step is scheduled against the current cursor, so advancing
+  // reschedules the next one and running out of clusters ends the playback
+  // without needing a separate "am I done" check.
+  useEffect(() => {
+    if (!playing) return
+    if (clusters.length === 0) {
+      setPlaying(false)
+      return
+    }
+    const timer = setTimeout(() => {
+      const next = clusters.find((cluster) => cluster.start > cursor)
+      if (!next) {
+        setPlaying(false)
+        return
+      }
+      setCursor(next.start)
+    }, 1200)
+    return () => clearTimeout(timer)
+  }, [playing, cursor, clusters])
+
+  const togglePlay = useCallback(() => {
+    if (!playing && clusters.length > 0) {
+      // Pressing play at the end restarts the recap rather than doing nothing.
+      const last = clusters[clusters.length - 1]
+      if (cursor >= last.start) setCursor(clusters[0].start)
+    }
+    setPlaying((previous) => !previous)
+  }, [playing, cursor, clusters])
+
   const byId = useMemo(() => new Map(pins.map((pin) => [pin.id, pin])), [pins])
+  /** Dimming only applies once there is a chronology to walk through. */
+  const dimming = placed.length > 0
   const anchored = pins.filter((pin) => pin.rect)
   const orphaned = pins.filter((pin) => pin.status === 'orphaned')
   const repaired = pins.filter((pin) => pin.status === 'repaired').length
 
-  /** Strings whose endpoints both still resolve. */
+  /**
+   * Strings whose endpoints both still resolve.
+   *
+   * Keeps the pin ids alongside the resolved points: the endpoints are what get
+   * drawn, but the ids are what the timeline compares against.
+   */
   const drawableStrings = strings.flatMap((string) => {
     const from = byId.get(string.from)
     const to = byId.get(string.to)
     if (!from?.rect || !to?.rect) return []
-    return [{ ...string, from: tackPoint(from.rect), to: tackPoint(to.rect) }]
+    return [
+      {
+        id: string.id,
+        fromId: string.from,
+        toId: string.to,
+        color: string.color,
+        from: tackPoint(from.rect),
+        to: tackPoint(to.rect),
+      },
+    ]
   })
 
   return (
@@ -410,7 +504,20 @@ export function App() {
                         click should fall through to the text beneath it. */}
                     <svg className="absolute inset-0 h-full w-full overflow-visible">
                       {drawableStrings.map((string) => (
-                        <g key={string.id}>
+                        <g
+                          key={string.id}
+                          className="transition-opacity duration-300"
+                          style={{
+                            // A string is live only when both ends are known —
+                            // a thread to something the party hasn't found yet
+                            // would be a lie the board tells.
+                            opacity:
+                              !dimming ||
+                              (activeIds.has(string.fromId) && activeIds.has(string.toId))
+                                ? 1
+                                : 0.12,
+                          }}
+                        >
                           {/* A dark underlay gives the yarn a shadow, so it
                               reads as lying on the paper rather than in it. */}
                           <path
@@ -449,13 +556,18 @@ export function App() {
                       pin.rect ? (
                         <div
                           key={`mark-${pin.id}`}
-                          className="anchor-mark absolute"
+                          className="anchor-mark absolute transition-opacity duration-300"
                           data-status={pin.status}
                           style={{
                             left: pin.rect.x,
                             top: pin.rect.y,
                             width: pin.rect.width,
                             height: pin.rect.height,
+                            // Dimmed via opacity rather than a filter: filters
+                            // repaint their subtree every frame, whereas opacity
+                            // is compositor-only. Dimming hundreds of marks with
+                            // `filter: saturate()` is what tanks the frame rate.
+                            opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.16,
                           }}
                         />
                       ) : null,
@@ -469,12 +581,13 @@ export function App() {
                           key={`tack-${pin.id}`}
                           type="button"
                           onPointerDown={(event) => beginString(event, pin)}
-                          className="tack tack-enter pointer-events-auto absolute h-3.5 w-3.5 cursor-crosshair rounded-full"
+                          className="tack tack-enter pointer-events-auto absolute h-3.5 w-3.5 cursor-crosshair rounded-full transition-opacity duration-300"
                           data-status={pin.status}
                           style={{
                             left: pin.rect.x + pin.rect.width - 6,
                             top: pin.rect.y - 5,
                             touchAction: 'none',
+                            opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.2,
                           }}
                           title={
                             dragFrom
@@ -539,6 +652,22 @@ export function App() {
               </div>
             )}
           </section>
+        </div>
+
+        <div className="mt-7">
+          <TimelineRibbon
+            timeline={timeline}
+            clusters={clusters}
+            cursor={cursor}
+            onScrub={(time) => {
+              setPlaying(false)
+              setCursor(time)
+            }}
+            playing={playing}
+            onTogglePlay={togglePlay}
+            activeCount={activeIds.size}
+            totalCount={timeline.placed.length}
+          />
         </div>
       </div>
     </div>

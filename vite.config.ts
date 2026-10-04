@@ -5,9 +5,13 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   test: {
-    // The projection and anchor layers are pure string logic — no DOM needed,
-    // which keeps the suite fast enough to run on every save.
+    // The projection, anchor, camera and timeline layers are pure logic and run
+    // in node. Individual test files opt into jsdom with a
+    // `@vitest-environment jsdom` docblock where they need a DOM.
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+    // Needed so @testing-library/react registers its automatic cleanup between
+    // tests; without it, renders accumulate and queries match stale trees.
+    globals: true,
   },
 })
