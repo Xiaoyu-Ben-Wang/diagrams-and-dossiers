@@ -170,8 +170,8 @@ export function WikiView({
                     onClick={() => handleShow(pin.id)}
                     className={`-translate-y-1/2 rounded-sm border px-2.5 py-1.5 text-left text-xs transition ${
                       isExpanded
-                        ? 'border-brass bg-cork-700/90 text-parchment-100'
-                        : 'border-parchment-edge/40 bg-cork-700/60 text-parchment-200 hover:border-brass'
+                        ? 'border-brass bg-cork-700/90 text-board-ink'
+                        : 'border-parchment-edge/40 bg-cork-700/60 text-board-ink hover:border-brass'
                     }`}
                     aria-expanded={isExpanded}
                   >
@@ -189,7 +189,7 @@ export function WikiView({
                       />
                       <span className="min-w-0">
                         <span className="block truncate italic">“{pin.anchor.quote}”</span>
-                        <span className="mt-0.5 block text-[10px] text-parchment-300/60">
+                        <span className="mt-0.5 block text-[10px] text-board-ink-soft/60">
                           {pin.dateLabel}
                         </span>
                       </span>

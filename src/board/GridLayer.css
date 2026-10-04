@@ -1,0 +1,16 @@
+/* Pinholes in cork: a 1px core that feathers to nothing inside the cell, so a
+   dot reads as texture rather than as a mark. Constant screen size on purpose —
+   a dot that grew with zoom would read as an entity, and a dot that shrank
+   would vanish at the far end of the range. The custom property is a seam for a
+   board-colour preference to re-tint the pinholes without touching geometry. */
+.board-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle at center,
+    var(--grid-dot-color, rgb(20 12 6 / 0.25)) 0 1px,
+    transparent 1.8px
+  );
+  background-repeat: repeat;
+}

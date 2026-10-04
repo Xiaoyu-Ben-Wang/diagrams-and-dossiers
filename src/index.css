@@ -29,6 +29,17 @@
   --color-yarn-emerald: #2f6b4f;
   --color-yarn-gold: #b8912f;
   --color-yarn-violet: #5b3a72;
+
+  /* What the chrome — headings, body copy, hints — is painted in.
+     Deliberately NOT the parchment ramp: that ramp is also every sheet's
+     background, so a light theme flips it dark and reused as chrome text it
+     would vanish. These two are the dark-theme defaults; `applyPreferences`
+     overwrites them per theme. */
+  --color-board-ink: #f7efdd;
+  --color-board-ink-soft: #e3d2ae;
+
+  /* The board's own surface colour. Overwritten by the surface preference. */
+  --board-surface: var(--color-cork-500);
 }
 
 html,
@@ -40,15 +51,24 @@ body,
 body {
   margin: 0;
   background: var(--color-cork-900);
-  color: var(--color-parchment-100);
+  /* The board's own ink, not the paper ramp. The parchment ramp is also every
+     sheet's background, so a light theme flips it dark — reusing it for body
+     text would make the chrome invisible against a pale board. */
+  color: var(--color-board-ink, var(--color-parchment-100));
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Cork: layered radial gradients at coprime sizes so the grain never tiles
-   visibly. Two gradients, no blur, no filter — cheap enough to paint once. */
+/* The board surface: layered radial gradients at coprime sizes so the grain
+   never tiles visibly, over whatever colour the surface preference supplies.
+   Gradients only — no blur, no filter — so it costs one paint and nothing per
+   frame.
+
+   The grain is neutral (pure black and white at low alpha) rather than cork-
+   coloured, which is what lets leather, felt and slate share it. */
+.app-shell,
 .cork {
-  background-color: var(--color-cork-500);
+  background-color: var(--board-surface, var(--color-cork-500));
   background-image:
     radial-gradient(circle at 17% 23%, rgb(0 0 0 / 0.18) 0 1.5px, transparent 2px),
     radial-gradient(circle at 71% 61%, rgb(255 255 255 / 0.05) 0 1px, transparent 1.5px),
@@ -59,6 +79,29 @@ body {
     17px 17px,
     31px 31px,
     100% 100%;
+}
+
+/* A lit room needs less candle than a dark one. */
+:root[data-theme='light'] .app-shell,
+:root[data-theme='light'] .cork {
+  background-image:
+    radial-gradient(circle at 17% 23%, rgb(0 0 0 / 0.1) 0 1.5px, transparent 2px),
+    radial-gradient(circle at 71% 61%, rgb(255 255 255 / 0.14) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 43% 87%, rgb(0 0 0 / 0.08) 0 1.2px, transparent 1.8px);
+}
+
+/* A post-it catches a bit more light than the board it sits on. */
+.post-it {
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.5) inset,
+    0 8px 18px -6px rgb(0 0 0 / 0.5);
+}
+
+.post-it:nth-child(3n) {
+  transform: rotate(-0.6deg);
+}
+.post-it:nth-child(3n + 2) {
+  transform: rotate(0.8deg);
 }
 
 /* Parchment: warm vertical falloff plus a soft vignette at the edges. */

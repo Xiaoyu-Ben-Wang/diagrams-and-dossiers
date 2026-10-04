@@ -13,10 +13,15 @@ import {
 } from './anchors/dom'
 import { resolveAnchor } from './anchors/resolve'
 import type { TextAnchor } from './anchors/types'
-import { BoardCanvas } from './board/BoardCanvas'
+import { TopBar } from './app/TopBar'
+import { useRoute } from './app/router'
+import { BoardCanvas, type BoardContextTarget } from './board/BoardCanvas'
+import { ContextMenu, type ContextMenuEntry } from './board/ContextMenu'
+import { GridLayer } from './board/GridLayer'
+import { PaperEditor } from './board/PaperEditor'
 import { PinEditor } from './board/PinEditor'
 import { TimelineRibbon } from './board/TimelineRibbon'
-import { IDENTITY_CAMERA, type Camera, type Rect } from './board/camera'
+import { fitBounds, IDENTITY_CAMERA, screenToBoard, type Camera, type Rect } from './board/camera'
 import { activeAt, buildTimeline, clusterTimeline, type TimelineEntry } from './board/timeline'
 import {
   colorForPair,
@@ -27,7 +32,9 @@ import {
   type Point,
   type YarnColor,
 } from './board/yarn'
-import { Ambient } from './theme/Ambient'
+import { seedFromKey, yarnStrands } from './board/yarn-style'
+import { PREFERENCES_PANEL_ID, PreferencesPanel } from './theme/PreferencesPanel'
+import { usePreferences } from './theme/preferences'
 import { WikiView } from './wiki/WikiView'
 import { linkifyHtml, wikiLinkFromEvent } from './wiki/linkify'
 import { slugify } from './wiki/links'
@@ -52,10 +59,8 @@ The [[The Black Coin|Black Coin]] came up twice: once from the ferryman,
 and once in the ledger, in a hand nobody recognised.
 `
 
-/**
- * The demo's article index. In the real app this comes from the database; here
- * it exists so links resolve (and, for [[The Sea Ghost]], deliberately don't).
- */
+const ARTICLE_TITLE = 'The Drowned Bell'
+
 const DEMO_ARTICLES = [
   { slug: 'saltmarsh', title: 'Saltmarsh' },
   { slug: 'molgar-the-pale', title: 'Molgar the Pale' },
@@ -63,27 +68,16 @@ const DEMO_ARTICLES = [
   { slug: 'the-drowned-bell', title: 'The Drowned Bell' },
 ]
 
-/** How much rope a string has, as a fraction of the gap it spans. */
 const SLACK = 0.18
-
-/** Pointer slop for "did they drop on that pin". */
 const SNAP_RADIUS = 34
-
-/**
- * Paper width in board space. Locked rather than responsive, because text
- * reflow would move every anchor — see `projection.ts`. The camera scales the
- * whole board instead, so text metrics never change with zoom.
- */
 const PAPER_WIDTH = 720
 
-/**
- * Demo dates. A real board takes these from the item's own `date_label` and
- * `occurred_at`; here each pin lands a fortnight after the last, so the
- * chronology fills in as you place pins.
- */
 const CAMPAIGN_EPOCH = Date.UTC(2026, 0, 10)
 const SESSION_GAP_MS = 14 * 24 * 60 * 60 * 1000
 const FIRST_SESSION = 12
+
+/** Post-it colours, keyed to the yarn palette so the board reads as one set. */
+const POST_IT_COLORS = ['#e8d9a8', '#e6c9a8', '#d9c2b0', '#cfd6bd'] as const
 
 interface PinView {
   id: string
@@ -94,11 +88,21 @@ interface PinView {
   rect: AnchorRect | null
 }
 
-interface PlacedAnchor {
+interface PlacedPin {
   id: string
   anchor: TextAnchor
   body: string
   occurredAt: number
+  dateLabel: string
+}
+
+/** A free-floating note. Unlike a pin, its position is its own, in board space. */
+interface PostIt {
+  id: string
+  x: number
+  y: number
+  body: string
+  color: string
   dateLabel: string
 }
 
@@ -109,13 +113,6 @@ interface StringView {
   color: YarnColor
 }
 
-/**
- * The caret under a click.
- *
- * Chrome/Safari expose `caretRangeFromPoint`, Firefox `caretPositionFromPoint`.
- * Both are needed — a plain click produces no selection, so this is the only
- * way to turn "the user clicked that word" into a DOM position.
- */
 function caretRangeFromPoint(x: number, y: number): Range | null {
   const doc = document as Document & {
     caretRangeFromPoint?: (x: number, y: number) => Range | null
@@ -132,24 +129,34 @@ function caretRangeFromPoint(x: number, y: number): Range | null {
   return range
 }
 
-/** The tack's centre, in paper coordinates. */
 function tackPoint(rect: AnchorRect): Point {
   return { x: rect.x + rect.width - 6 + 7, y: rect.y - 5 + 7 }
 }
 
 export function App() {
+  const { route, navigate } = useRoute()
+  const preferences = usePreferences()
+
+  // Board state lives above the route switch on purpose: navigating to /wiki
+  // and back must not wipe the board.
   const [source, setSource] = useState(INITIAL_MARKDOWN)
-  const [placed, setPlaced] = useState<PlacedAnchor[]>([])
+  const [placed, setPlaced] = useState<PlacedPin[]>([])
+  const [postIts, setPostIts] = useState<PostIt[]>([])
   const [pins, setPins] = useState<PinView[]>([])
   const [strings, setStrings] = useState<StringView[]>([])
   const [dragFrom, setDragFrom] = useState<string | null>(null)
   const [fontsLoaded, setFontsLoaded] = useState(() => !globalThis.document?.fonts)
   const [cursor, setCursor] = useState(CAMPAIGN_EPOCH)
   const [playing, setPlaying] = useState(false)
-  const [view, setView] = useState<'board' | 'wiki'>('board')
   const [camera, setCamera] = useState<Camera>(IDENTITY_CAMERA)
-  const [editing, setEditing] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [editingPin, setEditingPin] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<
+    (BoardContextTarget & { board: Point }) | null
+  >(null)
+  const [prefsOpen, setPrefsOpen] = useState(false)
   const [paperRect, setPaperRect] = useState<Rect | null>(null)
+  /** The editor only appears once a document has been selected. */
+  const [documentSelected, setDocumentSelected] = useState(false)
 
   const articleRef = useRef<HTMLDivElement>(null)
   const paperRef = useRef<HTMLDivElement>(null)
@@ -157,15 +164,12 @@ export function App() {
   const livePathRef = useRef<SVGPathElement>(null)
   const projectionRef = useRef<DomProjection | null>(null)
 
-  // The trailing end of a string being drawn. Updated at 60fps by mutating the
-  // path's `d` attribute directly — never through React state, which would
-  // re-render the whole board every frame.
   const springRef = useRef({ x: createSpring(0), y: createSpring(0) })
   const targetRef = useRef<Point>({ x: 0, y: 0 })
   const originRef = useRef<Point | null>(null)
   const frameRef = useRef<number>(0)
-  const cameraZoomRef = useRef(camera.zoom)
-  cameraZoomRef.current = camera.zoom
+  const cameraRef = useRef(camera)
+  cameraRef.current = camera
 
   const resolveWikiTarget = useCallback((target: string) => {
     const wanted = slugify(target)
@@ -177,10 +181,9 @@ export function App() {
     )
   }, [])
 
-  // Sanitize, then linkify — in that order, and both before the article reaches
-  // the DOM. Linkifying *after* the article was projected would shift every
-  // offset below a link by the width of the brackets it removes, and every pin
-  // under it would land on the wrong words.
+  // Sanitize, then linkify — both before the article reaches the DOM.
+  // Linkifying after the article was projected would shift every offset below a
+  // link by the width of the brackets it removes.
   const html = useMemo(
     () =>
       linkifyHtml(DOMPurify.sanitize(marked.parse(source, { async: false })), {
@@ -189,9 +192,6 @@ export function App() {
     [source, resolveWikiTarget],
   )
 
-  // Measure nothing until webfonts have loaded. Measuring against fallback
-  // metrics puts every pin slightly wrong, and nothing in the code looks
-  // incorrect — the failure is silent.
   useEffect(() => {
     if (!document.fonts) return
     let cancelled = false
@@ -203,7 +203,6 @@ export function App() {
     }
   }, [])
 
-  // The paper's size in board space, so the canvas can frame it on first mount.
   useLayoutEffect(() => {
     const paper = paperRef.current
     if (!paper || !fontsLoaded) return
@@ -215,14 +214,12 @@ export function App() {
     }
 
     measure()
+    if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(measure)
     observer.observe(paper)
     return () => observer.disconnect()
   }, [fontsLoaded])
 
-  // After every render of the article, re-project the DOM and re-resolve every
-  // anchor against the current text. This is the thesis in one effect: edit the
-  // source, and the pins find their own way back.
   useLayoutEffect(() => {
     const element = articleRef.current
     if (!element || !fontsLoaded) return
@@ -265,68 +262,61 @@ export function App() {
     )
   }, [html, placed, fontsLoaded])
 
-  const handleArticleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    // A click on a wikilink navigates. It must not also drop a pin — the two
-    // gestures share a surface, and pinning on every attempt to follow a link
-    // would make the board unusable.
-    const link = wikiLinkFromEvent(event.nativeEvent)
-    if (link) {
-      event.preventDefault()
-      setView('wiki')
-      return
-    }
+  const nextDateLabel = useCallback(
+    (index: number) => `Session ${FIRST_SESSION + index}, 1492 DR`,
+    [],
+  )
 
-    const projection = projectionRef.current
-    const element = articleRef.current
-    if (!projection || !element) return
+  const pinAt = useCallback(
+    (clientX: number, clientY: number) => {
+      const projection = projectionRef.current
+      const element = articleRef.current
+      if (!projection || !element) return
 
-    const range = caretRangeFromPoint(event.clientX, event.clientY)
-    if (!range || !element.contains(range.startContainer)) return
+      const range = caretRangeFromPoint(clientX, clientY)
+      if (!range || !element.contains(range.startContainer)) return
 
-    const flatRange = domRangeToFlatRange(projection, range)
-    if (!flatRange) return
+      const flatRange = domRangeToFlatRange(projection, range)
+      if (!flatRange) return
 
-    const anchor = createAnchor(projection.flat.text, flatRange.start, flatRange.end)
-    if (!anchor.quote) return // clicked somewhere with no word to hold onto
+      const anchor = createAnchor(projection.flat.text, flatRange.start, flatRange.end)
+      if (!anchor.quote) return
 
-    setPlaced((previous) => {
-      const session = FIRST_SESSION + previous.length
-      const id = crypto.randomUUID()
-      return [
+      setPlaced((previous) => [
         ...previous,
         {
-          id,
+          id: crypto.randomUUID(),
           anchor,
           body: '',
           occurredAt: CAMPAIGN_EPOCH + previous.length * SESSION_GAP_MS,
-          dateLabel: `Session ${session}, 1492 DR`,
+          dateLabel: nextDateLabel(previous.length),
         },
-      ]
-    })
-  }, [])
+      ])
+    },
+    [nextDateLabel],
+  )
 
-  /**
-   * Pointer position in paper coordinates.
-   *
-   * The overlay is inside a scaled transform, so `getBoundingClientRect` returns
-   * a *scaled* box. Dividing the screen offset by the zoom converts back to the
-   * unscaled space the yarn paths are drawn in.
-   */
+  const handleArticleClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const link = wikiLinkFromEvent(event.nativeEvent)
+      if (link) {
+        event.preventDefault()
+        // A wikilink is an address, so it navigates for real.
+        navigate({ name: 'wiki', slug: link.resolved ? link.slug : null })
+        return
+      }
+      pinAt(event.clientX, event.clientY)
+    },
+    [navigate, pinAt],
+  )
+
   const localPoint = useCallback((clientX: number, clientY: number): Point => {
     const box = overlayRef.current?.getBoundingClientRect()
     if (!box) return { x: 0, y: 0 }
-    const zoom = cameraZoomRef.current || 1
+    const zoom = cameraRef.current.zoom || 1
     return { x: (clientX - box.left) / zoom, y: (clientY - box.top) / zoom }
   }, [])
 
-  /**
-   * The board clock.
-   *
-   * One rAF loop for the whole board, running only while a string is actually
-   * being drawn. It writes the path's `d` attribute directly rather than going
-   * through React — a setState per frame would re-render every pin sixty times
-   * a second.
-   */
   const runClock = useCallback(() => {
     const origin = originRef.current
     const path = livePathRef.current
@@ -335,14 +325,12 @@ export function App() {
     const spring = springRef.current
     stepSpring(spring.x, targetRef.current.x, 1 / 60)
     stepSpring(spring.y, targetRef.current.y, 1 / 60)
-
     path.setAttribute('d', yarnPath(origin, { x: spring.x.value, y: spring.y.value }, SLACK))
     frameRef.current = requestAnimationFrame(runClock)
   }, [])
 
   const beginString = useCallback(
     (event: React.PointerEvent, pin: PinView) => {
-      // Don't let the press fall through and drop a new pin on the article.
       event.stopPropagation()
       event.preventDefault()
       if (!pin.rect) return
@@ -368,16 +356,15 @@ export function App() {
   const endString = useCallback(
     (event: React.PointerEvent) => {
       if (!dragFrom) return
-
       const drop = localPoint(event.clientX, event.clientY)
 
       let nearest: { id: string; distance: number } | null = null
       for (const pin of pins) {
         if (pin.id === dragFrom || !pin.rect) continue
         const point = tackPoint(pin.rect)
-        const d = Math.hypot(point.x - drop.x, point.y - drop.y)
-        if (d <= SNAP_RADIUS && (!nearest || d < nearest.distance)) {
-          nearest = { id: pin.id, distance: d }
+        const distance = Math.hypot(point.x - drop.x, point.y - drop.y)
+        if (distance <= SNAP_RADIUS && (!nearest || distance < nearest.distance)) {
+          nearest = { id: pin.id, distance }
         }
       }
 
@@ -402,69 +389,83 @@ export function App() {
 
   useEffect(() => () => cancelAnimationFrame(frameRef.current), [])
 
-  /** A right-click that didn't drag: open the editor for the pin under it. */
-  const handleContextTarget = useCallback(
-    ({ clientX, clientY, target }: { clientX: number; clientY: number; target: EventTarget | null }) => {
-      const element = target instanceof Element ? target : null
-      const id = element?.closest('[data-pin-id]')?.getAttribute('data-pin-id')
-      if (id) setEditing({ id, x: clientX, y: clientY })
+  /** Right-click: a pin opens its editor, bare board opens the context menu. */
+  const handleContextTarget = useCallback((target: BoardContextTarget) => {
+    const element = target.target instanceof Element ? target.target : null
+    const pinId = element?.closest('[data-pin-id]')?.getAttribute('data-pin-id')
+
+    if (pinId) {
+      setEditingPin({ id: pinId, x: target.clientX, y: target.clientY })
+      return
+    }
+
+    const canvas = document.querySelector('[data-testid="board-canvas"]')
+    const box = canvas?.getBoundingClientRect()
+    const viewportPoint = box
+      ? { x: target.clientX - box.left, y: target.clientY - box.top }
+      : { x: 0, y: 0 }
+
+    setContextMenu({
+      ...target,
+      board: screenToBoard(cameraRef.current, viewportPoint),
+    })
+  }, [])
+
+  const createPostIt = useCallback(
+    (point: Point) => {
+      setPostIts((previous) => [
+        ...previous,
+        {
+          id: crypto.randomUUID(),
+          x: point.x,
+          y: point.y,
+          body: '',
+          color: POST_IT_COLORS[previous.length % POST_IT_COLORS.length],
+          dateLabel: nextDateLabel(previous.length),
+        },
+      ])
     },
-    [],
+    [nextDateLabel],
   )
 
   const setPinBody = useCallback((id: string, body: string) => {
     setPlaced((previous) => previous.map((item) => (item.id === id ? { ...item, body } : item)))
   }, [])
 
+  const setPostItBody = useCallback((id: string, body: string) => {
+    setPostIts((previous) => previous.map((item) => (item.id === id ? { ...item, body } : item)))
+  }, [])
+
   const removePin = useCallback((id: string) => {
     setPlaced((previous) => previous.filter((item) => item.id !== id))
     setStrings((previous) => previous.filter((s) => s.from !== id && s.to !== id))
-    setEditing(null)
+    setEditingPin(null)
   }, [])
 
-  const insertAbove = useCallback(() => {
-    setSource((current) =>
-      current.replace(
-        '\n\n**Session 12**',
-        '\n\nIt rained the whole crossing, and the lanterns guttered.\n\n**Session 12**',
-      ),
-    )
-  }, [])
-
-  const rewriteEnding = useCallback(() => {
-    setSource((current) =>
-      current.replace(
-        /The \[\[The Black Coin\|Black Coin\]\][^\n]*\n?[^\n]*\n?/,
-        'Nobody would say the name aloud.\n',
-      ),
-    )
-  }, [])
-
-  const clearAll = useCallback(() => {
+  const clearBoard = useCallback(() => {
     setPlaced([])
+    setPostIts([])
     setStrings([])
-    setEditing(null)
+    setEditingPin(null)
+    setContextMenu(null)
   }, [])
 
   const timeline = useMemo(
     () =>
-      buildTimeline(
-        placed.map(
+      buildTimeline([
+        ...placed.map(
           (item): TimelineEntry => ({
             id: item.id,
             occurredAt: item.occurredAt,
             dateLabel: item.dateLabel,
           }),
         ),
-      ),
+      ]),
     [placed],
   )
   const clusters = useMemo(() => clusterTimeline(timeline), [timeline])
   const activeIds = useMemo(() => new Set(activeAt(timeline, cursor)), [timeline, cursor])
 
-  // The recap. Each step is scheduled against the current cursor, so advancing
-  // reschedules the next one and running out of clusters ends the playback
-  // without needing a separate "am I done" check.
   useEffect(() => {
     if (!playing) return
     if (clusters.length === 0) {
@@ -491,7 +492,6 @@ export function App() {
   }, [playing, cursor, clusters])
 
   const byId = useMemo(() => new Map(pins.map((pin) => [pin.id, pin])), [pins])
-  /** Dimming only applies once there is a chronology to walk through. */
   const dimming = placed.length > 0
 
   const drawableStrings = strings.flatMap((string) => {
@@ -513,68 +513,90 @@ export function App() {
   const anchored = pins.filter((pin) => pin.rect)
   const orphaned = pins.filter((pin) => pin.status === 'orphaned')
   const repaired = pins.filter((pin) => pin.status === 'repaired').length
-  const editingPin = editing ? byId.get(editing.id) : null
+  const activePin = editingPin ? byId.get(editingPin.id) : null
+
+  const contextItems: ContextMenuEntry[] = contextMenu
+    ? [
+        {
+          id: 'post-it',
+          label: 'Create post-it',
+          hint: 'A loose note on the board',
+          onSelect: () => createPostIt(contextMenu.board),
+        },
+        {
+          id: 'pin',
+          label: 'Add pin',
+          hint: 'Pin a note to the text under the cursor',
+          onSelect: () => pinAt(contextMenu.clientX, contextMenu.clientY),
+        },
+        { id: 'sep-1', separator: true },
+        {
+          id: 'fit',
+          label: 'Zoom to fit',
+          hint: 'Frame the document',
+          disabled: !paperRect,
+          onSelect: () => {
+            const canvas = document.querySelector('[data-testid="board-canvas"]')
+            const box = canvas?.getBoundingClientRect()
+            if (!paperRect || !box || box.width === 0) return
+            const fitted = fitBounds([paperRect], { width: box.width, height: box.height }, 56)
+            if (fitted) setCamera(fitted)
+          },
+        },
+        {
+          id: 'prefs',
+          label: 'Preferences…',
+          onSelect: () => setPrefsOpen(true),
+        },
+      ]
+    : []
 
   return (
-    <div className="cork relative min-h-full">
-      <Ambient camera={camera} />
-
-      <div className="relative flex min-h-full flex-col">
-        <header className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 lg:px-8 lg:pt-8">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-parchment-100">
-              The Case Board
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm text-parchment-300/80">
-              Click a word to pin it · drag tack to tack to run yarn · right-click a pin to write on
-              it · scroll to zoom, right- or middle-drag to pan
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <div
-              className="flex overflow-hidden rounded border border-brass/40"
-              role="group"
-              aria-label="View"
-            >
-              {(['board', 'wiki'] as const).map((option) => (
-                <button
-                  key={option}
-                  onClick={() => setView(option)}
-                  aria-pressed={view === option}
-                  className={`px-3 py-1.5 text-sm capitalize transition ${
-                    view === option
-                      ? 'bg-brass/25 text-parchment-100'
-                      : 'bg-cork-700/70 text-parchment-300 hover:text-parchment-100'
-                  }`}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-
+    <div className="app-shell flex h-screen flex-col overflow-hidden">
+      <TopBar
+        route={route}
+        navigate={navigate}
+        onOpenPreferences={() => setPrefsOpen(true)}
+        preferencesOpen={prefsOpen}
+        preferencesPanelId={PREFERENCES_PANEL_ID}
+      >
+        {route.name === 'board' && (
+          <>
             <button
-              onClick={insertAbove}
-              className="rounded border border-brass/40 bg-cork-700/70 px-3 py-1.5 text-sm text-parchment-200 transition hover:border-brass hover:bg-cork-700"
+              type="button"
+              onClick={() =>
+                setSource((current) =>
+                  current.replace(
+                    '\n\n**Session 12**',
+                    '\n\nIt rained the whole crossing, and the lanterns guttered.\n\n**Session 12**',
+                  ),
+                )
+              }
+              className="rounded border border-brass/40 bg-cork-700/70 px-2.5 py-1 text-xs text-board-ink transition hover:border-brass"
             >
               Insert a sentence above
             </button>
             <button
-              onClick={rewriteEnding}
-              className="rounded border border-brass/40 bg-cork-700/70 px-3 py-1.5 text-sm text-parchment-200 transition hover:border-brass hover:bg-cork-700"
+              type="button"
+              onClick={() =>
+                setSource((current) =>
+                  current.replace(
+                    /The \[\[The Black Coin\|Black Coin\]\][^\n]*\n?[^\n]*\n?/,
+                    'Nobody would say the name aloud.\n',
+                  ),
+                )
+              }
+              className="rounded border border-brass/40 bg-cork-700/70 px-2.5 py-1 text-xs text-board-ink transition hover:border-brass"
             >
               Delete the pinned sentence
             </button>
-            <button
-              onClick={clearAll}
-              className="rounded border border-parchment-edge/25 px-3 py-1.5 text-sm text-parchment-300 transition hover:border-wax hover:text-parchment-100"
-            >
-              Clear board
-            </button>
-          </div>
-        </header>
+          </>
+        )}
+      </TopBar>
 
-        {view === 'wiki' ? (
-          <div className="px-5 pt-6 lg:px-8">
+      <main className="relative flex min-h-0 flex-1">
+        {route.name === 'wiki' ? (
+          <div className="min-h-0 flex-1 overflow-auto p-5 lg:p-8">
             <WikiView
               html={html}
               pins={placed.map((item) => ({
@@ -585,45 +607,57 @@ export function App() {
               activeIds={activeIds}
               dimming={dimming}
               fontsLoaded={fontsLoaded}
-              onShowOnBoard={() => setView('board')}
+              onShowOnBoard={() => setDocumentSelected(true)}
             />
           </div>
         ) : (
-          <div className="mt-5 grid flex-1 gap-5 px-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:px-8">
-            <section className="flex flex-col">
-              <h2 className="mb-2 text-xs font-semibold tracking-[0.14em] text-brass uppercase">
-                Markdown source
-              </h2>
-              <textarea
+          <>
+            {documentSelected && (
+              <PaperEditor
+                title={ARTICLE_TITLE}
                 value={source}
-                onChange={(event) => setSource(event.target.value)}
-                spellCheck={false}
-                className="editor h-[300px] resize-none rounded p-4 text-[13px] lg:h-full lg:max-h-[calc(100vh-15rem)]"
-                aria-label="Article markdown source"
+                onChange={setSource}
+                onClose={() => setDocumentSelected(false)}
               />
-            </section>
+            )}
 
-            <section className="flex min-h-[520px] flex-col">
-              <h2 className="mb-2 text-xs font-semibold tracking-[0.14em] text-brass uppercase">
-                The board
-              </h2>
-
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               <BoardCanvas
                 camera={camera}
                 onCameraChange={setCamera}
                 onContextTarget={handleContextTarget}
-                className="min-h-[460px] flex-1 rounded-sm border border-cork-900/60 shadow-inner"
+                className="min-h-0 flex-1"
                 fitTo={paperRect ? [paperRect] : undefined}
+                backdrop={(viewport) => (
+                  <GridLayer camera={camera} viewport={viewport} />
+                )}
               >
-                {/* The article, as a sheet lying on the board. Its own box is
-                    the coordinate space for pins and yarn, so rects measured
-                    against the article line up with the overlay without
-                    compensating for padding. */}
                 <div
                   ref={paperRef}
-                  className="parchment rounded-sm px-9 py-8 sm:px-12 sm:py-10"
+                  data-testid="paper"
+                  className={`parchment relative rounded-sm px-9 py-8 transition-shadow sm:px-12 sm:py-10 ${
+                    documentSelected ? 'ring-2 ring-brass/70' : ''
+                  }`}
                   style={{ width: PAPER_WIDTH }}
                 >
+                  {/* The tab is the selection affordance. Clicking the body of
+                      the paper pins a note; clicking the tab selects the
+                      document and opens the editor. Two gestures, one sheet. */}
+                  <button
+                    type="button"
+                    onClick={() => setDocumentSelected((previous) => !previous)}
+                    aria-pressed={documentSelected}
+                    className={`absolute -top-7 left-0 rounded-t px-3 py-1 text-[11px] transition ${
+                      documentSelected
+                        ? 'bg-brass/80 text-cork-900'
+                        : 'bg-parchment-200/85 text-ink-soft hover:bg-parchment-200'
+                    }`}
+                    title={documentSelected ? 'Close the editor' : 'Edit this document'}
+                  >
+                    {documentSelected ? '▾ ' : '▸ '}
+                    {ARTICLE_TITLE}
+                  </button>
+
                   <div
                     className="relative"
                     onPointerMove={moveString}
@@ -644,9 +678,6 @@ export function App() {
                             key={string.id}
                             className="transition-opacity duration-300"
                             style={{
-                              // A string is live only when both ends are known —
-                              // a thread to something the party hasn't found yet
-                              // would be a lie the board tells.
                               opacity:
                                 !dimming ||
                                 (activeIds.has(string.fromId) && activeIds.has(string.toId))
@@ -654,21 +685,23 @@ export function App() {
                                   : 0.12,
                             }}
                           >
-                            <path
-                              d={yarnPath(string.from, string.to, SLACK)}
-                              fill="none"
-                              stroke="rgba(0,0,0,0.22)"
-                              strokeWidth={3.5}
-                              strokeLinecap="round"
-                              transform="translate(0.5 1.5)"
-                            />
-                            <path
-                              d={yarnPath(string.from, string.to, SLACK)}
-                              fill="none"
-                              stroke={YARN_HEX[string.color]}
-                              strokeWidth={2.5}
-                              strokeLinecap="round"
-                            />
+                            {yarnStrands(
+                              preferences.yarnStyle,
+                              string.from,
+                              string.to,
+                              SLACK,
+                              seedFromKey(string.id),
+                            ).map((strand, index) => (
+                              <path
+                                key={index}
+                                d={strand.d}
+                                fill="none"
+                                stroke={YARN_HEX[string.color]}
+                                strokeWidth={strand.width}
+                                strokeOpacity={strand.opacity}
+                                strokeLinecap="round"
+                              />
+                            ))}
                           </g>
                         ))}
 
@@ -693,9 +726,6 @@ export function App() {
                               top: pin.rect.y,
                               width: pin.rect.width,
                               height: pin.rect.height,
-                              // Dimmed via opacity rather than a filter:
-                              // filters repaint their subtree every frame,
-                              // whereas opacity is compositor-only.
                               opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.16,
                             }}
                           />
@@ -717,7 +747,7 @@ export function App() {
                               touchAction: 'none',
                               opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.2,
                             }}
-                            title={`${pin.quote} — ${pin.detail}. Drag to another pin to connect, right-click to write.`}
+                            title={`${pin.quote} — ${pin.detail}`}
                             aria-label={`Pin on "${pin.quote}", ${pin.detail}`}
                           />
                         ) : null,
@@ -725,56 +755,55 @@ export function App() {
                     </div>
                   </div>
                 </div>
-              </BoardCanvas>
 
-              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-parchment-300/80">
-                <Legend
-                  colour="var(--color-brass)"
-                  label={`Anchored exactly (${pins.length - repaired - orphaned.length})`}
-                />
-                <Legend colour="#d98a2b" label={`Repaired after an edit (${repaired})`} />
-                <Legend colour="var(--color-wax)" label={`Orphaned (${orphaned.length})`} />
-                <span className="text-parchment-300/50">
-                  {placed.length} pin{placed.length === 1 ? '' : 's'} · {strings.length} string
-                  {strings.length === 1 ? '' : 's'}
-                </span>
-              </div>
-            </section>
-          </div>
-        )}
-
-        {orphaned.length > 0 && (
-          <div className="mx-5 mt-5 rounded border border-wax/40 bg-cork-900/50 p-4 lg:mx-8">
-            <h3 className="text-xs font-semibold tracking-[0.14em] text-wax uppercase">
-              Loose pins — the trail went cold
-            </h3>
-            <p className="mt-1 mb-3 text-xs text-parchment-300/70">
-              The text these were pinned to no longer exists. They are kept, not discarded, so they
-              can be re-attached.
-            </p>
-            <ul className="flex flex-wrap gap-2">
-              {orphaned.map((pin) => (
-                <li
-                  key={pin.id}
-                  className="flex items-center gap-2 rounded border border-parchment-edge/25 bg-cork-700/60 px-2.5 py-1.5 text-xs"
-                >
-                  <span className="h-2.5 w-2.5 rounded-full bg-wax" />
-                  <span className="text-parchment-200 italic">“{pin.quote}”</span>
-                  <span className="text-parchment-300/50">{pin.detail}</span>
-                  <button
-                    onClick={() => removePin(pin.id)}
-                    className="ml-1 text-parchment-300/50 transition hover:text-wax"
-                    aria-label={`Discard pin on ${pin.quote}`}
+                {postIts.map((note) => (
+                  <div
+                    key={note.id}
+                    className="post-it absolute rounded-sm p-2 shadow-lg"
+                    style={{ left: note.x, top: note.y, width: 168, background: note.color }}
                   >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+                    <textarea
+                      value={note.body}
+                      onChange={(event) => setPostItBody(note.id, event.target.value)}
+                      placeholder="Write something…"
+                      className="h-24 w-full resize-none bg-transparent text-[12px] leading-snug text-ink outline-none placeholder:text-ink-soft/40"
+                      aria-label="Post-it note"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPostIts((previous) => previous.filter((item) => item.id !== note.id))
+                      }
+                      className="absolute top-1 right-1 text-[11px] text-ink-soft/40 transition hover:text-wax"
+                      aria-label="Remove post-it"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </BoardCanvas>
+            </div>
+          </>
         )}
+      </main>
 
-        <div className="mt-auto px-5 pt-7 pb-5 lg:px-8">
+      {route.name === 'board' && (
+        <footer className="border-t border-parchment-edge/15 bg-cork-900/55 px-4 py-2 lg:px-6">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 pb-1 text-[10px] text-board-ink-soft/50">
+            <Legend
+              colour="var(--color-brass)"
+              label={`Anchored exactly (${pins.length - repaired - orphaned.length})`}
+            />
+            <Legend colour="#d98a2b" label={`Repaired after an edit (${repaired})`} />
+            <Legend colour="var(--color-wax)" label={`Orphaned (${orphaned.length})`} />
+            <span>
+              {placed.length} pin{placed.length === 1 ? '' : 's'} · {strings.length} string
+              {strings.length === 1 ? '' : 's'}
+            </span>
+            <span className="ml-auto hidden lg:inline">
+              Scroll to zoom · right/middle-drag to pan · right-click for options
+            </span>
+          </div>
           <TimelineRibbon
             timeline={timeline}
             clusters={clusters}
@@ -788,22 +817,37 @@ export function App() {
             activeCount={activeIds.size}
             totalCount={timeline.placed.length}
           />
-        </div>
-      </div>
+        </footer>
+      )}
 
-      {editing && editingPin && (
-        <PinEditor
-          quote={editingPin.quote}
-          status={editingPin.status}
-          dateLabel={placed.find((item) => item.id === editing.id)?.dateLabel ?? ''}
-          body={editingPin.body}
-          x={editing.x}
-          y={editing.y}
-          onChange={(body) => setPinBody(editing.id, body)}
-          onDelete={() => removePin(editing.id)}
-          onClose={() => setEditing(null)}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.clientX}
+          y={contextMenu.clientY}
+          items={contextItems}
+          onClose={() => setContextMenu(null)}
         />
       )}
+
+      {editingPin && activePin && (
+        <PinEditor
+          quote={activePin.quote}
+          status={activePin.status}
+          dateLabel={placed.find((item) => item.id === editingPin.id)?.dateLabel ?? ''}
+          body={activePin.body}
+          x={editingPin.x}
+          y={editingPin.y}
+          onChange={(body) => setPinBody(editingPin.id, body)}
+          onDelete={() => removePin(editingPin.id)}
+          onClose={() => setEditingPin(null)}
+        />
+      )}
+
+      <PreferencesPanel
+        open={prefsOpen}
+        onClose={() => setPrefsOpen(false)}
+        onClearBoard={clearBoard}
+      />
     </div>
   )
 }

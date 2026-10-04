@@ -1,0 +1,261 @@
+/*
+ * The preferences drawer's chrome.
+ *
+ * Kept next to the component rather than in index.css: the drawer's rules —
+ * mount animation, swatches, the danger zone — are nobody else's business, and
+ * index.css is shared with every other layer of the board. It reads the same
+ * tokens as the rest of the app, so changing a preference re-paints the drawer
+ * along with everything else.
+ */
+
+.prefs-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 0.42);
+}
+
+.prefs-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(22rem, 100vw);
+  height: 100%;
+  overflow-y: auto;
+  background: var(--color-parchment-100);
+  color: var(--color-ink);
+  border-left: 1px solid var(--color-parchment-edge);
+  box-shadow: -20px 0 44px -18px rgb(0 0 0 / 0.65);
+  animation: prefs-slide-in 220ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+.prefs-panel:focus {
+  outline: none;
+}
+
+@keyframes prefs-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prefs-panel {
+    animation: none;
+  }
+}
+
+.prefs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--color-parchment-edge);
+}
+
+.prefs-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.prefs-close {
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.15rem 0.4rem;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--color-ink-soft);
+  cursor: pointer;
+}
+
+.prefs-close:hover {
+  color: var(--color-ink);
+}
+
+.prefs-close:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 1px;
+}
+
+.prefs-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+  padding: 1rem;
+}
+
+.prefs-section {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.prefs-legend {
+  padding: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--color-ink-soft);
+}
+
+.prefs-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.prefs-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--color-parchment-edge) 75%, transparent);
+  border-radius: 3px;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.prefs-option[data-selected='true'] {
+  border-color: var(--color-brass);
+  background: color-mix(in srgb, var(--color-brass) 13%, transparent);
+}
+
+.prefs-option:focus-within {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 1px;
+}
+
+/* Visually hidden but still focusable, so the native group semantics and
+   arrow-key navigation survive. */
+.prefs-radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.prefs-swatch {
+  flex: none;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 3px;
+  border: 1px solid rgb(0 0 0 / 0.35);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
+}
+
+.prefs-option-label {
+  display: block;
+  font-size: 0.82rem;
+}
+
+.prefs-option-hint {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--color-ink-soft);
+  opacity: 0.8;
+}
+
+.prefs-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.prefs-button {
+  align-self: flex-start;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.42rem 0.7rem;
+  border: 1px solid var(--color-parchment-edge);
+  border-radius: 3px;
+  background: var(--color-parchment-200);
+  color: var(--color-ink);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.prefs-button:hover:not(:disabled) {
+  background: var(--color-parchment-300);
+}
+
+.prefs-button:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 1px;
+}
+
+.prefs-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.prefs-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+
+.prefs-danger {
+  padding: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--color-wax) 45%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-wax) 7%, transparent);
+}
+
+.prefs-danger-title {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--color-wax);
+}
+
+.prefs-button-danger {
+  border-color: color-mix(in srgb, var(--color-wax) 55%, transparent);
+  background: transparent;
+  color: var(--color-wax);
+}
+
+.prefs-button-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-wax) 14%, transparent);
+}
+
+.prefs-confirm-input {
+  width: 100%;
+  margin-top: 0.5rem;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-parchment-edge);
+  border-radius: 3px;
+  background: var(--color-parchment-100);
+  color: var(--color-ink);
+}
+
+.prefs-confirm-input:focus-visible {
+  outline: 2px solid var(--color-wax);
+  outline-offset: 1px;
+}
+
+.prefs-danger-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+}

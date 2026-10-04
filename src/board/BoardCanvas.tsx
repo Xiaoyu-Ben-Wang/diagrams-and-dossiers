@@ -15,9 +15,16 @@
  * change when the camera moves.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 
-import { fitBounds, panBy, zoomAt, type Camera, type Rect } from './camera'
+import { fitBounds, panBy, zoomAt, type Camera, type Rect, type Viewport } from './camera'
 
 export interface BoardContextTarget {
   clientX: number
@@ -40,6 +47,16 @@ export interface BoardCanvasProps {
    * someone mid-edit.
    */
   fitTo?: Rect[]
+  /**
+   * Rendered behind the world, in *viewport* space, and handed the measured
+   * viewport size.
+   *
+   * A render prop rather than a plain child, because backdrops like the grid
+   * need the viewport dimensions and the transform — and putting them inside the
+   * world would mean scaling a huge element instead of drawing crisply at screen
+   * resolution. It's called on every render, so it must be cheap.
+   */
+  backdrop?: (viewport: Viewport) => ReactNode
 }
 
 /** Pointer travel, in pixels, above which a press is a drag rather than a click. */
@@ -92,10 +109,12 @@ export function BoardCanvas({
   className,
   onContextTarget,
   fitTo,
+  backdrop,
 }: BoardCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const panRef = useRef<PanState | null>(null)
   const hasFittedRef = useRef(false)
+  const [viewport, setViewport] = useState<Viewport>({ width: 0, height: 0 })
 
   // The wheel listener reads the camera through a ref so it doesn't have to be
   // torn down and rebuilt on every frame of a zoom.
@@ -126,6 +145,28 @@ export function BoardCanvas({
 
     viewport.addEventListener('wheel', handleWheel, { passive: false })
     return () => viewport.removeEventListener('wheel', handleWheel)
+  }, [])
+
+  // Track the viewport size for the backdrop and for fit-bounds. Only stored in
+  // state when it actually changes, so a backdrop that reads it doesn't cause a
+  // render loop.
+  useEffect(() => {
+    const element = viewportRef.current
+    if (!element) return
+
+    const measure = (): void => {
+      const width = element.clientWidth
+      const height = element.clientHeight
+      setViewport((previous) =>
+        previous.width === width && previous.height === height ? previous : { width, height },
+      )
+    }
+
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
   }, [])
 
   // Frame the content the first time we know how big it is. Guarded so it
@@ -221,6 +262,11 @@ export function BoardCanvas({
       style={{ touchAction: 'none', cursor: panRef.current ? 'grabbing' : 'default' }}
       data-testid="board-canvas"
     >
+      {/* Rendered even before the first measurement lands. Guarding on a
+          non-zero viewport would flash a bare board on every mount, and a
+          backdrop that renders nothing at zero size is harmless. */}
+      {backdrop?.(viewport)}
+
       <div
         style={{
           // translate then scale, so a board point p lands at (p - camera) * zoom
@@ -254,7 +300,7 @@ function ZoomReadout({
       <button
         type="button"
         onClick={() => onCameraChange(zoomAt(camera, { x: 0, y: 0 }, camera.zoom / 1.25))}
-        className="px-1.5 text-parchment-300 transition hover:text-parchment-100"
+        className="px-1.5 text-board-ink-soft transition hover:text-board-ink"
         aria-label="Zoom out"
       >
         −
@@ -262,7 +308,7 @@ function ZoomReadout({
       <button
         type="button"
         onClick={() => onCameraChange({ ...camera, zoom: 1 })}
-        className="min-w-[38px] text-center text-parchment-300 tabular-nums transition hover:text-parchment-100"
+        className="min-w-[38px] text-center text-board-ink-soft tabular-nums transition hover:text-board-ink"
         title="Reset zoom to 100%"
       >
         {Math.round(camera.zoom * 100)}%
@@ -270,7 +316,7 @@ function ZoomReadout({
       <button
         type="button"
         onClick={() => onCameraChange(zoomAt(camera, { x: 0, y: 0 }, camera.zoom * 1.25))}
-        className="px-1.5 text-parchment-300 transition hover:text-parchment-100"
+        className="px-1.5 text-board-ink-soft transition hover:text-board-ink"
         aria-label="Zoom in"
       >
         +
