@@ -312,6 +312,28 @@ describe('App — placing pins', () => {
     }
   })
 
+  it('starts a string from a pin drag rather than a selection', async () => {
+    // A pin is a place yarn attaches to, so the drag means the same thing on a
+    // free pin as on an anchored one. The band is for bare board only.
+    const { container } = render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 })
+    const tack = container.querySelector('[data-status="free"]') as HTMLElement
+    expect(tack).not.toBeNull()
+
+    fireEvent.pointerDown(tack, { button: 0, pointerId: 11, clientX: 300, clientY: 200 })
+    expect(screen.queryByTestId('marquee')).toBeNull()
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+    })
+
+    // The camera is untouched in jsdom, so the pin placed at viewport 300,200
+    // sits at board 300,200 and the string must start there.
+    expect(screen.getByTestId('live-yarn').getAttribute('d')).toMatch(/^M 300 200/)
+  })
+
   it('selects objects inside the rubber band', () => {
     const { container } = render(<App />)
     const canvas = screen.getByTestId('board-canvas')

@@ -682,23 +682,6 @@ export function App() {
     [selection, moveSelection],
   )
 
-  const dragPin = useCallback(
-    (id: string, delta: Point) => {
-      if (selection.has(id)) {
-        moveSelection(delta)
-        return
-      }
-      setPlaced((previous) =>
-        previous.map((pin) =>
-          pin.id === id && pin.board
-            ? { ...pin, board: { x: pin.board.x + delta.x, y: pin.board.y + delta.y } }
-            : pin,
-        ),
-      )
-    },
-    [selection, moveSelection],
-  )
-
   const setPinBody = useCallback((id: string, body: string) => {
     setPlaced((previous) => previous.map((item) => (item.id === id ? { ...item, body } : item)))
   }, [])
@@ -1045,10 +1028,9 @@ export function App() {
                     <FreePin
                       key={`free-${pin.id}`}
                       pin={pin}
-                      zoom={camera.zoom}
                       selected={selection.has(pin.id)}
                       dimmed={dimming && !activeIds.has(pin.id)}
-                      onDrag={dragPin}
+                      onPointerDown={(event) => beginString(event, pin)}
                     />
                   ) : null,
                 )}
@@ -1150,37 +1132,34 @@ function Legend({ colour, label }: { colour: string; label: string }) {
 /**
  * A pin stuck into the cork.
  *
- * Dragging it moves it, and dragging a selected one moves the whole selection.
- * Note this is the opposite of an anchored pin's tack, which starts a string —
- * an anchored pin has no position of its own to move, so its tack is free to be
- * the yarn handle. A free pin needs a body first, so moving wins the gesture.
+ * Dragging it starts a string, exactly like an anchored pin's tack. A pin is a
+ * place yarn attaches to, not a thing you shove around — so the drag gesture
+ * means the same thing wherever the pin happens to be, and you never have to
+ * remember which kind of pin you are looking at.
+ *
+ * That does mean a lone free pin cannot be repositioned by dragging it. Moving
+ * pins is done by selecting them along with something draggable and moving the
+ * selection.
  */
 function FreePin({
   pin,
-  zoom,
   selected,
   dimmed,
-  onDrag,
+  onPointerDown,
 }: {
   pin: PinView
-  zoom: number
   selected: boolean
   dimmed: boolean
-  onDrag: (id: string, delta: Point) => void
+  onPointerDown: (event: React.PointerEvent) => void
 }) {
-  const drag = useBoardDrag({
-    zoom,
-    onDrag: (delta) => onDrag(pin.id, delta),
-  })
-
   if (!pin.board) return null
 
   return (
     <button
       type="button"
       data-pin-id={pin.id}
-      {...drag}
-      className={`tack tack-enter absolute h-3.5 w-3.5 cursor-grab rounded-full active:cursor-grabbing ${
+      onPointerDown={onPointerDown}
+      className={`tack tack-enter absolute h-3.5 w-3.5 cursor-crosshair rounded-full ${
         selected ? 'is-selected' : ''
       }`}
       data-status="free"
@@ -1190,7 +1169,7 @@ function FreePin({
         touchAction: 'none',
         opacity: dimmed ? 0.2 : 1,
       }}
-      title={pin.body || 'Empty pin — drag to move, right-click to write'}
+      title={pin.body || 'Empty pin — drag to another pin to connect, right-click to write'}
       aria-label={`Pin on the board${pin.body ? `: ${pin.body}` : ''}`}
     />
   )
