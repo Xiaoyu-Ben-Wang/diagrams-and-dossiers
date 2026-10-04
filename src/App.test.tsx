@@ -504,6 +504,34 @@ describe('App — pin descriptions', () => {
     expect((await screen.findByRole('tooltip')).textContent).toContain('The ferryman was lying.')
   })
 
+  it('drops the hover card when the camera moves under it', async () => {
+    // The card measures its pin's screen position when it appears, and a zoom
+    // relocates every pin without firing the scroll event the card listens for.
+    // Left alone it would sit where the pin used to be, pointing at nothing.
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })
+
+    const tack = container.querySelector('button[data-pin-id]') as HTMLElement
+    fireEvent.pointerEnter(tack)
+    expect(await screen.findByRole('tooltip')).toBeTruthy()
+
+    fireEvent.wheel(screen.getByTestId('board-canvas'), {
+      deltaY: -200,
+      clientX: 300,
+      clientY: 200,
+    })
+
+    expect(screen.queryByRole('tooltip')).toBeNull()
+  })
+
+  it('describes each pin by the card it will produce', () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })
+
+    const tack = container.querySelector('button[data-pin-id]') as HTMLElement
+    expect(tack.getAttribute('aria-describedby')).toMatch(/^pin-tooltip-/)
+  })
+
   it('offers Move pin in the editor', () => {
     const { container } = render(<App />)
     fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })

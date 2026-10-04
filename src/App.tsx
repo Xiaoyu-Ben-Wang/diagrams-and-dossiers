@@ -20,7 +20,7 @@ import { useBoardDrag } from './board/useBoardDrag'
 import { ContextMenu, type ContextMenuEntry } from './board/ContextMenu'
 import { GridLayer } from './board/GridLayer'
 import { PaperEditor } from './board/PaperEditor'
-import { PinTooltip } from './board/PinTooltip'
+import { PinTooltip, pinTooltipId } from './board/PinTooltip'
 import { PinEditor } from './board/PinEditor'
 import { TimelineRibbon } from './board/TimelineRibbon'
 import {
@@ -785,6 +785,19 @@ export function App() {
     )
   }, [])
 
+  /**
+   * Drop the hover card whenever the camera moves.
+   *
+   * The card measures where its pin is on screen when it appears, and a zoom or
+   * pan relocates every pin without firing a scroll event — the one thing the
+   * card listens for. Left alone it would sit where the pin used to be, pointing
+   * at nothing. Clearing is cheap: the pointer re-enters the tack and the card
+   * comes straight back, correctly placed.
+   */
+  useEffect(() => {
+    setHovered(null)
+  }, [camera])
+
   const handlePinHover = useCallback((pin: PinView, element: Element | null) => {
     setHovered(element ? { id: pin.id, element } : null)
   }, [])
@@ -1328,6 +1341,9 @@ function Tack({
       {...(moving ? drag : { onPointerDown: onStartYarn })}
       onPointerEnter={(event) => onHover(pin, event.currentTarget)}
       onPointerLeave={() => onHover(pin, null)}
+      // The id only exists while the card is mounted, which aria-describedby
+      // ignores — so this is safe to declare unconditionally.
+      aria-describedby={pinTooltipId(pin.id)}
       className={`tack tack-enter absolute h-3.5 w-3.5 rounded-full ${
         moving ? 'cursor-grabbing' : 'cursor-crosshair'
       } ${selected ? 'is-selected' : ''}`}
