@@ -248,20 +248,20 @@ export function PinTooltip({ pin, anchor, delay = PIN_TOOLTIP_DELAY_MS }: PinToo
       return
     }
 
-    const card = cardRef.current
-    const box = card?.getBoundingClientRect()
+    const box = cardRef.current?.getBoundingClientRect()
     // jsdom has no layout at all — every box is zero, which would park the
     // card at the corner. Staying unplaced keeps the tests honest about
     // placement: the maths is tested directly, not through a fake DOM.
-    if (!card || !box || box.width === 0 || box.height === 0) return
+    if (!box || box.width === 0 || box.height === 0) return
 
     const rect = anchor?.getBoundingClientRect()
     if (!rect) return
 
-    const next = placeTooltip(rect, { width: box.width, height: box.height }, {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    })
+    const next = placeTooltip(
+      rect,
+      { width: box.width, height: box.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    )
     setPosition((previous) => (samePosition(previous, next) ? previous : next))
   }, [shown, pin, anchor])
 

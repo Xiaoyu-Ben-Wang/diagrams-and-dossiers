@@ -20,6 +20,7 @@ import { useBoardDrag } from './board/useBoardDrag'
 import { ContextMenu, type ContextMenuEntry } from './board/ContextMenu'
 import { GridLayer } from './board/GridLayer'
 import { PaperEditor } from './board/PaperEditor'
+import { PinTooltip } from './board/PinTooltip'
 import { PinEditor } from './board/PinEditor'
 import { TimelineRibbon } from './board/TimelineRibbon'
 import {
@@ -106,6 +107,8 @@ interface PinView {
   /** 'free' is a pin stuck straight into the board rather than into text. */
   status: 'exact' | 'repaired' | 'orphaned' | 'free'
   detail: string
+  /** In-world date, shown in the hover card. */
+  dateLabel: string
   /** Position within the paper, for a pin anchored to text. */
   rect: AnchorRect | null
   /** Position in board space, for a pin stuck into the board itself. */
@@ -219,6 +222,8 @@ export function App() {
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set())
   /** The pin currently being repositioned, or null. A mode, not a permanent tool. */
   const [movingPin, setMovingPin] = useState<string | null>(null)
+  /** The pin under the pointer, and the element the hover card anchors to. */
+  const [hovered, setHovered] = useState<{ id: string; element: Element } | null>(null)
   /** Where the article sits in board space. Its own position, like any object. */
   const [paperPos, setPaperPos] = useState<Point>({ x: 0, y: 0 })
   const paperPosRef = useRef(paperPos)
@@ -303,6 +308,7 @@ export function App() {
           id: item.id,
           quote: item.anchor?.quote ?? '',
           body: item.body,
+          dateLabel: item.dateLabel,
           nudge: item.nudge ?? { x: 0, y: 0 },
         }
 
@@ -749,6 +755,10 @@ export function App() {
     )
   }, [])
 
+  const handlePinHover = useCallback((pin: PinView, element: Element | null) => {
+    setHovered(element ? { id: pin.id, element } : null)
+  }, [])
+
   const setPinBody = useCallback((id: string, body: string) => {
     setPlaced((previous) => previous.map((item) => (item.id === id ? { ...item, body } : item)))
   }, [])
@@ -1076,6 +1086,7 @@ export function App() {
                             zoom={camera.zoom}
                             onStartYarn={(event) => beginString(event, pin)}
                             onMove={movePinBy}
+                            onHover={handlePinHover}
                           />
                         ) : null,
                       )}
@@ -1099,6 +1110,7 @@ export function App() {
                       zoom={camera.zoom}
                       onStartYarn={(event) => beginString(event, pin)}
                       onMove={movePinBy}
+                      onHover={handlePinHover}
                     />
                   ) : null,
                 )}
@@ -1154,6 +1166,28 @@ export function App() {
           />
         </footer>
       )}
+
+      {/* The hover card stands down while the editor is open or a pin is being
+          dragged: in both cases you already have the pin's contents in front of
+          you, and a card following the cursor would just be in the way. */}
+      <PinTooltip
+        pin={
+          hovered && !editingPin && !movingPin
+            ? (() => {
+                const pin = byId.get(hovered.id)
+                return pin
+                  ? {
+                      id: pin.id,
+                      quote: pin.quote,
+                      body: pin.body,
+                      dateLabel: pin.dateLabel,
+                    }
+                  : null
+              })()
+            : null
+        }
+        anchor={hovered?.element ?? null}
+      />
 
       {movingPin && (
         <div
@@ -1236,6 +1270,7 @@ function Tack({
   zoom,
   onStartYarn,
   onMove,
+  onHover,
 }: {
   pin: PinView
   x: number
@@ -1246,6 +1281,7 @@ function Tack({
   zoom: number
   onStartYarn: (event: React.PointerEvent) => void
   onMove: (id: string, delta: Point) => void
+  onHover: (pin: PinView, element: Element | null) => void
 }) {
   const drag = useBoardDrag({
     zoom,
@@ -1260,6 +1296,8 @@ function Tack({
       data-pin-id={pin.id}
       data-described={described ? 'true' : undefined}
       {...(moving ? drag : { onPointerDown: onStartYarn })}
+      onPointerEnter={(event) => onHover(pin, event.currentTarget)}
+      onPointerLeave={() => onHover(pin, null)}
       className={`tack tack-enter absolute h-3.5 w-3.5 rounded-full ${
         moving ? 'cursor-grabbing' : 'cursor-crosshair'
       } ${selected ? 'is-selected' : ''}`}

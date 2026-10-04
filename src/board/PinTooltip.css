@@ -1,0 +1,114 @@
+/* The pin hover card: a scrap of parchment held beside a tack.
+ *
+ * Text uses the ink tokens, NOT --color-board-ink. The card's background is
+ * the parchment ramp, which is fixed across themes, while board-ink is
+ * theme-aware and would go pale-on-pale against parchment in dark mode. The
+ * board-ink pair belongs to text laid directly on the board, which this is
+ * not. */
+
+.pin-tooltip {
+  position: fixed;
+  /* Above the board, below the pin editor (z-50) and the context menu
+     (z-1000): when either opens, it owns the interaction and must paint over
+     the card. */
+  z-index: 40;
+  /* The cursor must always be able to reach the tack underneath — the card is
+     a sign, never a target. */
+  pointer-events: none;
+  max-width: 264px;
+  padding: 7px 11px 8px 12px;
+  border: 1px solid var(--color-parchment-edge);
+  /* A hair off square at one corner: machine-cut rectangles read as a browser
+     tooltip. */
+  border-radius: 3px 7px 3px 6px;
+  border-left: 2px solid rgb(201 162 39 / 0.75);
+  background-color: var(--color-parchment-100);
+  background-image: linear-gradient(155deg, rgb(255 255 255 / 0.45), transparent 52%);
+  box-shadow:
+    0 12px 24px -12px rgb(0 0 0 / 0.65),
+    0 2px 6px rgb(0 0 0 / 0.3),
+    0 1px 0 rgb(255 255 255 / 0.5) inset;
+  color: var(--color-ink);
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-size: 11.5px;
+  line-height: 1.4;
+  /* Unplaced until measured; the modifier below fades it in. */
+  opacity: 0;
+  transition: opacity 80ms ease-out;
+}
+
+.pin-tooltip--placed {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pin-tooltip {
+    transition: none;
+  }
+}
+
+/* The little diamond that leans towards the pin. It carries only the two
+   borders on its outward faces, so it reads as a continuation of the card's
+   edge rather than a pasted-on square, and it covers the border beneath it. */
+.pin-tooltip__tail {
+  position: absolute;
+  left: var(--tail-x, 50%);
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  background: var(--color-parchment-100);
+  transform: rotate(45deg);
+}
+
+.pin-tooltip[data-side='below'] .pin-tooltip__tail {
+  top: -5px;
+  border-top: 1px solid var(--color-parchment-edge);
+  border-left: 1px solid var(--color-parchment-edge);
+}
+
+.pin-tooltip[data-side='above'] .pin-tooltip__tail {
+  bottom: -5px;
+  border-right: 1px solid var(--color-parchment-edge);
+  border-bottom: 1px solid var(--color-parchment-edge);
+}
+
+.pin-tooltip__quote {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-style: italic;
+}
+
+.pin-tooltip__body {
+  margin: 3px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* A note can run to a wall of text. A hover card is a glance, and one taller
+     than the viewport could not stay on screen however it is placed — so cap
+     it and let the editor keep the full note. */
+  display: -webkit-box;
+  -webkit-line-clamp: 8;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pin-tooltip__date {
+  margin: 5px 0 0;
+  padding-top: 4px;
+  border-top: 1px solid rgb(201 180 138 / 0.5);
+  color: var(--color-ink-soft);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* A tack head, echoing the pin this card belongs to. */
+.pin-tooltip__date::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f4e2a1, var(--color-brass) 55%, #7a5f12);
+  vertical-align: 1px;
+}

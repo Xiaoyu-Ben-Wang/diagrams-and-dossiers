@@ -24,8 +24,6 @@ function needsPolling(): boolean {
   }
 }
 
-console.error('[PROBE] cwd=', process.cwd(), 'poll=', needsPolling(), 'statfs=', (() => { try { return '0x' + statfsSync(process.cwd()).type.toString(16) } catch (e) { return 'THREW ' + e.message } })())
-
 const watch = needsPolling()
   ? {
       usePolling: true,

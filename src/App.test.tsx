@@ -435,6 +435,32 @@ describe('App — pin descriptions', () => {
     ).toBeNull()
   })
 
+  it('shows a hover card on a pin, far sooner than the native tooltip', async () => {
+    // The point of the card is the speed: the browser's own tooltip takes about
+    // a second, which is useless when scanning a board.
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })
+
+    const tack = container.querySelector('button[data-pin-id]') as HTMLElement
+    fireEvent.pointerEnter(tack)
+
+    const card = await screen.findByRole('tooltip')
+    expect(card).toBeTruthy()
+  })
+
+  it('shows the written description in the hover card', async () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })
+    openPinEditor(container)
+    fireEvent.change(screen.getByLabelText('Pin note'), {
+      target: { value: 'The ferryman was lying.' },
+    })
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    fireEvent.pointerEnter(container.querySelector('button[data-pin-id]') as HTMLElement)
+    expect((await screen.findByRole('tooltip')).textContent).toContain('The ferryman was lying.')
+  })
+
   it('offers Move pin in the editor', () => {
     const { container } = render(<App />)
     fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true, clientX: 300, clientY: 200 })
