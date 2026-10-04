@@ -17,7 +17,7 @@ A demo board renders a real markdown article where you can pin any word, drag ya
 scrub the campaign chronology, and watch pins find their way back when you edit the article
 around them. The same pins appear as margin markers in the wiki view.
 
-Not yet built: accounts, persistence, realtime, case files, and the ambient theme.
+Not yet built: accounts, persistence, realtime, and case files.
 See [`docs/architecture.md`](docs/architecture.md) for the full design.
 
 ## What it does
@@ -92,6 +92,7 @@ know about yet dim out.
 | `src/board/TimelineRibbon.tsx` | The tape strip. |
 | `src/wiki/layout.ts` | Pushing clustered margin markers apart so they stay reachable. |
 | `src/wiki/WikiView.tsx` | The reader — same article, same pins, different rendering. |
+| `src/theme/motes.ts` | Dust and candle flicker, as pure simulation. |
 | `src/App.tsx` | The demo board. |
 
 Start with `projection.ts` — everything else depends on the definition it sets.

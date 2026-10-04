@@ -10,6 +10,7 @@ export default defineConfig({
     // `@vitest-environment jsdom` docblock where they need a DOM.
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}'],
+    setupFiles: ['src/test/setup.ts'],
     // Needed so @testing-library/react registers its automatic cleanup between
     // tests; without it, renders accumulate and queries match stale trees.
     globals: true,

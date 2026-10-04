@@ -14,7 +14,9 @@ import {
 import { resolveAnchor } from './anchors/resolve'
 import type { TextAnchor } from './anchors/types'
 import { WikiView } from './wiki/WikiView'
+import { IDENTITY_CAMERA } from './board/camera'
 import { TimelineRibbon } from './board/TimelineRibbon'
+import { Ambient } from './theme/Ambient'
 import { activeAt, buildTimeline, clusterTimeline, type TimelineEntry } from './board/timeline'
 import {
   colorForPair,
@@ -430,8 +432,12 @@ export function App() {
   })
 
   return (
-    <div className="cork min-h-full p-5 lg:p-8">
-      <div className="mx-auto max-w-[1500px]">
+    <div className="cork relative min-h-full p-5 lg:p-8">
+      {/* Dust and candlelight. Sits behind everything and takes no pointer
+          events, so it never competes with the board for clicks. */}
+      <Ambient camera={IDENTITY_CAMERA} />
+
+      <div className="relative mx-auto max-w-[1500px]">
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-parchment-100">
