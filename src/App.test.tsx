@@ -37,6 +37,32 @@ describe('App', () => {
     expect(container.querySelector('script')).toBeNull()
   })
 
+  it('renders wikilinks as anchors, without their brackets', () => {
+    const { container } = render(<App />)
+    const article = container.querySelector('.article')!
+    const links = article.querySelectorAll('a.wikilink')
+
+    expect(links.length).toBeGreaterThan(0)
+    // The brackets are consumed — this is why linkifying must run before the
+    // article is projected for anchoring.
+    expect(article.textContent).not.toContain('[[')
+    expect(article.textContent).toContain('Molgar the Pale')
+  })
+
+  it('marks a link to a missing article rather than dropping it', () => {
+    const { container } = render(<App />)
+    // [[The Sea Ghost]] is deliberately not in the demo index.
+    const missing = container.querySelectorAll('.article a.wikilink-missing')
+    expect(missing.length).toBeGreaterThan(0)
+    expect(missing[0].textContent).toBe('Sea Ghost')
+  })
+
+  it('gives wikilinks an href so they are keyboard reachable', () => {
+    const { container } = render(<App />)
+    const link = container.querySelector('.article a.wikilink')!
+    expect(link.getAttribute('href')).toBeTruthy()
+  })
+
   it('shows the chronology ribbon', () => {
     render(<App />)
     expect(screen.getByTestId('timeline-ribbon')).toBeTruthy()

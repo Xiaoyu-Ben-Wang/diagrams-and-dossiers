@@ -236,6 +236,30 @@ body {
   font-weight: 600;
 }
 
+/* Wikilinks. Dotted rather than solid, so a link reads as a thread you could
+   pull rather than a conventional hyperlink dropped into the prose. */
+.article .wikilink {
+  color: #7a4a12;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.article .wikilink:hover {
+  background: rgb(201 162 39 / 0.2);
+  border-radius: 2px;
+}
+
+/* A link to an article that doesn't exist yet — "red link". Kept visible
+   rather than dropped, because a wiki that silently swallows your typo is one
+   where you never find out you made it. */
+.article .wikilink-missing {
+  color: var(--color-wax);
+  text-decoration-style: dashed;
+}
+
 /* Repeatedly-animated entrance for a freshly placed pin. Transform and opacity
    only, so it stays on the compositor. */
 @keyframes tack-in {

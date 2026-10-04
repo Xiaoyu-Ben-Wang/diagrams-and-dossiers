@@ -14,6 +14,8 @@ import {
 import { resolveAnchor } from './anchors/resolve'
 import type { TextAnchor } from './anchors/types'
 import { WikiView } from './wiki/WikiView'
+import { linkifyHtml, wikiLinkFromEvent } from './wiki/linkify'
+import { slugify } from './wiki/links'
 import { IDENTITY_CAMERA } from './board/camera'
 import { TimelineRibbon } from './board/TimelineRibbon'
 import { Ambient } from './theme/Ambient'
@@ -32,9 +34,9 @@ const INITIAL_MARKDOWN = `# The Drowned Bell
 
 **Session 12** — 3rd of Eleint, 1492 DR
 
-The party returned to **Saltmarsh** with the bell they pulled from the
-*Sea Ghost*. Molgar paid the ferryman in silver and said nothing at all
-about the water.
+The party returned to [[Saltmarsh]] with the bell they pulled from the
+[[The Sea Ghost|Sea Ghost]]. [[Molgar the Pale]] paid the ferryman in
+silver and said nothing at all about the water.
 
 ## What we know
 
@@ -44,9 +46,20 @@ about the water.
 
 > "The tide keeps what it takes," the ferryman said.
 
-The **Black Coin** came up twice: once from the ferryman, and once in
-the ledger, in a hand nobody recognised.
+The [[The Black Coin|Black Coin]] came up twice: once from the ferryman,
+and once in the ledger, in a hand nobody recognised.
 `
+
+/**
+ * The demo's article index. In the real app this comes from the database; here
+ * it exists so links resolve (and, for [[The Sea Ghost]], deliberately don't).
+ */
+const DEMO_ARTICLES = [
+  { slug: 'saltmarsh', title: 'Saltmarsh' },
+  { slug: 'molgar-the-pale', title: 'Molgar the Pale' },
+  { slug: 'the-black-coin', title: 'The Black Coin' },
+  { slug: 'the-drowned-bell', title: 'The Drowned Bell' },
+]
 
 /** How much rope a string has, as a fraction of the gap it spans. */
 const SLACK = 0.18
@@ -143,9 +156,26 @@ export function App() {
   const originRef = useRef<Point | null>(null)
   const frameRef = useRef<number>(0)
 
+  const resolveWikiTarget = useCallback((target: string) => {
+    const wanted = slugify(target)
+    return (
+      DEMO_ARTICLES.find(
+        (article) =>
+          article.slug === wanted || article.title.toLowerCase() === target.toLowerCase(),
+      )?.slug ?? null
+    )
+  }, [])
+
+  // Sanitize, then linkify — in that order, and both before the article reaches
+  // the DOM. Linkifying *after* the article was projected would shift every
+  // offset below a link by the width of the brackets it removes, and every pin
+  // under it would land on the wrong words.
   const html = useMemo(
-    () => DOMPurify.sanitize(marked.parse(source, { async: false })),
-    [source],
+    () =>
+      linkifyHtml(DOMPurify.sanitize(marked.parse(source, { async: false })), {
+        resolve: resolveWikiTarget,
+      }),
+    [source, resolveWikiTarget],
   )
 
   // Measure nothing until webfonts have loaded. Measuring against fallback
@@ -215,6 +245,16 @@ export function App() {
   }, [html, placed, fontsLoaded])
 
   const handleArticleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    // A click on a wikilink navigates. It must not also drop a pin — the two
+    // gestures share a surface, and pinning on every attempt to follow a link
+    // would make the board unusable.
+    const link = wikiLinkFromEvent(event.nativeEvent)
+    if (link) {
+      event.preventDefault()
+      setView('wiki')
+      return
+    }
+
     const projection = projectionRef.current
     const element = articleRef.current
     if (!projection || !element) return
