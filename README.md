@@ -67,9 +67,22 @@ npm test           # 147 tests
 npm run typecheck
 ```
 
+**Navigation is Miro-shaped:**
+
+| Gesture | Does |
+|---|---|
+| Scroll | Zoom, anchored at the cursor |
+| Right-drag or middle-drag | Pan |
+| Right-click a pin | Write on it |
+| Left-click a word | Pin it |
+| Drag tack → tack | Run yarn |
+
 **Try the thesis:** click a word in the article to pin it, then press *Insert a sentence above*.
 The pin moves with its words and stays brass-coloured. Press *Delete the pinned sentence* and the
 pin goes red and drops into the loose-pins tray rather than silently landing somewhere wrong.
+
+Right-drag and right-click share a button, so they're told apart by travel: a press that moves
+more than 5px pans, one that doesn't opens the note.
 
 **Try the yarn:** drag from one brass tack to another. The string trails your cursor with spring
 lag, then sags.
@@ -86,8 +99,10 @@ know about yet dim out.
 | `src/anchors/create.ts` | Turning a click into an anchor, including word snapping. |
 | `src/anchors/resolve.ts` | The resolution ladder: exact → windowed → global → orphaned. |
 | `src/anchors/dom.ts` | The bridge to real DOM nodes, and the block-separator rule. |
+| `src/board/BoardCanvas.tsx` | The infinite canvas: wheel zoom, right/middle pan, context clicks. |
 | `src/board/yarn.ts` | Rope sag, bezier control points, springs, stable colours. |
 | `src/board/camera.ts` | The board/screen transform and fit-bounds framing. |
+| `src/board/PinEditor.tsx` | The note card behind a pin. |
 | `src/board/timeline.ts` | Ordering, scrubbing, and session clustering. |
 | `src/board/TimelineRibbon.tsx` | The tape strip. |
 | `src/wiki/layout.ts` | Pushing clustered margin markers apart so they stay reachable. |

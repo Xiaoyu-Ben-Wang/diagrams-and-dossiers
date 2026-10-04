@@ -13,12 +13,10 @@ import {
 } from './anchors/dom'
 import { resolveAnchor } from './anchors/resolve'
 import type { TextAnchor } from './anchors/types'
-import { WikiView } from './wiki/WikiView'
-import { linkifyHtml, wikiLinkFromEvent } from './wiki/linkify'
-import { slugify } from './wiki/links'
-import { IDENTITY_CAMERA } from './board/camera'
+import { BoardCanvas } from './board/BoardCanvas'
+import { PinEditor } from './board/PinEditor'
 import { TimelineRibbon } from './board/TimelineRibbon'
-import { Ambient } from './theme/Ambient'
+import { IDENTITY_CAMERA, type Camera, type Rect } from './board/camera'
 import { activeAt, buildTimeline, clusterTimeline, type TimelineEntry } from './board/timeline'
 import {
   colorForPair,
@@ -29,6 +27,10 @@ import {
   type Point,
   type YarnColor,
 } from './board/yarn'
+import { Ambient } from './theme/Ambient'
+import { WikiView } from './wiki/WikiView'
+import { linkifyHtml, wikiLinkFromEvent } from './wiki/linkify'
+import { slugify } from './wiki/links'
 
 const INITIAL_MARKDOWN = `# The Drowned Bell
 
@@ -68,10 +70,16 @@ const SLACK = 0.18
 const SNAP_RADIUS = 34
 
 /**
+ * Paper width in board space. Locked rather than responsive, because text
+ * reflow would move every anchor — see `projection.ts`. The camera scales the
+ * whole board instead, so text metrics never change with zoom.
+ */
+const PAPER_WIDTH = 720
+
+/**
  * Demo dates. A real board takes these from the item's own `date_label` and
  * `occurred_at`; here each pin lands a fortnight after the last, so the
- * chronology fills in as you place pins and the session clustering has
- * something honest to work with.
+ * chronology fills in as you place pins.
  */
 const CAMPAIGN_EPOCH = Date.UTC(2026, 0, 10)
 const SESSION_GAP_MS = 14 * 24 * 60 * 60 * 1000
@@ -80,6 +88,7 @@ const FIRST_SESSION = 12
 interface PinView {
   id: string
   quote: string
+  body: string
   status: 'exact' | 'repaired' | 'orphaned'
   detail: string
   rect: AnchorRect | null
@@ -88,9 +97,8 @@ interface PinView {
 interface PlacedAnchor {
   id: string
   anchor: TextAnchor
-  /** Sortable date driving the chronology. */
+  body: string
   occurredAt: number
-  /** What the ribbon displays verbatim. */
   dateLabel: string
 }
 
@@ -124,7 +132,7 @@ function caretRangeFromPoint(x: number, y: number): Range | null {
   return range
 }
 
-/** The tack's centre, in the article's coordinate space. */
+/** The tack's centre, in paper coordinates. */
 function tackPoint(rect: AnchorRect): Point {
   return { x: rect.x + rect.width - 6 + 7, y: rect.y - 5 + 7 }
 }
@@ -135,15 +143,16 @@ export function App() {
   const [pins, setPins] = useState<PinView[]>([])
   const [strings, setStrings] = useState<StringView[]>([])
   const [dragFrom, setDragFrom] = useState<string | null>(null)
-  // Environments without the Font Loading API (jsdom, some embedded webviews)
-  // have no webfonts to wait for, so start settled. Waiting on a promise that
-  // will never resolve would leave the board permanently unmeasured.
   const [fontsLoaded, setFontsLoaded] = useState(() => !globalThis.document?.fonts)
   const [cursor, setCursor] = useState(CAMPAIGN_EPOCH)
   const [playing, setPlaying] = useState(false)
   const [view, setView] = useState<'board' | 'wiki'>('board')
+  const [camera, setCamera] = useState<Camera>(IDENTITY_CAMERA)
+  const [editing, setEditing] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [paperRect, setPaperRect] = useState<Rect | null>(null)
 
   const articleRef = useRef<HTMLDivElement>(null)
+  const paperRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const livePathRef = useRef<SVGPathElement>(null)
   const projectionRef = useRef<DomProjection | null>(null)
@@ -155,6 +164,8 @@ export function App() {
   const targetRef = useRef<Point>({ x: 0, y: 0 })
   const originRef = useRef<Point | null>(null)
   const frameRef = useRef<number>(0)
+  const cameraZoomRef = useRef(camera.zoom)
+  cameraZoomRef.current = camera.zoom
 
   const resolveWikiTarget = useCallback((target: string) => {
     const wanted = slugify(target)
@@ -192,6 +203,23 @@ export function App() {
     }
   }, [])
 
+  // The paper's size in board space, so the canvas can frame it on first mount.
+  useLayoutEffect(() => {
+    const paper = paperRef.current
+    if (!paper || !fontsLoaded) return
+
+    const measure = (): void => {
+      const width = paper.offsetWidth
+      const height = paper.offsetHeight
+      if (width > 0 && height > 0) setPaperRect({ x: 0, y: 0, width, height })
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(paper)
+    return () => observer.disconnect()
+  }, [fontsLoaded])
+
   // After every render of the article, re-project the DOM and re-resolve every
   // anchor against the current text. This is the thesis in one effect: edit the
   // source, and the pins find their own way back.
@@ -203,13 +231,13 @@ export function App() {
     projectionRef.current = projection
 
     setPins(
-      placed.map(({ id, anchor }) => {
-        const result = resolveAnchor(projection.flat.text, anchor)
+      placed.map((item) => {
+        const result = resolveAnchor(projection.flat.text, item.anchor)
+        const base = { id: item.id, quote: item.anchor.quote, body: item.body }
 
         if (result.status === 'orphaned') {
           return {
-            id,
-            quote: anchor.quote,
+            ...base,
             status: 'orphaned' as const,
             detail:
               result.reason === 'empty-quote'
@@ -224,18 +252,11 @@ export function App() {
         const first = rects[0] ?? null
 
         if (result.status === 'exact') {
-          return {
-            id,
-            quote: anchor.quote,
-            status: 'exact' as const,
-            detail: 'unchanged',
-            rect: first,
-          }
+          return { ...base, status: 'exact' as const, detail: 'unchanged', rect: first }
         }
 
         return {
-          id,
-          quote: anchor.quote,
+          ...base,
           status: 'repaired' as const,
           detail: `${result.reason.replace('-', ' ')} · ${Math.round(result.confidence * 100)}% context match`,
           rect: first,
@@ -270,11 +291,13 @@ export function App() {
 
     setPlaced((previous) => {
       const session = FIRST_SESSION + previous.length
+      const id = crypto.randomUUID()
       return [
         ...previous,
         {
-          id: crypto.randomUUID(),
+          id,
           anchor,
+          body: '',
           occurredAt: CAMPAIGN_EPOCH + previous.length * SESSION_GAP_MS,
           dateLabel: `Session ${session}, 1492 DR`,
         },
@@ -282,11 +305,18 @@ export function App() {
     })
   }, [])
 
-  /** Pointer position in the article's coordinate space. */
+  /**
+   * Pointer position in paper coordinates.
+   *
+   * The overlay is inside a scaled transform, so `getBoundingClientRect` returns
+   * a *scaled* box. Dividing the screen offset by the zoom converts back to the
+   * unscaled space the yarn paths are drawn in.
+   */
   const localPoint = useCallback((clientX: number, clientY: number): Point => {
     const box = overlayRef.current?.getBoundingClientRect()
     if (!box) return { x: 0, y: 0 }
-    return { x: clientX - box.left, y: clientY - box.top }
+    const zoom = cameraZoomRef.current || 1
+    return { x: (clientX - box.left) / zoom, y: (clientY - box.top) / zoom }
   }, [])
 
   /**
@@ -294,8 +324,8 @@ export function App() {
    *
    * One rAF loop for the whole board, running only while a string is actually
    * being drawn. It writes the path's `d` attribute directly rather than going
-   * through React — a setState per frame would re-render every pin on the
-   * board sixty times a second.
+   * through React — a setState per frame would re-render every pin sixty times
+   * a second.
    */
   const runClock = useCallback(() => {
     const origin = originRef.current
@@ -341,7 +371,6 @@ export function App() {
 
       const drop = localPoint(event.clientX, event.clientY)
 
-      // Snap to whichever other pin is nearest the drop, within slop.
       let nearest: { id: string; distance: number } | null = null
       for (const pin of pins) {
         if (pin.id === dragFrom || !pin.rect) continue
@@ -357,8 +386,7 @@ export function App() {
         const to = nearest.id
         setStrings((previous) => {
           const exists = previous.some(
-            (s) =>
-              (s.from === from && s.to === to) || (s.from === to && s.to === from),
+            (s) => (s.from === from && s.to === to) || (s.from === to && s.to === from),
           )
           if (exists) return previous
           return [...previous, { id: crypto.randomUUID(), from, to, color: colorForPair(from, to) }]
@@ -374,6 +402,26 @@ export function App() {
 
   useEffect(() => () => cancelAnimationFrame(frameRef.current), [])
 
+  /** A right-click that didn't drag: open the editor for the pin under it. */
+  const handleContextTarget = useCallback(
+    ({ clientX, clientY, target }: { clientX: number; clientY: number; target: EventTarget | null }) => {
+      const element = target instanceof Element ? target : null
+      const id = element?.closest('[data-pin-id]')?.getAttribute('data-pin-id')
+      if (id) setEditing({ id, x: clientX, y: clientY })
+    },
+    [],
+  )
+
+  const setPinBody = useCallback((id: string, body: string) => {
+    setPlaced((previous) => previous.map((item) => (item.id === id ? { ...item, body } : item)))
+  }, [])
+
+  const removePin = useCallback((id: string) => {
+    setPlaced((previous) => previous.filter((item) => item.id !== id))
+    setStrings((previous) => previous.filter((s) => s.from !== id && s.to !== id))
+    setEditing(null)
+  }, [])
+
   const insertAbove = useCallback(() => {
     setSource((current) =>
       current.replace(
@@ -386,7 +434,7 @@ export function App() {
   const rewriteEnding = useCallback(() => {
     setSource((current) =>
       current.replace(
-        /The \*\*Black Coin\*\*[^\n]*\n?[^\n]*\n?/,
+        /The \[\[The Black Coin\|Black Coin\]\][^\n]*\n?[^\n]*\n?/,
         'Nobody would say the name aloud.\n',
       ),
     )
@@ -395,6 +443,7 @@ export function App() {
   const clearAll = useCallback(() => {
     setPlaced([])
     setStrings([])
+    setEditing(null)
   }, [])
 
   const timeline = useMemo(
@@ -435,7 +484,6 @@ export function App() {
 
   const togglePlay = useCallback(() => {
     if (!playing && clusters.length > 0) {
-      // Pressing play at the end restarts the recap rather than doing nothing.
       const last = clusters[clusters.length - 1]
       if (cursor >= last.start) setCursor(clusters[0].start)
     }
@@ -445,16 +493,7 @@ export function App() {
   const byId = useMemo(() => new Map(pins.map((pin) => [pin.id, pin])), [pins])
   /** Dimming only applies once there is a chronology to walk through. */
   const dimming = placed.length > 0
-  const anchored = pins.filter((pin) => pin.rect)
-  const orphaned = pins.filter((pin) => pin.status === 'orphaned')
-  const repaired = pins.filter((pin) => pin.status === 'repaired').length
 
-  /**
-   * Strings whose endpoints both still resolve.
-   *
-   * Keeps the pin ids alongside the resolved points: the endpoints are what get
-   * drawn, but the ids are what the timeline compares against.
-   */
   const drawableStrings = strings.flatMap((string) => {
     const from = byId.get(string.from)
     const to = byId.get(string.to)
@@ -471,25 +510,27 @@ export function App() {
     ]
   })
 
-  return (
-    <div className="cork relative min-h-full p-5 lg:p-8">
-      {/* Dust and candlelight. Sits behind everything and takes no pointer
-          events, so it never competes with the board for clicks. */}
-      <Ambient camera={IDENTITY_CAMERA} />
+  const anchored = pins.filter((pin) => pin.rect)
+  const orphaned = pins.filter((pin) => pin.status === 'orphaned')
+  const repaired = pins.filter((pin) => pin.status === 'repaired').length
+  const editingPin = editing ? byId.get(editing.id) : null
 
-      <div className="relative mx-auto max-w-[1500px]">
-        <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+  return (
+    <div className="cork relative min-h-full">
+      <Ambient camera={camera} />
+
+      <div className="relative flex min-h-full flex-col">
+        <header className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 lg:px-8 lg:pt-8">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-parchment-100">
               The Case Board
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-parchment-300/80">
-              Click any word to pin it. Drag from one brass tack to another to run a string
-              between them. Then edit the article above a pin and watch where it lands.
+              Click a word to pin it · drag tack to tack to run yarn · right-click a pin to write on
+              it · scroll to zoom, right- or middle-drag to pan
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {/* The same article, the same pins, two renderings. */}
             <div
               className="flex overflow-hidden rounded border border-brass/40"
               role="group"
@@ -533,158 +574,158 @@ export function App() {
         </header>
 
         {view === 'wiki' ? (
-          <WikiView
-            html={html}
-            pins={placed.map((item) => ({
-              id: item.id,
-              anchor: item.anchor,
-              dateLabel: item.dateLabel,
-            }))}
-            activeIds={activeIds}
-            dimming={dimming}
-            fontsLoaded={fontsLoaded}
-            onShowOnBoard={() => setView('board')}
-          />
-        ) : (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
-          <section className="flex flex-col">
-            <h2 className="mb-2 text-xs font-semibold tracking-[0.14em] text-brass uppercase">
-              Markdown source
-            </h2>
-            <textarea
-              value={source}
-              onChange={(event) => setSource(event.target.value)}
-              spellCheck={false}
-              className="editor h-[620px] resize-none rounded p-4 text-[13px]"
-              aria-label="Article markdown source"
+          <div className="px-5 pt-6 lg:px-8">
+            <WikiView
+              html={html}
+              pins={placed.map((item) => ({
+                id: item.id,
+                anchor: item.anchor,
+                dateLabel: item.dateLabel,
+              }))}
+              activeIds={activeIds}
+              dimming={dimming}
+              fontsLoaded={fontsLoaded}
+              onShowOnBoard={() => setView('board')}
             />
-          </section>
+          </div>
+        ) : (
+          <div className="mt-5 grid flex-1 gap-5 px-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:px-8">
+            <section className="flex flex-col">
+              <h2 className="mb-2 text-xs font-semibold tracking-[0.14em] text-brass uppercase">
+                Markdown source
+              </h2>
+              <textarea
+                value={source}
+                onChange={(event) => setSource(event.target.value)}
+                spellCheck={false}
+                className="editor h-[300px] resize-none rounded p-4 text-[13px] lg:h-full lg:max-h-[calc(100vh-15rem)]"
+                aria-label="Article markdown source"
+              />
+            </section>
 
-          <section className="flex flex-col">
-            <h2 className="mb-2 text-xs font-semibold tracking-[0.14em] text-brass uppercase">
-              The board
-            </h2>
+            <section className="flex min-h-[520px] flex-col">
+              <h2 className="mb-2 text-xs font-semibold tracking-[0.14em] text-brass uppercase">
+                The board
+              </h2>
 
-            <div>
-              <div className="parchment rounded-sm px-9 py-8 sm:px-12 sm:py-10">
-                {/* The article's own box is the coordinate space for pins and
-                    yarn, so rects measured against the article line up with the
-                    overlay without compensating for the parchment's padding. */}
+              <BoardCanvas
+                camera={camera}
+                onCameraChange={setCamera}
+                onContextTarget={handleContextTarget}
+                className="min-h-[460px] flex-1 rounded-sm border border-cork-900/60 shadow-inner"
+                fitTo={paperRect ? [paperRect] : undefined}
+              >
+                {/* The article, as a sheet lying on the board. Its own box is
+                    the coordinate space for pins and yarn, so rects measured
+                    against the article line up with the overlay without
+                    compensating for padding. */}
                 <div
-                  className="relative"
-                  onPointerMove={moveString}
-                  onPointerUp={endString}
-                  onPointerLeave={endString}
+                  ref={paperRef}
+                  className="parchment rounded-sm px-9 py-8 sm:px-12 sm:py-10"
+                  style={{ width: PAPER_WIDTH }}
                 >
                   <div
-                    ref={articleRef}
-                    onClick={handleArticleClick}
-                    className="article relative cursor-text select-text"
-                    dangerouslySetInnerHTML={{ __html: html }}
-                  />
+                    className="relative"
+                    onPointerMove={moveString}
+                    onPointerUp={endString}
+                    onPointerLeave={endString}
+                  >
+                    <div
+                      ref={articleRef}
+                      onClick={handleArticleClick}
+                      className="article relative cursor-text select-text"
+                      dangerouslySetInnerHTML={{ __html: html }}
+                    />
 
-                  <div ref={overlayRef} className="pointer-events-none absolute inset-0">
-                    {/* Yarn. Painted under the tacks, never interactive — a
-                        click should fall through to the text beneath it. */}
-                    <svg className="absolute inset-0 h-full w-full overflow-visible">
-                      {drawableStrings.map((string) => (
-                        <g
-                          key={string.id}
-                          className="transition-opacity duration-300"
-                          style={{
-                            // A string is live only when both ends are known —
-                            // a thread to something the party hasn't found yet
-                            // would be a lie the board tells.
-                            opacity:
-                              !dimming ||
-                              (activeIds.has(string.fromId) && activeIds.has(string.toId))
-                                ? 1
-                                : 0.12,
-                          }}
-                        >
-                          {/* A dark underlay gives the yarn a shadow, so it
-                              reads as lying on the paper rather than in it. */}
-                          <path
-                            d={yarnPath(string.from, string.to, SLACK)}
-                            fill="none"
-                            stroke="rgba(0,0,0,0.22)"
-                            strokeWidth={3.5}
-                            strokeLinecap="round"
-                            transform="translate(0.5 1.5)"
-                          />
-                          <path
-                            d={yarnPath(string.from, string.to, SLACK)}
-                            fill="none"
-                            stroke={YARN_HEX[string.color]}
-                            strokeWidth={2.5}
-                            strokeLinecap="round"
-                          />
-                        </g>
-                      ))}
+                    <div ref={overlayRef} className="pointer-events-none absolute inset-0">
+                      <svg className="absolute inset-0 h-full w-full overflow-visible">
+                        {drawableStrings.map((string) => (
+                          <g
+                            key={string.id}
+                            className="transition-opacity duration-300"
+                            style={{
+                              // A string is live only when both ends are known —
+                              // a thread to something the party hasn't found yet
+                              // would be a lie the board tells.
+                              opacity:
+                                !dimming ||
+                                (activeIds.has(string.fromId) && activeIds.has(string.toId))
+                                  ? 1
+                                  : 0.12,
+                            }}
+                          >
+                            <path
+                              d={yarnPath(string.from, string.to, SLACK)}
+                              fill="none"
+                              stroke="rgba(0,0,0,0.22)"
+                              strokeWidth={3.5}
+                              strokeLinecap="round"
+                              transform="translate(0.5 1.5)"
+                            />
+                            <path
+                              d={yarnPath(string.from, string.to, SLACK)}
+                              fill="none"
+                              stroke={YARN_HEX[string.color]}
+                              strokeWidth={2.5}
+                              strokeLinecap="round"
+                            />
+                          </g>
+                        ))}
 
-                      {/* The string currently being drawn, driven by the board
-                          clock and updated outside React entirely. */}
-                      <path
-                        ref={livePathRef}
-                        fill="none"
-                        stroke={YARN_HEX[colorForPair(dragFrom ?? 'a', 'b')]}
-                        strokeWidth={2.5}
-                        strokeLinecap="round"
-                        strokeDasharray={dragFrom ? undefined : '0'}
-                        opacity={dragFrom ? 0.95 : 0}
-                      />
-                    </svg>
-
-                    {/* Anchor marks */}
-                    {anchored.map((pin) =>
-                      pin.rect ? (
-                        <div
-                          key={`mark-${pin.id}`}
-                          className="anchor-mark absolute transition-opacity duration-300"
-                          data-status={pin.status}
-                          style={{
-                            left: pin.rect.x,
-                            top: pin.rect.y,
-                            width: pin.rect.width,
-                            height: pin.rect.height,
-                            // Dimmed via opacity rather than a filter: filters
-                            // repaint their subtree every frame, whereas opacity
-                            // is compositor-only. Dimming hundreds of marks with
-                            // `filter: saturate()` is what tanks the frame rate.
-                            opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.16,
-                          }}
+                        <path
+                          ref={livePathRef}
+                          fill="none"
+                          stroke={YARN_HEX[colorForPair(dragFrom ?? 'a', 'b')]}
+                          strokeWidth={2.5}
+                          strokeLinecap="round"
+                          opacity={dragFrom ? 0.95 : 0}
                         />
-                      ) : null,
-                    )}
+                      </svg>
 
-                    {/* Tacks. The only interactive part of the overlay — drag
-                        from one to another to run a string. */}
-                    {anchored.map((pin) =>
-                      pin.rect ? (
-                        <button
-                          key={`tack-${pin.id}`}
-                          type="button"
-                          onPointerDown={(event) => beginString(event, pin)}
-                          className="tack tack-enter pointer-events-auto absolute h-3.5 w-3.5 cursor-crosshair rounded-full transition-opacity duration-300"
-                          data-status={pin.status}
-                          style={{
-                            left: pin.rect.x + pin.rect.width - 6,
-                            top: pin.rect.y - 5,
-                            touchAction: 'none',
-                            opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.2,
-                          }}
-                          title={
-                            dragFrom
-                              ? 'Drop on another pin to run a string'
-                              : `${pin.quote} — ${pin.detail}. Drag to another pin to connect.`
-                          }
-                          aria-label={`Pin on "${pin.quote}", ${pin.detail}`}
-                        />
-                      ) : null,
-                    )}
+                      {anchored.map((pin) =>
+                        pin.rect ? (
+                          <div
+                            key={`mark-${pin.id}`}
+                            className="anchor-mark absolute transition-opacity duration-300"
+                            data-status={pin.status}
+                            style={{
+                              left: pin.rect.x,
+                              top: pin.rect.y,
+                              width: pin.rect.width,
+                              height: pin.rect.height,
+                              // Dimmed via opacity rather than a filter:
+                              // filters repaint their subtree every frame,
+                              // whereas opacity is compositor-only.
+                              opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.16,
+                            }}
+                          />
+                        ) : null,
+                      )}
+
+                      {anchored.map((pin) =>
+                        pin.rect ? (
+                          <button
+                            key={`tack-${pin.id}`}
+                            type="button"
+                            data-pin-id={pin.id}
+                            onPointerDown={(event) => beginString(event, pin)}
+                            className="tack tack-enter pointer-events-auto absolute h-3.5 w-3.5 cursor-crosshair rounded-full transition-opacity duration-300"
+                            data-status={pin.status}
+                            style={{
+                              left: pin.rect.x + pin.rect.width - 6,
+                              top: pin.rect.y - 5,
+                              touchAction: 'none',
+                              opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.2,
+                            }}
+                            title={`${pin.quote} — ${pin.detail}. Drag to another pin to connect, right-click to write.`}
+                            aria-label={`Pin on "${pin.quote}", ${pin.detail}`}
+                          />
+                        ) : null,
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              </BoardCanvas>
 
               <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-parchment-300/80">
                 <Legend
@@ -698,48 +739,42 @@ export function App() {
                   {strings.length === 1 ? '' : 's'}
                 </span>
               </div>
-            </div>
-
-            {orphaned.length > 0 && (
-              <div className="mt-5 rounded border border-wax/40 bg-cork-900/50 p-4">
-                <h3 className="text-xs font-semibold tracking-[0.14em] text-wax uppercase">
-                  Loose pins — the trail went cold
-                </h3>
-                <p className="mt-1 mb-3 text-xs text-parchment-300/70">
-                  The text these were pinned to no longer exists. They are kept, not discarded, so
-                  they can be re-attached.
-                </p>
-                <ul className="flex flex-wrap gap-2">
-                  {orphaned.map((pin) => (
-                    <li
-                      key={pin.id}
-                      className="flex items-center gap-2 rounded border border-parchment-edge/25 bg-cork-700/60 px-2.5 py-1.5 text-xs"
-                    >
-                      <span className="h-2.5 w-2.5 rounded-full bg-wax" />
-                      <span className="text-parchment-200 italic">“{pin.quote}”</span>
-                      <span className="text-parchment-300/50">{pin.detail}</span>
-                      <button
-                        onClick={() => {
-                          setPlaced((previous) => previous.filter((item) => item.id !== pin.id))
-                          setStrings((previous) =>
-                            previous.filter((s) => s.from !== pin.id && s.to !== pin.id),
-                          )
-                        }}
-                        className="ml-1 text-parchment-300/50 transition hover:text-wax"
-                        aria-label={`Discard pin on ${pin.quote}`}
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
-        </div>
+            </section>
+          </div>
         )}
 
-        <div className="mt-7">
+        {orphaned.length > 0 && (
+          <div className="mx-5 mt-5 rounded border border-wax/40 bg-cork-900/50 p-4 lg:mx-8">
+            <h3 className="text-xs font-semibold tracking-[0.14em] text-wax uppercase">
+              Loose pins — the trail went cold
+            </h3>
+            <p className="mt-1 mb-3 text-xs text-parchment-300/70">
+              The text these were pinned to no longer exists. They are kept, not discarded, so they
+              can be re-attached.
+            </p>
+            <ul className="flex flex-wrap gap-2">
+              {orphaned.map((pin) => (
+                <li
+                  key={pin.id}
+                  className="flex items-center gap-2 rounded border border-parchment-edge/25 bg-cork-700/60 px-2.5 py-1.5 text-xs"
+                >
+                  <span className="h-2.5 w-2.5 rounded-full bg-wax" />
+                  <span className="text-parchment-200 italic">“{pin.quote}”</span>
+                  <span className="text-parchment-300/50">{pin.detail}</span>
+                  <button
+                    onClick={() => removePin(pin.id)}
+                    className="ml-1 text-parchment-300/50 transition hover:text-wax"
+                    aria-label={`Discard pin on ${pin.quote}`}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="mt-auto px-5 pt-7 pb-5 lg:px-8">
           <TimelineRibbon
             timeline={timeline}
             clusters={clusters}
@@ -755,6 +790,20 @@ export function App() {
           />
         </div>
       </div>
+
+      {editing && editingPin && (
+        <PinEditor
+          quote={editingPin.quote}
+          status={editingPin.status}
+          dateLabel={placed.find((item) => item.id === editing.id)?.dateLabel ?? ''}
+          body={editingPin.body}
+          x={editing.x}
+          y={editing.y}
+          onChange={(body) => setPinBody(editing.id, body)}
+          onDelete={() => removePin(editing.id)}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   )
 }
