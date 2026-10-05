@@ -497,8 +497,8 @@ export function BoardCanvas({
    *
    * The world wrapper is absolutely positioned and sized by its children, so a
    * click outside the paper lands on the viewport itself. Comparing target to
-   * currentTarget is therefore enough to tell "empty board" from "something in
-   * it" without hit-testing every object.
+   * currentTarget is therefore enough to tell "empty board" from 'something in
+   * it' without hit-testing every object.
    */
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {

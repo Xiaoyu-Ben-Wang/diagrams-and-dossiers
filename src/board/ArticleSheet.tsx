@@ -17,12 +17,15 @@
  */
 
 import type { PointerEvent, MouseEvent, RefObject } from 'react'
+import { RotateCw, X } from 'lucide-react'
 
 import { ARTICLE_ID, ARTICLE_TITLE } from '../app/demo'
 import { Tack } from './entities/Tack'
 import type { BoardDragHandlers } from './useBoardDrag'
-import { ArticleRotateHandle } from './entities/ArticleRotateHandle'
-import { PAPER_WIDTH } from './tuning'
+import { rotateAbout } from './pivot'
+import { PAPER_MAX_WIDTH, PAPER_MIN_WIDTH, PAPER_WIDTH } from './tuning'
+import { useResizeDrag } from './useResizeDrag'
+import { useRotateDrag } from './useRotateDrag'
 import type { Point } from './yarn'
 import { pinPoint, type PinView } from './view'
 
@@ -34,6 +37,10 @@ export interface ArticleSheetProps {
   pos: Point
   /** How far it is swung about its pin, in degrees. */
   tilt: number
+  /** The page's own width. Changing it reflows the article. */
+  width: number
+  /** Whether the page is rolled up to its tab. */
+  collapsed: boolean
 
   paperRef: RefObject<HTMLDivElement | null>
   articleRef: RefObject<HTMLDivElement | null>
@@ -62,6 +69,8 @@ export interface ArticleSheetProps {
   onPinDrop: (id: string, clientX: number, clientY: number) => void
   onPinHover: (pin: PinView, element: Element | null) => void
   onRotate: (degrees: number) => void
+  onResize: (width: number) => void
+  onToggleCollapsed: () => void
   toBoard: (clientX: number, clientY: number) => Point
   /** A point in the article's own space, in board space. */
   articleToBoard: (local: Point) => Point
@@ -75,6 +84,8 @@ export function ArticleSheet({
   html,
   pos,
   tilt,
+  width,
+  collapsed,
   paperRef,
   articleRef,
   overlayRef,
@@ -93,9 +104,33 @@ export function ArticleSheet({
   onPinDrop,
   onPinHover,
   onRotate,
+  onResize,
+  onToggleCollapsed,
   toBoard,
   articleToBoard,
 }: ArticleSheetProps) {
+  const rotate = useRotateDrag({
+    // The pin is the pivot, so it is the one point on the sheet that does not
+    // move when the sheet turns: no tilt in this sum, deliberately.
+    pivot: { x: pos.x + width / 2, y: pos.y },
+    tilt,
+    toBoard,
+    onRotate,
+  })
+
+  const resize = useResizeDrag({
+    size: { width, height: 0 },
+    toBoard,
+    sizeAt: (pointer) => {
+      // A page is resized by its width; its height is whatever the text takes.
+      // Measured from the pin outward in the sheet's own frame, so a tilted
+      // page grows along the direction it is actually lying in.
+      const local = rotateAbout({ x: pos.x + width / 2, y: pos.y }, pointer, -tilt)
+      const half = Math.abs(local.x - (pos.x + width / 2))
+      return { width: clampWidth(half * 2), height: 0 }
+    },
+    onResize: (size) => onResize(size.width),
+  })
   return (
     <div
       ref={paperRef}
@@ -105,7 +140,7 @@ export function ArticleSheet({
         documentSelected ? 'ring-2 ring-brass/70' : ''
       }`}
       style={{
-        width: PAPER_WIDTH,
+        width,
         transformOrigin: '50% 0',
         transform: `translate3d(${pos.x}px, ${pos.y}px, 0) rotate(${tilt}deg)`,
       }}
@@ -126,14 +161,43 @@ export function ArticleSheet({
       {/* Only offered on a selected sheet, like a picture's. An unselected
           board is a board of things to read, not a control panel. */}
       {documentSelected ? (
-        <ArticleRotateHandle
-          tilt={tilt}
-          // The pin is the pivot, so it is the one point on the sheet that does
-          // not move when the sheet turns: no tilt in this sum, deliberately.
-          pivot={{ x: pos.x + PAPER_WIDTH / 2, y: pos.y }}
-          toBoard={toBoard}
-          onRotate={onRotate}
-        />
+        <>
+          <span
+            aria-hidden="true"
+            className="image-rotate-stem absolute"
+            style={{ left: '50%', top: '100%', height: 16, marginLeft: -1 }}
+          />
+          <button
+            type="button"
+            data-testid="article-rotate"
+            aria-label="Drag to swing the page about its pin"
+            className="image-rotate absolute"
+            style={{ left: '50%', top: '100%', marginTop: 16, marginLeft: -11 }}
+            {...rotate}
+          >
+            <RotateCw size={22} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+
+          {/* The right edge, which is the one dimension a page has to give:
+              its height is whatever the text takes. */}
+          <button
+            type="button"
+            data-testid="article-resize"
+            aria-label="Drag to change the page width"
+            className="article-resize absolute top-1/2 -right-2 -translate-y-1/2"
+            {...resize}
+          >
+            <svg viewBox="0 0 10 24" aria-hidden="true" className="h-full w-full">
+              <path
+                d="M 3 4 V 20 M 7 4 V 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </>
       ) : null}
 
       {/* The tab is the selection affordance. Clicking the body of the paper
@@ -143,6 +207,7 @@ export function ArticleSheet({
         type="button"
         data-testid="paper-tab"
         {...tabDrag}
+        onDoubleClick={onToggleCollapsed}
         aria-pressed={documentSelected}
         className={`drag-bar absolute -top-7 left-0 rounded-t px-3 py-1 text-[11px] transition ${
           documentSelected
@@ -151,9 +216,29 @@ export function ArticleSheet({
         }`}
         title="Click to edit, drag to move"
       >
-        {documentSelected ? '▾ ' : '▸ '}
+        {collapsed ? '▸ ' : '▾ '}
         {ARTICLE_TITLE}
       </button>
+
+      {/* Closing the page rolls it up rather than deleting it: the pins
+          anchored into its text have nowhere else to be, and a board where a
+          stray click can orphan every note on it is a board you stop trusting.
+          The tab stays, and is how it comes back. */}
+      {documentSelected && !collapsed ? (
+        <button
+          type="button"
+          data-testid="paper-close"
+          aria-label="Roll the page up"
+          className="sheet-close"
+          style={{ right: -10, top: -10 }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={onToggleCollapsed}
+        >
+          <X size={13} strokeWidth={2.5} aria-hidden="true" />
+        </button>
+      ) : null}
+
+      {collapsed ? null : (
 
       <div className="relative">
         <div
@@ -201,6 +286,12 @@ export function ArticleSheet({
           )}
         </div>
       </div>
+      )}
     </div>
   )
+}
+
+function clampWidth(value: number): number {
+  if (!Number.isFinite(value)) return PAPER_WIDTH
+  return Math.max(PAPER_MIN_WIDTH, Math.min(PAPER_MAX_WIDTH, Math.round(value)))
 }

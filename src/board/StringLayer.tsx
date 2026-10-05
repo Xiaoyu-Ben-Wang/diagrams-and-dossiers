@@ -53,6 +53,7 @@ export function StringLayer({
 }: StringLayerProps) {
   return (
     <svg
+      data-testid="string-layer"
       className="pointer-events-none absolute top-0 left-0 z-20 overflow-visible"
       width={1}
       height={1}

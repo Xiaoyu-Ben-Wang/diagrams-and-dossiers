@@ -17,10 +17,11 @@
  * a control panel.
  */
 
-import { useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 
 import { edgeClipPath, type EdgeStyle } from './edges'
 import { clampTilt, rotateAbout } from './pivot'
+import { useResizeDrag } from './useResizeDrag'
 import { useRotateDrag } from './useRotateDrag'
 import { useBoardDrag } from './useBoardDrag'
 import type { Point } from './yarn'
@@ -184,55 +185,15 @@ export function ImageCard({
     toBoard,
     onRotate: (degrees) => onRotate(id, degrees),
   })
-  /**
-   * Resizing from a corner.
-   *
-   * The size at the start of the drag is kept in a ref alongside the pivot, so
-   * every frame computes from where the drag began rather than accumulating —
-   * rounding the size each frame and feeding it back would drift.
-   */
-  const resizeRef = useRef<{ width: number; height: number } | null>(null)
-
-  const startResize = useCallback(
-    (event: React.PointerEvent) => {
-      if (event.button !== 0) return
-      event.stopPropagation()
-      event.preventDefault()
-      try {
-        event.currentTarget.setPointerCapture(event.pointerId)
-      } catch {
-        // Capture is a refinement; the drag still tracks while over the handle.
-      }
-      resizeRef.current = { width, height }
-    },
-    [height, width],
-  )
-
-  const moveResize = useCallback(
-    (event: React.PointerEvent) => {
-      const start = resizeRef.current
-      if (!start) return
-      event.stopPropagation()
-      onResize(id, sizeFor(pivot, toBoard(event.clientX, event.clientY), rotation, start))
-    },
-    [id, onResize, pivot.x, pivot.y, rotation, toBoard],
-  )
-
-  const endResize = useCallback((event: React.PointerEvent) => {
-    resizeRef.current = null
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    } catch {
-      // Already released.
-    }
-  }, [])
-
-  const resizeProps = {
-    onPointerDown: startResize,
-    onPointerMove: moveResize,
-    onPointerUp: endResize,
-    onPointerCancel: endResize,
-  }
+  // The size maths is this component's own — a picture keeps the proportions
+  // it arrived with, driven along its own diagonal — while the pointer
+  // plumbing is the shared hook's.
+  const resizeProps = useResizeDrag({
+    size: { width, height },
+    toBoard,
+    sizeAt: (pointer, start) => sizeFor(pivot, pointer, rotation, start),
+    onResize: (size) => onResize(id, size),
+  })
 
   const rotateProps = {
     onPointerDown: rotateEntityDrag.onPointerDown,

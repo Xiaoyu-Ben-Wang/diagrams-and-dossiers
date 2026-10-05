@@ -50,7 +50,12 @@ export const TACK_RADIUS = TACK_SIZE / 2
 export const TACK_OFFSET_X = -6
 export const TACK_OFFSET_Y = -5
 
-/** A post-it's footprint. Shared by the renderer and by the marquee. */
+/**
+ * A post-it's footprint before anyone has dragged its corner.
+ *
+ * A default rather than a constant: the size lives on the entity, so two notes
+ * can be different sizes, and this is only what a new one gets.
+ */
 export const NOTE_SIZE = { width: 168, height: 128 } as const
 
 /** An image's default footprint, in board px, before it is cropped to fit. */
@@ -187,10 +192,10 @@ const note: EntityDescriptor<BoardEntity & { kind: 'note' }> = {
   anchorPoint: (entity) => ({
     // Strings meet a note in the middle of it; its corner is where it is drawn
     // from, which is not the same thing.
-    x: entity.board.x + NOTE_SIZE.width / 2 + entity.nudge.x,
-    y: entity.board.y + NOTE_SIZE.height / 2 + entity.nudge.y,
+    x: entity.board.x + entity.width / 2 + entity.nudge.x,
+    y: entity.board.y + entity.height / 2 + entity.nudge.y,
   }),
-  bounds: (entity) => boxAt(entity.board, NOTE_SIZE),
+  bounds: (entity) => boxAt(entity.board, { width: entity.width, height: entity.height }),
   move: (entity, delta) => ({
     ...entity,
     board: { x: entity.board.x + delta.x, y: entity.board.y + delta.y },

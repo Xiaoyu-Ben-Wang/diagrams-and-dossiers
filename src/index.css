@@ -463,6 +463,91 @@ body {
   background: rgb(0 0 0 / 0.2);
 }
 
+/* A close button, wherever one is offered. Small, faint, and only loud on
+   hover — it sits on things you are reading, and chrome that competes with the
+   writing is chrome that has to go. */
+.post-it-close,
+.sheet-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9999px;
+  cursor: pointer;
+  line-height: 1;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.post-it-close {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  background: none;
+  color: color-mix(in srgb, var(--color-ink) 35%, transparent);
+}
+
+.post-it-close:hover {
+  background: rgb(140 47 30 / 0.16);
+  color: var(--color-wax);
+}
+
+.post-it-close:focus-visible,
+.sheet-close:focus-visible {
+  outline: 2px solid var(--color-wax);
+  outline-offset: 1px;
+}
+
+/* On the page it has to read against parchment, so it is a small brass disc
+   rather than a bare glyph. */
+.sheet-close {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: rgb(46 31 20 / 0.72);
+  color: var(--color-parchment-200);
+}
+
+.sheet-close:hover {
+  background: var(--color-wax);
+}
+
+/* The note's corner. Only on a selected note, like a picture's. */
+.post-it-resize {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, var(--color-ink) 45%, transparent);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.post-it-resize:hover {
+  color: var(--color-ink);
+}
+
+/* The page's edge. A grab strip rather than a corner: a page is resized by its
+   width, and its height is whatever the text takes. */
+.article-resize {
+  width: 10px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-brass);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.article-resize:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 /* The bar of edge treatments on a selected picture. */
 .edge-picker {
   display: flex;

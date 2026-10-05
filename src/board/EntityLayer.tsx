@@ -57,7 +57,9 @@ export interface EntityLayerProps {
   onResize: (id: string, size: { width: number; height: number }) => void
   onSelectImage: (id: string) => void
   onSetEdge: (id: string, edge: EdgeStyle) => void
+  onSelectNote: (id: string) => void
   onSetBody: (id: string, body: string) => void
+  onResizeNote: (id: string, size: { width: number; height: number }) => void
   onRemove: (id: string) => void
 }
 
@@ -87,7 +89,9 @@ export function EntityLayer({
   onResize,
   onSelectImage,
   onSetEdge,
+  onSelectNote,
   onSetBody,
+  onResizeNote,
   onRemove,
 }: EntityLayerProps) {
   return (
@@ -166,8 +170,11 @@ export function EntityLayer({
           note={note}
           zoom={zoom}
           selected={selection.has(note.id)}
+          toBoard={toBoard}
+          onSelect={onSelectNote}
           onDrag={onMoveEntity}
           onChange={onSetBody}
+          onResize={onResizeNote}
           onRemove={onRemove}
         />
       ))}

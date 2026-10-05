@@ -59,6 +59,8 @@ const note = (over: Partial<NoteEntity> = {}): NoteEntity => ({
   ...base,
   kind: 'note',
   board: { x: 10, y: 20 },
+  width: NOTE_SIZE.width,
+  height: NOTE_SIZE.height,
   ...over,
 })
 

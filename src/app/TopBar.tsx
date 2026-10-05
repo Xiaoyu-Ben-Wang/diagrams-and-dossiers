@@ -1,3 +1,5 @@
+import { Settings } from 'lucide-react'
+
 /**
  * The application chrome.
  *
@@ -33,7 +35,7 @@ export function TopBar({
       <button
         type="button"
         onClick={onOpenPreferences}
-        className="ml-auto shrink-0 rounded border border-parchment-edge/25 px-2.5 py-1 text-xs text-board-ink-soft transition hover:border-brass hover:text-board-ink"
+        className="ml-auto flex shrink-0 items-center gap-1.5 rounded border border-parchment-edge/25 px-2.5 py-1 text-xs text-board-ink-soft transition hover:border-brass hover:text-board-ink"
         aria-label="Open preferences"
         // A drawer is a disclosure, so the trigger has to say whether it is
         // open and which region it controls. aria-label alone tells a screen
@@ -41,6 +43,7 @@ export function TopBar({
         aria-expanded={preferencesOpen}
         aria-controls={preferencesPanelId}
       >
+        <Settings size={13} strokeWidth={2} aria-hidden="true" />
         Preferences
       </button>
     </header>

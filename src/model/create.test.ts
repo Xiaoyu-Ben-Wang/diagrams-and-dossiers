@@ -96,12 +96,13 @@ describe('newImage', () => {
   })
 
   it('does not disturb the other kinds', () => {
-    // A note still takes the plain footprint it always did — the image size is
-    // the picture's own, not a board-wide constant that leaked.
+    // A note now carries a size of its own, because it can be dragged to fit
+    // what is written on it — but it is the *note's* default, not the picture's
+    // footprint leaking across from the image constructor.
     const note = newNote({ x: 0, y: 0 })
 
     expect(note.kind).toBe('note')
-    expect('width' in note).toBe(false)
-    expect(NOTE_SIZE.width).toBeGreaterThan(0)
+    expect({ width: note.width, height: note.height }).toEqual(NOTE_SIZE)
+    expect(note.width).not.toBe(IMAGE_SIZE.width)
   })
 })

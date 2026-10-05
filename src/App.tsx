@@ -28,6 +28,8 @@ import type { EdgeStyle } from './board/edges'
 import { decodeImageFile, firstImage } from './board/image-file'
 import { clampTilt, rotateAbout } from './board/pivot'
 import { useBoardDrag } from './board/useBoardDrag'
+import { Pin } from 'lucide-react'
+
 import { ArticleSheet } from './board/ArticleSheet'
 import { EntityLayer } from './board/EntityLayer'
 import { ContextMenu, type ContextMenuEntry } from './board/ContextMenu'
@@ -173,6 +175,20 @@ export function App() {
   const [paperTilt, setPaperTilt] = useState(0)
   const paperTiltRef = useRef(paperTilt)
   paperTiltRef.current = paperTilt
+  /**
+   * The page's width, which the reader drags.
+   *
+   * `PAPER_WIDTH` is only the width it opens at. Changing it reflows the text,
+   * and that is safe here because an anchor is a character offset rather than a
+   * pixel — every pin re-resolves against the page as it now is, through the
+   * same ladder it uses after an edit. The resolver is pure and idempotent, so
+   * a reflow is just another edit as far as it is concerned.
+   */
+  const [paperWidth, setPaperWidth] = useState(PAPER_WIDTH)
+  const paperWidthRef = useRef(paperWidth)
+  paperWidthRef.current = paperWidth
+  /** Whether the page is rolled up to its tab. */
+  const [paperCollapsed, setPaperCollapsed] = useState(false)
 
   /**
    * The paper's own padding, i.e. the offset from the paper's top-left corner
@@ -212,7 +228,7 @@ export function App() {
    * was swung.
    */
   const articleToBoard = useCallback((local: Point): Point => {
-    const pivot = { x: PAPER_WIDTH / 2, y: 0 }
+    const pivot = { x: paperWidthRef.current / 2, y: 0 }
     const inset = paperInsetRef.current
     const inPaper = { x: inset.x + local.x, y: inset.y + local.y }
     const turned = rotateAbout(pivot, inPaper, paperTiltRef.current)
@@ -553,6 +569,11 @@ export function App() {
     [],
   )
 
+  /** Select one thing and nothing else. What a click on a note means. */
+  const selectOnly = useCallback((id: string) => {
+    setSelection(new Set([id]))
+  }, [])
+
   /**
    * Select a picture, and damage its border afresh.
    *
@@ -569,6 +590,31 @@ export function App() {
       if (!alreadySelected) rerollEdge(id)
     },
     [rerollEdge, selection],
+  )
+
+  /**
+   * Change the page's width, keeping the pin where it is.
+   *
+   * The sheet is drawn from its top-left, so growing it by width alone would
+   * push the pin — which sits at the top-*centre* — half the growth to the
+   * right, and the page would crawl sideways every time it was dragged wider.
+   * Half the change comes off `paperPos.x` to hold the pin still, the same
+   * correction the pictures make.
+   */
+  const resizePaper = useCallback((nextWidth: number) => {
+    const delta = nextWidth - paperWidthRef.current
+    setPaperWidth(nextWidth)
+    setPaperPos((previous) => ({ x: previous.x - delta / 2, y: previous.y }))
+  }, [])
+
+  /** Resize a note. Its corner is where it is drawn from, so nothing else moves. */
+  const resizeNote = useCallback(
+    (id: string, size: { width: number; height: number }) => {
+      store.updateEntities([id], (entity) =>
+        entity.kind === 'note' ? { ...entity, ...size, updatedAt: Date.now() } : entity,
+      )
+    },
+    [store],
   )
 
   /** Resize a picture, keeping the pin it hangs from where it is. */
@@ -1254,8 +1300,8 @@ export function App() {
    * to a page whose position is not yet known.
    */
   const articlePin = useMemo(
-    () => (paperRect ? { x: paperPos.x + PAPER_WIDTH / 2, y: paperPos.y } : null),
-    [paperRect, paperPos.x, paperPos.y],
+    () => (paperRect ? { x: paperPos.x + paperWidth / 2, y: paperPos.y } : null),
+    [paperRect, paperPos.x, paperPos.y, paperWidth],
   )
 
   const anchorPoints = useMemo(() => {
@@ -1509,10 +1555,14 @@ export function App() {
                   : "border-brass/40 bg-cork-700/70 text-board-ink-soft hover:border-brass"
               }`}
             >
-              <span
-                aria-hidden
-                className="inline-block h-2.5 w-2.5 rounded-full"
-                style={{ background: pinMode ? "var(--color-brass)" : "currentColor" }}
+              <Pin
+                size={13}
+                strokeWidth={2.2}
+                aria-hidden="true"
+                // Filled in when armed, so the button reads as a state rather
+                // than as a label — the same trick the brass dot played, done
+                // with the shape that means "pin".
+                fill={pinMode ? "currentColor" : "none"}
               />
               Pin<span className="hidden sm:inline">&nbsp;mode</span>
             </button>
@@ -1556,6 +1606,8 @@ export function App() {
                 html={html}
                 pos={paperPos}
                 tilt={paperTilt}
+                width={paperWidth}
+                collapsed={paperCollapsed}
                 paperRef={paperRef}
                 articleRef={articleRef}
                 overlayRef={overlayRef}
@@ -1574,6 +1626,8 @@ export function App() {
                 onPinDrop={handlePinDrop}
                 onPinHover={handlePinHover}
                 onRotate={setPaperTilt}
+                onResize={resizePaper}
+                onToggleCollapsed={() => setPaperCollapsed((previous) => !previous)}
                 toBoard={worldPoint}
                 articleToBoard={articleToBoard}
               />
@@ -1601,7 +1655,9 @@ export function App() {
                 onResize={resizeImage}
                 onSelectImage={selectImage}
                 onSetEdge={setImageEdge}
+                onSelectNote={selectOnly}
                 onSetBody={setEntityBody}
+                onResizeNote={resizeNote}
                 onRemove={removeEntity}
               />
               <StringLayer

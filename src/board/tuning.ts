@@ -81,6 +81,17 @@ export const SLACK_STEP = 1000
 export const PAPER_WIDTH = 720
 
 /**
+ * How narrow and how wide the page may be dragged.
+ *
+ * The floor is about where the article's own margins start eating the text;
+ * the ceiling is where a line stops being readable and starts being a
+ * headache — past roughly ninety characters the eye loses its place on the
+ * return sweep.
+ */
+export const PAPER_MIN_WIDTH = 380
+export const PAPER_MAX_WIDTH = 1100
+
+/**
  * A post-it's width in board px. Its height comes from the textarea inside it,
  * so this is the one dimension the board has to know.
  */

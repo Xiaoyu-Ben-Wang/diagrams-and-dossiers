@@ -114,6 +114,15 @@ export type PinEntity = AnchoredPin | FreePin
 export interface NoteEntity extends EntityBase {
   kind: 'note'
   board: Point
+  /**
+   * The note's footprint in board px.
+   *
+   * Stored rather than fixed, because a note is the one kind whose size is
+   * entirely a matter of how much you wrote — the default is a square of
+   * paper, and dragging its corner is how you make it fit the sentence.
+   */
+  width: number
+  height: number
 }
 
 /** A sheet of markdown lying on the board. */

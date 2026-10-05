@@ -485,7 +485,10 @@ describe('App — placing pins', () => {
     fireEvent.pointerMove(canvas, { pointerId: 31, clientX: 520, clientY: 260 })
     fireEvent.pointerUp(canvas, { pointerId: 31, clientX: 520, clientY: 260 })
 
-    const yarn = container.querySelector('svg[aria-hidden="true"]') as SVGElement
+    // By test id, not by `svg[aria-hidden]`: the icon set renders aria-hidden
+    // SVGs of its own, and the first one in the document is a button's glyph
+    // rather than the yarn.
+    const yarn = screen.getByTestId('string-layer')
     const paper = screen.getByTestId('paper')
 
     // The yarn must come after the paper in document order, since these are

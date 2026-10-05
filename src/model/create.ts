@@ -17,7 +17,7 @@ import type { TextAnchor } from '../anchors/types'
 import type { EdgeStyle } from '../board/edges'
 import type { Point } from '../board/yarn'
 import { DEFAULT_ARTICLE_OPTIONS, type ArticleOptions } from './article-options'
-import { IMAGE_SIZE } from './kinds'
+import { IMAGE_SIZE, NOTE_SIZE } from './kinds'
 import type {
   AnchoredPin,
   ArticleEntity,
@@ -88,7 +88,7 @@ export function newFreePin(board: Point, seed: EntitySeed = {}): FreePin {
 
 /** A loose note on the board. */
 export function newNote(board: Point, seed: EntitySeed = {}): NoteEntity {
-  return { ...base(seed), kind: 'note', board }
+  return { ...base(seed), kind: 'note', board, ...NOTE_SIZE }
 }
 
 /** A sheet of markdown lying on the board. */
