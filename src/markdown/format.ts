@@ -39,6 +39,37 @@ export interface EditResult {
   selectionEnd: number
 }
 
+/**
+ * Replace one range of text with an insertion, and say where the caret goes.
+ *
+ * The sibling of `applyMarkdownAction` for the one edit that is not a toolbar
+ * action: picking a name out of the mention list replaces the `@query` run with
+ * `@[Name]`. Kept here, next to the action it is shaped like, because the
+ * interesting part is the same — where the caret ends up — and because the
+ * alternative was a second copy of that arithmetic in the editor component.
+ *
+ * The caret lands after the insertion, ready for whatever is typed next.
+ */
+export function replaceRange(
+  text: string,
+  from: number,
+  to: number,
+  insertion: string,
+): EditResult {
+  // Reversed ranges are normalized rather than refused, as `applyMarkdownAction`
+  // does with them: a selection read from somewhere other than a textarea — a
+  // test, a stored offset — can arrive either way round.
+  const [low, high] = from <= to ? [from, to] : [to, from]
+  const start = Math.max(0, Math.min(low, text.length))
+  const end = Math.max(start, Math.min(high, text.length))
+  const caret = start + insertion.length
+  return {
+    text: text.slice(0, start) + insertion + text.slice(end),
+    selectionStart: caret,
+    selectionEnd: caret,
+  }
+}
+
 /** Wrapping markers, for the actions that bracket a span. */
 const WRAPPERS: Partial<Record<MarkdownAction, [string, string]>> = {
   bold: ['**', '**'],

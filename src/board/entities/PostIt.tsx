@@ -17,8 +17,15 @@
  * changes.
  */
 
-import { X } from 'lucide-react'
+import { RotateCcw, X } from 'lucide-react'
 
+import {
+  NOTE_FONT_SCALE_DEFAULT,
+  NOTE_FONT_SCALE_MAX,
+  NOTE_FONT_SCALE_MIN,
+  NOTE_FONT_SIZE,
+  stepFontScale,
+} from '../../model/kinds'
 import type { NoteEntity } from '../../model/types'
 import { useBoardDrag } from '../useBoardDrag'
 import { useResizeDrag } from '../useResizeDrag'
@@ -39,6 +46,7 @@ export interface PostItProps {
   onDrag: (id: string, delta: Point) => void
   onChange: (id: string, body: string) => void
   onResize: (id: string, size: { width: number; height: number }) => void
+  onSetFontScale: (id: string, scale: number) => void
   onRemove: (id: string) => void
 }
 
@@ -51,6 +59,7 @@ export function PostIt({
   onDrag,
   onChange,
   onResize,
+  onSetFontScale,
   onRemove,
 }: PostItProps) {
   const drag = useBoardDrag({
@@ -121,9 +130,63 @@ export function PostIt({
         value={note.bodyMd}
         onChange={(event) => onChange(note.id, event.target.value)}
         placeholder="Write something…"
-        className="min-h-0 w-full flex-1 resize-none bg-transparent text-[12px] leading-snug text-ink outline-none placeholder:text-ink-soft/40"
+        className="min-h-0 w-full flex-1 resize-none bg-transparent leading-snug text-ink outline-none placeholder:text-ink-soft/40"
+        // A multiple of the note's base size rather than a size of its own, so
+        // the writing on two notes is comparable and retuning the base does not
+        // leave every resized note behind.
+        style={{ fontSize: NOTE_FONT_SIZE * note.fontScale }}
         aria-label="Post-it note"
       />
+
+      {/* The type controls, on the selected note only — an unselected board is
+          a board of things to read, not a control panel, which is the same
+          argument the resize corner makes. Below the writing rather than in the
+          header, because the header is the grab handle and buttons in it would
+          be buttons you start dragging by mistake. */}
+      {selected ? (
+        <div className="post-it-fonts">
+          <button
+            type="button"
+            data-testid="post-it-font-down"
+            aria-label="Smaller writing"
+            title="Smaller writing"
+            className="post-it-font"
+            disabled={note.fontScale <= NOTE_FONT_SCALE_MIN}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => onSetFontScale(note.id, stepFontScale(note.fontScale, -1))}
+          >
+            <span className="post-it-font-a" style={{ fontSize: 9 }} aria-hidden="true">
+              A
+            </span>
+          </button>
+          <button
+            type="button"
+            data-testid="post-it-font-up"
+            aria-label="Larger writing"
+            title="Larger writing"
+            className="post-it-font"
+            disabled={note.fontScale >= NOTE_FONT_SCALE_MAX}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => onSetFontScale(note.id, stepFontScale(note.fontScale, 1))}
+          >
+            <span className="post-it-font-a" style={{ fontSize: 14 }} aria-hidden="true">
+              A
+            </span>
+          </button>
+          <button
+            type="button"
+            data-testid="post-it-font-reset"
+            aria-label="Reset writing size"
+            title="Back to the normal size"
+            className="post-it-font"
+            disabled={note.fontScale === NOTE_FONT_SCALE_DEFAULT}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => onSetFontScale(note.id, NOTE_FONT_SCALE_DEFAULT)}
+          >
+            <RotateCcw size={11} strokeWidth={2.4} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
 
       {/* The corner. Drawn only while the note is selected, like a picture's —
           an unselected board is a board of things to read, not a control

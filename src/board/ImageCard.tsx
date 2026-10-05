@@ -20,6 +20,7 @@
 import { useCallback } from 'react'
 
 import { edgeClipPath, type EdgeStyle } from './edges'
+import { IMAGE_PIN_INSET } from '../model/kinds'
 import { clampTilt, rotateAbout } from './pivot'
 import { useResizeDrag } from './useResizeDrag'
 import { useRotateDrag } from './useRotateDrag'
@@ -209,6 +210,12 @@ export function ImageCard({
     <div
       data-entity-id={id}
       data-image-id={id}
+      // What the board's middle-drag looks for to decide whether a press that
+      // started here moves this thing or pans the board. Every other kind
+      // carries it; the picture was the one that did not, so a middle-drag on
+      // one panned the cork instead of moving the picture — the one gesture
+      // that is supposed to work on every kind alike.
+      data-board-entity="image"
       className={`image-card absolute ${selected ? 'is-selected' : ''}`}
       style={{
         left: x,
@@ -272,14 +279,25 @@ export function ImageCard({
 
           A button, not a decoration: this is the one part of a picture that is
           the pin rather than the paper, so it is where a string starts, the
-          same gesture a tack takes. It sits at the pivot, so it does not move
-          when the sheet swings and stays a fixed target to aim at. */}
+          same gesture a tack takes.
+
+          `IMAGE_PIN_INSET` down from the top edge rather than on it, so the
+          whole tack is over the picture instead of half of it hanging in the
+          air — and it is measured from the same number `model/kinds.ts` uses
+          for the anchor, because a pin that is drawn in one place and reported
+          in another is a string that misses the tack it is tied to. */}
       <button
         type="button"
         data-testid="image-pin"
         aria-label={`Pin holding ${alt || 'a picture'} up; drag to tie a string`}
         className="tack absolute h-3.5 w-3.5 cursor-crosshair rounded-full"
-        style={{ left: '50%', top: 0, marginLeft: -7, marginTop: -7, touchAction: 'none' }}
+        style={{
+          left: '50%',
+          top: IMAGE_PIN_INSET,
+          marginLeft: -7,
+          marginTop: -7,
+          touchAction: 'none',
+        }}
         onPointerDown={onStartYarn}
       />
 

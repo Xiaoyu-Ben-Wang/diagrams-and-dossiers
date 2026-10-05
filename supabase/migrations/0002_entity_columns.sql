@@ -15,12 +15,14 @@
 -- touches a row.
 --
 -- In particular it does NOT fold `articles` into `items`, which the plan called
--- for. That fold is right, but it belongs with the change that makes an article
--- an entity on the client — a thing the board does not do yet, since it still
--- has exactly one page held in component state. Writing the fold now would put
--- the schema ahead of the client, which is the same class of mistake as the
--- drift this migration exists to repair. See the note at the foot of this file
--- for what the fold will have to do when it comes.
+-- for. That fold is right, and the client half of the reason it was deferred is
+-- now done — a page is an `ArticleEntity` in the entity list, with its own
+-- projection, width, angle and body, and a board can hold several of them. The
+-- fold itself is still deferred, for the reason given at the top: it moves rows,
+-- and this environment has no Postgres to move them in. Writing a destructive
+-- migration that cannot be run is the same class of mistake as the drift this
+-- file exists to repair. See the note at the foot for the corrected sequence,
+-- including the two constraints that would abort it as things stand.
 
 -- ---------------------------------------------------------------------------
 -- Strings: the slack the client already stores
@@ -139,17 +141,41 @@ alter table public.articles
 -- how a migration like this ends up quietly destructive. It is a sequence, not
 -- a set of independent steps:
 --
+--  0. `items.options` has to exist first — see `0003_article_options.sql`.
+--     `ArticleOptions` (width, paper, type scale, and the flags) has no column
+--     in either table, so without it the fold would carry a page's position,
+--     body and angle across and silently drop the width and every other thing
+--     the client configures about it.
 --  1. Every `articles` row becomes an `items` row with `kind = 'article'`,
 --     KEEPING ITS ID, so the `article_id` columns that point at it still point
---     at it after step 3. Its board position, visibility, reveal_at and version
---     carry over; its `slug` does not, because the wiki is gone and a URL-safe
---     page name has meant nothing since.
---  2. `items.kind` gains `'article'`. The location check has to be relaxed or
---     re-expressed first: an article is placed by `board_x`/`board_y` and, being
---     an entity, must stop being the one kind exempt from the XOR.
+--     at it after step 3. What carries over: `title`, `body_md`, `board_x`,
+--     `board_y`, `rotation`, `visibility`, `reveal_at` and `version`. `slug`
+--     does not, because the wiki is gone and a URL-safe page name has meant
+--     nothing since.
+--
+--     `rotation` is the one this list used to omit, and it is the one that
+--     matters most: `items_image_columns_check` (above) requires `rotation = 0`
+--     on every row that is not an image, so a page folded in at any angle but
+--     zero violates that constraint and the whole migration aborts. Either the
+--     check gains `kind = 'article'` or the column is split per kind; the
+--     former is a one-line change and the latter is a rename of every reader.
+--  2. `items.kind` gains `'article'` — a change to `items_kind_check`, and it
+--     must happen before step 1, not after, or the insert has no legal kind to
+--     insert. Note that `enforce_item_invariants` (`0001`, on UPDATE) forbids
+--     changing `kind`, so articles are INSERTed as items, never converted from
+--     an existing row.
+--
+--     The location check needs **no change**, which corrects what this note
+--     used to claim. `items_location_check` is a plain OR — anchored
+--     (`article_id` and `anchor` both set) *or* placed (`board_x` and `board_y`
+--     both set) — and says nothing about `kind`, so a page row carrying only a
+--     board position already satisfies it. There is no exemption to remove.
 --  3. `items.article_id` changes its target from `public.articles` to
 --     `public.items`, and anchored pins keep their anchors — the ids survived
---     step 1, so the reference still resolves.
+--     step 1, so the reference still resolves. Drop the old foreign key by its
+--     generated name (`items_article_id_fkey`) *after* step 1 and before adding
+--     the new one; the order is what guarantees every id a pin points at exists
+--     in `items` by the time the constraint is checked.
 --  4. `article_ref` items are re-examined rather than copied. Each pointed at an
 --     article that is now an item in the same table, so a reference and the
 --     thing it references are the same row's neighbours; most become redundant

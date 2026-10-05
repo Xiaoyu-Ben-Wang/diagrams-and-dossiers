@@ -21,10 +21,12 @@
  * object itself, so a mutation that changed nothing must not mint a new one.
  * Several mutators below return early for exactly that reason.
  *
- * Ordered arrays are kept in insertion order rather than sorted. The board's
- * z-order is `zIndex` on each entity and is applied at render; sorting here
+ * Ordered arrays are kept in insertion order rather than sorted. Sorting here
  * would mean a move that changes only the order looks like a change to every
- * entity in it.
+ * entity in it. The order is therefore the *board's* order rather than the
+ * paint order: every kind carries a `zIndex`, and nothing reads it yet — the
+ * board paints in the order the layers are rendered. That is a gap rather than
+ * a decision, and it shows the moment two things overlap.
  */
 
 import { useSyncExternalStore } from 'react'
@@ -66,6 +68,23 @@ export interface BoardStore {
   updateStrings(ids: readonly string[], change: (link: StringLink) => StringLink): void
 
   /**
+   * Make the board this, instead of what it was.
+   *
+   * What loading a board file is. Not a hundred deletions followed by a hundred
+   * additions: that would emit the board emptying and then refilling, and take
+   * the camera, the selection and every in-flight anchor resolve through a
+   * state that never should have existed. One emit of one state.
+   *
+   * Nothing is published. `transport.ts` is built on the rule that a change
+   * names one thing, precisely so that two people moving different pins cannot
+   * overwrite each other's board — and there is no honest single-thing message
+   * for "the board is now this". A socket will want a resumable log or an
+   * explicit replacement message; inventing one here, against a transport that
+   * has nothing on the other end, would be guessing at the shape.
+   */
+  replaceAll(board: BoardState): void
+
+  /**
    * Apply a change made somewhere else.
    *
    * Deliberately does not publish: a change that arrived over the wire going
@@ -80,13 +99,24 @@ export interface BoardStore {
 export interface BoardStoreOptions {
   sync?: BoardSync
   viewer: Viewer
+  /**
+   * What is already on the board when it opens.
+   *
+   * The board a person arrives at — a seeded demo today, a set of rows fetched
+   * from the server later. Deliberately not run through `can()`: a store that
+   * re-litigates the permissions of the contents it was handed would drop the
+   * board's own rows, exactly as `applyRemote` would for a change that came
+   * over the wire. The client that created them asked; this one only reads.
+   */
+  initial?: BoardState
 }
 
 export function createBoardStore({
   sync = localSync(),
   viewer,
+  initial,
 }: BoardStoreOptions): BoardStore {
-  let state: BoardState = { entities: [], strings: [] }
+  let state: BoardState = initial ?? { entities: [], strings: [] }
   const listeners = new Set<() => void>()
 
   const emit = (next: BoardState): void => {
@@ -225,6 +255,15 @@ export function createBoardStore({
       if (touched.length === 0) return
       emit({ ...state, strings })
       for (const link of touched) publish({ kind: 'string/upsert', string: link })
+    },
+
+    replaceAll(board) {
+      // Gated like every other write: replacing the board is the largest edit
+      // there is, and a viewer's board is one where nothing happens.
+      if (!allowed('create')) return
+      // A copy, so a caller that keeps the object it passed — an importer
+      // holding the parsed file, say — cannot mutate the board by editing it.
+      emit({ entities: [...board.entities], strings: [...board.strings] })
     },
 
     applyRemote(change) {

@@ -17,7 +17,7 @@ import type { TextAnchor } from '../anchors/types'
 import type { EdgeStyle } from '../board/edges'
 import type { Point } from '../board/yarn'
 import { DEFAULT_ARTICLE_OPTIONS, type ArticleOptions } from './article-options'
-import { IMAGE_SIZE, NOTE_SIZE } from './kinds'
+import { IMAGE_SIZE, NOTE_FONT_SCALE_DEFAULT, NOTE_SIZE } from './kinds'
 import type {
   AnchoredPin,
   ArticleEntity,
@@ -31,6 +31,16 @@ import type {
 
 /** The part of an entity a caller may reasonably want to set at creation. */
 export interface EntitySeed {
+  /**
+   * An id to adopt rather than mint.
+   *
+   * Left unset by everything that creates a thing, because an id minted on the
+   * client is what makes a write idempotent. It is set by the one caller that
+   * is not creating anything: a board seeded from rows that already have ids,
+   * where the id is the thing other rows point at and re-minting it would
+   * orphan every pin anchored into that article.
+   */
+  id?: string
   title?: string
   bodyMd?: string
   color?: string
@@ -58,7 +68,7 @@ function base(seed: EntitySeed): {
   const now = Date.now()
   return {
     ...seed,
-    id: crypto.randomUUID(),
+    id: seed.id ?? crypto.randomUUID(),
     bodyMd: seed.bodyMd ?? '',
     visibility: seed.visibility ?? 'shared',
     status: seed.status ?? 'theory',
@@ -87,11 +97,26 @@ export function newFreePin(board: Point, seed: EntitySeed = {}): FreePin {
 }
 
 /** A loose note on the board. */
-export function newNote(board: Point, seed: EntitySeed = {}): NoteEntity {
-  return { ...base(seed), kind: 'note', board, ...NOTE_SIZE }
+export function newNote(
+  board: Point,
+  seed: EntitySeed & { fontScale?: number } = {},
+): NoteEntity {
+  const { fontScale, ...rest } = seed
+  return {
+    ...base(rest),
+    kind: 'note',
+    board,
+    ...NOTE_SIZE,
+    fontScale: fontScale ?? NOTE_FONT_SCALE_DEFAULT,
+  }
 }
 
-/** A sheet of markdown lying on the board. */
+/**
+ * A sheet of markdown lying on the board.
+ *
+ * It opens hanging straight, the way a picture does. A new page has not been
+ * pinned up in a hurry yet, so there is nothing for an angle to say.
+ */
 export function newArticle(
   board: Point,
   bodyMd: string,
@@ -99,7 +124,7 @@ export function newArticle(
   options: ArticleOptions = DEFAULT_ARTICLE_OPTIONS,
   seed: EntitySeed = {},
 ): ArticleEntity {
-  return { ...base({ ...seed, bodyMd, title }), kind: 'article', board, options }
+  return { ...base({ ...seed, bodyMd, title }), kind: 'article', board, rotation: 0, options }
 }
 
 /**

@@ -66,10 +66,22 @@ describe('parseArticleOptions', () => {
     }
   })
 
-  it('rejects a numeric width that is not one of the offered ones', () => {
-    // 721 is a plausible-looking number and still not a width the board offers;
-    // accepting it would reflow the paper by a pixel and move every anchor.
-    expect(parseArticleOptions({ width: 721 }).width).toBe(DEFAULT_ARTICLE_OPTIONS.width)
+  it('keeps a width the presets do not offer', () => {
+    // 721 is not one of `ARTICLE_WIDTHS` and is still a width a page can be:
+    // the reader drags the edge, and what the drag produced is what is stored.
+    // An enum here would have silently rewritten the page to 720 on every
+    // reload, moving every anchor on it by a pixel of reflow each time.
+    expect(parseArticleOptions({ width: 721 }).width).toBe(721)
+  })
+
+  it('refuses a width that is not a width', () => {
+    // The test that replaces the one above: what matters is not whether the
+    // number is offered but whether it could be a page at all.
+    for (const nonsense of [0, -720, Number.NaN, Number.POSITIVE_INFINITY, '720']) {
+      expect(parseArticleOptions({ width: nonsense }).width).toBe(
+        DEFAULT_ARTICLE_OPTIONS.width,
+      )
+    }
   })
 
   it('ignores unknown keys rather than smuggling them into state', () => {

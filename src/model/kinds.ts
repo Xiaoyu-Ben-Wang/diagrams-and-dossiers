@@ -33,7 +33,7 @@
  */
 
 import type { AnchorRect } from '../anchors/dom'
-import { sweptBounds } from '../board/pivot'
+import { rotateAbout, sweptBounds } from '../board/pivot'
 import type { Rect } from '../board/camera'
 import type { Point } from '../board/yarn'
 import {
@@ -58,11 +58,53 @@ export const TACK_OFFSET_Y = -5
  */
 export const NOTE_SIZE = { width: 168, height: 128 } as const
 
+/**
+ * The note's type, and the sizes it can be set to.
+ *
+ * A scale rather than a size in px: the button in the note's corner is "bigger
+ * writing", and what bigger means should not change when the base type is
+ * retuned. The steps are coarse enough to see and fine enough to land on the
+ * size you wanted — ten of them, from three-quarters to double.
+ */
+export const NOTE_FONT_SIZE = 12
+export const NOTE_FONT_SCALE_MIN = 0.75
+export const NOTE_FONT_SCALE_MAX = 2
+export const NOTE_FONT_SCALE_STEP = 0.125
+export const NOTE_FONT_SCALE_DEFAULT = 1
+
+/**
+ * One step up or down, clamped at both ends.
+ *
+ * Worked out in whole steps from the floor rather than by adding to the current
+ * value: repeatedly adding 0.125 to a float drifts, and a note nudged up and
+ * back down would end at 0.9999999 and stop matching the size it started at.
+ */
+export function stepFontScale(scale: number, direction: 1 | -1): number {
+  const steps = Math.round((scale - NOTE_FONT_SCALE_MIN) / NOTE_FONT_SCALE_STEP)
+  const next = NOTE_FONT_SCALE_MIN + (steps + direction) * NOTE_FONT_SCALE_STEP
+  const clamped = Math.min(NOTE_FONT_SCALE_MAX, Math.max(NOTE_FONT_SCALE_MIN, next))
+  return Math.round(clamped * 1000) / 1000
+}
+
 /** An image's default footprint, in board px, before it is cropped to fit. */
 export const IMAGE_SIZE = { width: 260, height: 200 } as const
 
 /** Half-extent of a free pin's footprint, which is just a tack. */
 export const PIN_RADIUS = 10
+
+/**
+ * How far inside a picture's top edge its pin sits, in board px.
+ *
+ * A picture used to be pinned exactly *on* its top edge, so half the tack hung
+ * outside the photograph in mid-air. That reads as a tack hovering above the
+ * sheet rather than one pushed through it, and it is wrong for the thing the
+ * pin is for: a string tied to a picture should visibly end on the picture.
+ *
+ * Far enough in for the whole tack to be inside it: `TACK_SIZE` is 14, so 7
+ * would put the tack's edge exactly on the picture's edge, and this leaves a
+ * few pixels of margin past that.
+ */
+export const IMAGE_PIN_INSET = 10
 
 /**
  * What a kind can be asked to do.
@@ -190,10 +232,19 @@ const note: EntityDescriptor<BoardEntity & { kind: 'note' }> = {
     editable: true,
   }),
   anchorPoint: (entity) => ({
-    // Strings meet a note in the middle of it; its corner is where it is drawn
-    // from, which is not the same thing.
+    // The middle of its top edge, which is where the note's own handle strip is
+    // and so where it reads as being held to the cork.
+    //
+    // It used to be the centre of the paper, and the centre is the wrong point
+    // for two reasons. A rope tied to the middle of a post-it arrives on top of
+    // the writing and leaves across the note below it, so a board of them reads
+    // as string lying over the notes rather than attached to them; and the
+    // middle moves when the corner is dragged to resize, so tying a string to a
+    // blank note and then stretching it to fit the sentence slid the string
+    // down the paper. The top-centre is on the edge the note is drawn from and
+    // is the one point a resize along the bottom-right corner cannot move.
     x: entity.board.x + entity.width / 2 + entity.nudge.x,
-    y: entity.board.y + entity.height / 2 + entity.nudge.y,
+    y: entity.board.y + entity.nudge.y,
   }),
   bounds: (entity) => boxAt(entity.board, { width: entity.width, height: entity.height }),
   move: (entity, delta) => ({
@@ -205,28 +256,69 @@ const note: EntityDescriptor<BoardEntity & { kind: 'note' }> = {
 const article: EntityDescriptor<BoardEntity & { kind: 'article' }> = {
   kind: 'article',
   capabilities: (entity) => ({
-    marqueeSelectable: true,
+    // Not the rubber band, and this is the one capability a page does not share
+    // with the other placed kinds. A band dragged across a page is how you
+    // gather the notes lying on it — so a page swept into that set would be
+    // dragged off with them, leaving the paper's own pins behind on the cork.
+    // The tab at its head is the page's handle, and it is the only one it needs.
+    marqueeSelectable: false,
     movable: true,
     connectable: true,
     dated: true,
-    rotatable: false,
+    rotatable: true,
     // A sheet is edited through its own editor, which the options can forbid.
     editable: entity.options.editable,
   }),
-  anchorPoint: (entity, context) => {
-    const size = context.articleSize(entity.id)
-    if (!size) return null
-    // The tab at the top of the sheet, which is where a string would be tied.
-    return { x: entity.board.x + size.width / 2 + entity.nudge.x, y: entity.board.y }
+  anchorPoint: (entity) => {
+    // The tab at the top of the sheet, which is where a string would be tied —
+    // and, being the pivot the sheet turns about, the one point on it that a
+    // swing does not move. No angle belongs in this sum.
+    //
+    // Read from the entity's own width rather than from the measured one, and
+    // that is a difference worth having: a page's tab is where it is the moment
+    // the page exists, so yarn can be tied to a page on the first frame. Asking
+    // the measurement would mean a string to a page that has not been laid out
+    // yet resolves to nothing and is quietly dropped from the board — which is
+    // most visible on the frame a board opens, when every string to a page
+    // would be missing. It also has to agree with `articleToBoard`, which
+    // pivots on this same number.
+    return { x: entity.board.x + entity.options.width / 2 + entity.nudge.x, y: entity.board.y }
   },
   bounds: (entity, context) => {
     const size = context.articleSize(entity.id)
-    return size ? boxAt(entity.board, size) : null
+    if (!size) return null
+    // Swept, like a picture's. A page swung 45° covers a good deal more ground
+    // than the upright box it is drawn from, and zoom-to-fit framing the
+    // upright box would crop the corner that hangs past it.
+    return sweptBounds(
+      entity.board,
+      size,
+      { x: entity.board.x + size.width / 2, y: entity.board.y },
+      entity.rotation,
+    )
   },
   move: (entity, delta) => ({
     ...entity,
     board: { x: entity.board.x + delta.x, y: entity.board.y + delta.y },
   }),
+}
+
+/**
+ * Where a picture's pin is on the board.
+ *
+ * The one place that knows the inset is measured inside the sheet and has to
+ * be turned with it: everything else about a picture — its box, its resize,
+ * the point it swings about — is still the top-centre the pivot has always
+ * been.
+ */
+function imagePin(entity: BoardEntity & { kind: 'image' }): Point {
+  const pivot = { x: entity.board.x + entity.width / 2, y: entity.board.y }
+  const turned = rotateAbout(
+    pivot,
+    { x: pivot.x, y: entity.board.y + IMAGE_PIN_INSET },
+    entity.rotation,
+  )
+  return { x: turned.x + entity.nudge.x, y: turned.y + entity.nudge.y }
 }
 
 const image: EntityDescriptor<BoardEntity & { kind: 'image' }> = {
@@ -239,11 +331,19 @@ const image: EntityDescriptor<BoardEntity & { kind: 'image' }> = {
     rotatable: true,
     editable: true,
   }),
-  anchorPoint: (entity) => ({
-    // The tack it hangs from, which is also the point it turns about.
-    x: entity.board.x + entity.width / 2 + entity.nudge.x,
-    y: entity.board.y + entity.nudge.y,
-  }),
+  anchorPoint: (entity) => {
+    // The tack, which is `IMAGE_PIN_INSET` inside the top edge rather than on
+    // it — so the whole of it is over the picture, where a tack holding a
+    // photograph up would be.
+    //
+    // Inset means the anchor is no longer the pivot the sheet swings about, so
+    // the offset has to be turned with the sheet: the pin is drawn inside a
+    // rotated element and this has to say where that lands on the board. The
+    // pivot stays the top-centre, which is what `bounds` and the resize both
+    // assume, and a pin a few pixels below it moves by a few pixels when the
+    // picture swings — which is what a pin through the paper does.
+    return imagePin(entity)
+  },
   bounds: (entity) => {
     // Rotation grows the footprint, so the marquee uses the swept box rather
     // than the upright one — otherwise a tilted photo escapes the band that

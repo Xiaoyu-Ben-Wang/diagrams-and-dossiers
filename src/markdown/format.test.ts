@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyMarkdownAction, detectLinePrefix, isWrapped } from './format'
+import { applyMarkdownAction, detectLinePrefix, isWrapped, replaceRange } from './format'
 
 /** Select the whole document, the common case for a single-word fixture. */
 const all = (text: string) => [0, text.length] as const
@@ -209,5 +209,33 @@ describe('isWrapped', () => {
 
   it('is false for a line action, which has no wrapping markers', () => {
     expect(isWrapped('# Heading', 0, 9, 'heading')).toBe(false)
+  })
+})
+
+describe('replacing a range', () => {
+  it('puts the insertion where the range was and the caret after it', () => {
+    // What picking a name out of the mention list does to the `@query` run.
+    const result = replaceRange('See @Bell about it', 4, 9, '@[The Drowned Bell]')
+
+    expect(result.text).toBe('See @[The Drowned Bell] about it')
+    expect(result.selectionStart).toBe('See @[The Drowned Bell]'.length)
+    expect(result.selectionEnd).toBe(result.selectionStart)
+  })
+
+  it('inserts rather than replaces when the range is empty', () => {
+    const result = replaceRange('ab', 1, 1, 'X')
+    expect(result.text).toBe('aXb')
+    expect(result.selectionStart).toBe(2)
+  })
+
+  it('clamps a range that runs off either end', () => {
+    // A selection from before an edit can outlive the text it referred to.
+    expect(replaceRange('abc', -5, 99, 'Z').text).toBe('Z')
+  })
+
+  it('normalizes a backwards selection', () => {
+    // Between 1 and 4, exclusive of the character at 4 — the same range as
+    // (1, 4), whichever way round it arrives.
+    expect(replaceRange('abcdef', 4, 1, '-').text).toBe('a-ef')
   })
 })

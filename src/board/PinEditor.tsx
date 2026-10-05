@@ -14,12 +14,14 @@ export interface PinEditorProps {
   quote: string
   /** Whether the pin still resolves, or has gone cold. */
   status: 'exact' | 'repaired' | 'orphaned'
+  /** What the pin's tag reads. Free text — the campaign's calendar is its own. */
   dateLabel: string
   body: string
   /** Where to place it, in viewport coordinates. */
   x: number
   y: number
   onChange: (body: string) => void
+  onDateChange: (dateLabel: string) => void
   onDelete: () => void
   /** Hand the pin over to the board to be repositioned. */
   onMove: () => void
@@ -37,6 +39,7 @@ export function PinEditor({
   x,
   y,
   onChange,
+  onDateChange,
   onDelete,
   onMove,
   onClose,
@@ -93,9 +96,9 @@ export function PinEditor({
       <header className="flex items-start justify-between gap-2 border-b border-parchment-edge/50 px-3 py-2">
         <div className="min-w-0">
           <p className="truncate text-[11px] text-ink-soft italic">“{quote}”</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-soft/60">
+          <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-soft/60">
             <span
-              className="inline-block h-1.5 w-1.5 rounded-full"
+              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
               style={{
                 background:
                   status === 'orphaned'
@@ -105,8 +108,19 @@ export function PinEditor({
                       : 'var(--color-brass)',
               }}
             />
-            {dateLabel}
-          </p>
+            {/* A field, not a caption. It reads as one — a wash and a radius —
+                because the whole point of moving it out of the header's prose
+                is that it is the one part of this line you can change. */}
+            <input
+              type="text"
+              value={dateLabel}
+              onChange={(event) => onDateChange(event.target.value)}
+              placeholder="No date"
+              aria-label="Pin date"
+              title="The date on this pin's tag"
+              className="min-w-0 flex-1 rounded-sm bg-parchment-200/50 px-1 py-0.5 text-[10px] text-ink-soft outline-none placeholder:text-ink-soft/35 hover:bg-parchment-200/80 focus:bg-parchment-200 focus:text-ink"
+            />
+          </span>
         </div>
         <button
           type="button"

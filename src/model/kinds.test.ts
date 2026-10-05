@@ -4,8 +4,14 @@ import { rotateAbout } from '../board/pivot'
 import {
   descriptorFor,
   descriptorOf,
+  IMAGE_PIN_INSET,
   IMAGE_SIZE,
+  NOTE_FONT_SCALE_DEFAULT,
+  NOTE_FONT_SCALE_MAX,
+  NOTE_FONT_SCALE_MIN,
   NOTE_SIZE,
+  TACK_SIZE,
+  stepFontScale,
   tackPoint,
   TACK_RADIUS,
   TACK_OFFSET_X,
@@ -61,6 +67,7 @@ const note = (over: Partial<NoteEntity> = {}): NoteEntity => ({
   board: { x: 10, y: 20 },
   width: NOTE_SIZE.width,
   height: NOTE_SIZE.height,
+  fontScale: 1,
   ...over,
 })
 
@@ -68,6 +75,7 @@ const article = (over: Partial<ArticleEntity> = {}): ArticleEntity => ({
   ...base,
   kind: 'article',
   board: { x: 0, y: 0 },
+  rotation: 0,
   options: {
     width: 720,
     typeScale: 'normal',
@@ -149,11 +157,23 @@ describe('capabilities', () => {
     expect(word.movable).toBe(true)
   })
 
-  it('marks only the image as rotatable', () => {
+  it('marks the two sheets as rotatable and the flat things as not', () => {
+    // A picture and a page are the same object here: something hanging from a
+    // single pin, which turns about it. A note and a tack lie flat on the cork
+    // and have no angle to set.
     expect(descriptorFor(image()).capabilities(image()).rotatable).toBe(true)
-    for (const entity of [freePin(), anchoredPin(), note(), article()] as BoardEntity[]) {
+    expect(descriptorFor(article()).capabilities(article()).rotatable).toBe(true)
+    for (const entity of [freePin(), anchoredPin(), note()] as BoardEntity[]) {
       expect(descriptorFor(entity).capabilities(entity).rotatable).toBe(false)
     }
+  })
+
+  it('keeps a page out of the rubber band', () => {
+    // The one capability a page does not share with the other placed kinds. A
+    // band across a page is how you gather the notes lying on it, and a page
+    // swept into that set would be dragged off with them.
+    const page = article()
+    expect(descriptorFor(page).capabilities(page).marqueeSelectable).toBe(false)
   })
 
   it('lets an article forbid editing without forbidding moving', () => {
@@ -202,29 +222,78 @@ describe('anchor points', () => {
     expect(descriptorFor(nudged).anchorPoint(nudged, emptyContext)).toEqual({ x: 105, y: 197 })
   })
 
-  it('hangs an image from its top-centre, which rotation does not move', () => {
-    const upright = descriptorFor(image()).anchorPoint(image(), emptyContext)
-    const tilted = descriptorFor(image({ rotation: 40 })).anchorPoint(
-      image({ rotation: 40 }),
-      emptyContext,
-    )
-    expect(upright).toEqual({ x: 50 + IMAGE_SIZE.width / 2, y: 60 })
-    // The pivot is the one point that must not move when it swings.
-    expect(tilted).toEqual(upright)
+  it('pins an image just inside its top edge, so the whole tack is on it', () => {
+    // Not on the edge: half a tack hanging in mid-air reads as hovering above
+    // the photograph rather than holding it, and a string tied there ends off
+    // the picture it is about.
+    const at = descriptorFor(image()).anchorPoint(image(), emptyContext)
+
+    expect(at).toEqual({ x: 50 + IMAGE_SIZE.width / 2, y: 60 + IMAGE_PIN_INSET })
+    expect(IMAGE_PIN_INSET).toBeGreaterThanOrEqual(TACK_SIZE / 2)
   })
 
-  it('meets a note in the middle of it, not at the corner it is drawn from', () => {
+  it('turns the inset pin with the sheet, since it is inside the paper', () => {
+    // The top-centre corner is the one point a swing cannot move; the pin is
+    // below it now, so it travels — by exactly the arc the sheet's own rotation
+    // takes it through.
+    const upright = descriptorFor(image()).anchorPoint(image(), emptyContext)
+    const swung = image({ rotation: 90 })
+    const tilted = descriptorFor(swung).anchorPoint(swung, emptyContext)
+
+    expect(tilted).not.toEqual(upright)
+    // A quarter turn about the top-centre puts a pin 10px below the pivot the
+    // same 10px to one side of it.
+    expect(tilted).not.toBeNull()
+    expect(Math.round(tilted!.x - (50 + IMAGE_SIZE.width / 2))).toBe(-IMAGE_PIN_INSET)
+    expect(Math.round(tilted!.y)).toBe(60)
+  })
+
+  it('meets a note along the middle of its top edge, where it is held', () => {
+    // Not the centre of the paper: a rope tied there crosses the writing and
+    // slides down the note when the note is stretched from its corner.
     const at = descriptorFor(note()).anchorPoint(note(), emptyContext)
-    expect(at).toEqual({ x: 10 + NOTE_SIZE.width / 2, y: 20 + NOTE_SIZE.height / 2 })
+    expect(at).toEqual({ x: 10 + NOTE_SIZE.width / 2, y: 20 })
+  })
+
+  it('keeps a string on the top edge when the note is resized', () => {
+    // The corner drag grows the note rightward and downward, so the point a
+    // string is tied to stays on the top edge while its x follows the width.
+    const at = (width: number, height: number) => {
+      const entity = note({ width, height })
+      return descriptorFor(entity).anchorPoint(entity, emptyContext)
+    }
+
+    expect(at(NOTE_SIZE.width, NOTE_SIZE.height)).toEqual({ x: 10 + NOTE_SIZE.width / 2, y: 20 })
+    expect(at(300, 240)).toEqual({ x: 10 + 150, y: 20 })
   })
 
   it('ties an article at the tab on its top edge', () => {
-    const context: EntityContext = { ...emptyContext, articleSize: () => ({ width: 300, height: 400 }) }
-    expect(descriptorFor(article()).anchorPoint(article(), context)).toEqual({ x: 150, y: 0 })
+    // The page's own width, not a measured one: a tab is where it is the moment
+    // the page exists, so yarn can be tied to a page before it has been laid
+    // out. Note the context is empty — nothing measured — and the answer is
+    // still a point.
+    expect(descriptorFor(article()).anchorPoint(article(), emptyContext)).toEqual({ x: 360, y: 0 })
   })
 
-  it('gives an article nothing until it has been measured', () => {
-    expect(descriptorFor(article()).anchorPoint(article(), emptyContext)).toBeNull()
+  it('puts each page’s tab at its own width', () => {
+    // Two pages with different widths have their tabs in different places. An
+    // id-blind context that answered one size for every article put both in the
+    // same spot — and since a string ties to that point, two pages' yarn met in
+    // the middle of nowhere.
+    const narrow = article({ id: 'narrow', options: { ...article().options, width: 480 } })
+    const wide = article({ id: 'wide', options: { ...article().options, width: 960 } })
+
+    expect(descriptorFor(narrow).anchorPoint(narrow, emptyContext)).toEqual({ x: 240, y: 0 })
+    expect(descriptorFor(wide).anchorPoint(wide, emptyContext)).toEqual({ x: 480, y: 0 })
+  })
+
+  it('measures the page itself once it is asked for a box', () => {
+    // The footprint is a different question from the tab and does need the
+    // measurement: a page's height is whatever its text takes, so nothing can
+    // be hit-tested or framed until the browser has laid it out.
+    const context: EntityContext = { ...emptyContext, articleSize: () => ({ width: 300, height: 400 }) }
+    expect(descriptorFor(article()).bounds(article(), context)).toMatchObject({ width: 300, height: 400 })
+    expect(descriptorFor(article()).bounds(article(), emptyContext)).toBeNull()
   })
 })
 
@@ -337,5 +406,37 @@ describe('the tack offset is stated once', () => {
       x: 20 + TACK_OFFSET_X + TACK_RADIUS,
       y: 0 + TACK_OFFSET_Y + TACK_RADIUS,
     })
+  })
+})
+
+describe('stepping a note’s type size', () => {
+  it('goes up and down in even steps', () => {
+    expect(stepFontScale(1, 1)).toBe(1.125)
+    expect(stepFontScale(1, -1)).toBe(0.875)
+  })
+
+  it('stops at both ends rather than running away', () => {
+    expect(stepFontScale(NOTE_FONT_SCALE_MAX, 1)).toBe(NOTE_FONT_SCALE_MAX)
+    expect(stepFontScale(NOTE_FONT_SCALE_MIN, -1)).toBe(NOTE_FONT_SCALE_MIN)
+  })
+
+  it('comes back to where it started, with no drift', () => {
+    // Worked out in whole steps from the floor, not by adding to the current
+    // value: repeated float addition is how a note nudged up and back down
+    // ends at 0.9999999 and stops matching the size it began at.
+    let scale = NOTE_FONT_SCALE_DEFAULT
+    for (let i = 0; i < 6; i++) scale = stepFontScale(scale, 1)
+    for (let i = 0; i < 6; i++) scale = stepFontScale(scale, -1)
+    expect(scale).toBe(NOTE_FONT_SCALE_DEFAULT)
+  })
+
+  it('reaches both ends exactly from the default', () => {
+    let up = NOTE_FONT_SCALE_DEFAULT
+    while (up < NOTE_FONT_SCALE_MAX) up = stepFontScale(up, 1)
+    expect(up).toBe(NOTE_FONT_SCALE_MAX)
+
+    let down = NOTE_FONT_SCALE_DEFAULT
+    while (down > NOTE_FONT_SCALE_MIN) down = stepFontScale(down, -1)
+    expect(down).toBe(NOTE_FONT_SCALE_MIN)
   })
 })

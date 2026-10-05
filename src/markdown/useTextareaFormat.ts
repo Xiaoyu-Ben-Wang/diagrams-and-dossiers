@@ -15,13 +15,25 @@
 
 import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react'
 
-import { applyMarkdownAction, type MarkdownAction } from './format'
+import { applyMarkdownAction, type EditResult, type MarkdownAction } from './format'
 
 export function useTextareaFormat(
   textareaRef: RefObject<HTMLTextAreaElement | null>,
   value: string,
   onChange: (next: string) => void,
-): (action: MarkdownAction) => void {
+): {
+  /** Run a toolbar action against whatever is selected. */
+  format: (action: MarkdownAction) => void
+  /**
+   * Apply an edit computed elsewhere, and put the caret where it asks.
+   *
+   * The mention picker needs this: it knows the range it is replacing and what
+   * it is replacing it with, and `applyMarkdownAction` has no way to express
+   * that. Both paths share the pending-selection dance below, which is the part
+   * that is easy to get wrong and was worth not writing twice.
+   */
+  apply: (result: EditResult) => void
+} {
   const pendingSelection = useRef<{ start: number; end: number } | null>(null)
 
   useLayoutEffect(() => {
@@ -34,21 +46,25 @@ export function useTextareaFormat(
     pendingSelection.current = null
   })
 
-  return useCallback(
+  const apply = useCallback(
+    (result: EditResult) => {
+      pendingSelection.current = { start: result.selectionStart, end: result.selectionEnd }
+      onChange(result.text)
+    },
+    [onChange],
+  )
+
+  const format = useCallback(
     (action: MarkdownAction) => {
       const element = textareaRef.current
       if (!element) return
 
-      const result = applyMarkdownAction(
-        value,
-        element.selectionStart,
-        element.selectionEnd,
-        action,
+      apply(
+        applyMarkdownAction(value, element.selectionStart, element.selectionEnd, action),
       )
-
-      pendingSelection.current = { start: result.selectionStart, end: result.selectionEnd }
-      onChange(result.text)
     },
-    [textareaRef, value, onChange],
+    [textareaRef, value, apply],
   )
+
+  return { format, apply }
 }

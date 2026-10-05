@@ -14,6 +14,13 @@
  * Deltas are reported incrementally rather than as an absolute position: the
  * caller owns the object's coordinates and may be moving several objects at once
  * (a selection), which an absolute position cannot express.
+ *
+ * Nothing is reported until the press has travelled far enough to be a drag, and
+ * the first report is everything travelled so far. Reporting the sub-threshold
+ * pixels would mean a plain click nudging the object by however much the mouse
+ * twitched with the button down — which nobody notices on a post-it and
+ * everybody notices on a page, whose body is also the thing you click to pin a
+ * note to it.
  */
 
 import { useCallback, useRef } from 'react'
@@ -23,9 +30,30 @@ import type { Point } from './yarn'
 /** Pointer travel, in pixels, above which a press is a drag rather than a click. */
 export const DRAG_THRESHOLD = 5
 
+/**
+ * How far a click may land from where a drag ended and still count as that
+ * drag's trailing click rather than a new one.
+ *
+ * Browsers send a click after every press-release pair, drag or not, and they
+ * report it wherever the pointer finished. Matching on position is what lets
+ * something swallow its own trailing click without also eating a real one a
+ * moment later somewhere else. Shared with `BoardCanvas`, which does the same
+ * thing for a rubber band — the two gestures differ, the browser's behaviour
+ * does not.
+ */
+export const CLICK_SLOP = 4
+
 export interface BoardDragOptions {
   /** Called with board-space movement since the last event. */
   onDrag: (delta: Point) => void
+  /**
+   * Called once, on the move that turns the press into a drag.
+   *
+   * A drag is also the moment to deal with whatever the press began as: a press
+   * on a page starts a text selection before anyone knows whether it will be a
+   * drag, and the selection has to go when it turns out to be one.
+   */
+  onDragStart?: () => void
   /** Called on release if the pointer never travelled far enough to be a drag. */
   onTap?: () => void
   /**
@@ -54,11 +82,16 @@ interface DragState {
   pointerId: number
   lastX: number
   lastY: number
+  /** Where the press landed, so the first report can cover the whole travel. */
+  startX: number
+  startY: number
   travel: number
+  dragging: boolean
 }
 
 export function useBoardDrag({
   onDrag,
+  onDragStart,
   onTap,
   onEnd,
   zoom,
@@ -71,6 +104,8 @@ export function useBoardDrag({
 
   const dragRef = useRef(onDrag)
   dragRef.current = onDrag
+  const startRef = useRef(onDragStart)
+  startRef.current = onDragStart
   const tapRef = useRef(onTap)
   tapRef.current = onTap
   const endRef = useRef(onEnd)
@@ -89,7 +124,10 @@ export function useBoardDrag({
         pointerId: event.pointerId,
         lastX: event.clientX,
         lastY: event.clientY,
+        startX: event.clientX,
+        startY: event.clientY,
         travel: 0,
+        dragging: false,
       }
 
       try {
@@ -112,6 +150,21 @@ export function useBoardDrag({
     state.lastY = event.clientY
 
     const scale = zoomRef.current || 1
+
+    if (!state.dragging) {
+      if (state.travel < DRAG_THRESHOLD) return
+      state.dragging = true
+      startRef.current?.()
+      // The whole displacement, not this event's: the object has been still
+      // while the pointer moved five pixels, and it has to arrive under the
+      // pointer rather than start five pixels behind it.
+      dragRef.current({
+        x: (event.clientX - state.startX) / scale,
+        y: (event.clientY - state.startY) / scale,
+      })
+      return
+    }
+
     dragRef.current({ x: dx / scale, y: dy / scale })
   }, [])
 

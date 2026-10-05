@@ -129,6 +129,13 @@
     background-color 120ms ease;
 }
 
+/* Hover is the weaker version of chosen, so the two never read alike: the
+   highlighted row of a radio group should not look like the answer. */
+.prefs-option:hover:not([data-selected='true']) {
+  border-color: color-mix(in srgb, var(--color-brass) 55%, transparent);
+  background: color-mix(in srgb, var(--color-brass) 6%, transparent);
+}
+
 .prefs-option[data-selected='true'] {
   border-color: var(--color-brass);
   background: color-mix(in srgb, var(--color-brass) 13%, transparent);
@@ -258,4 +265,37 @@
   display: flex;
   gap: 0.5rem;
   margin-top: 0.55rem;
+}
+
+/* Importing a board file: armed first, because it replaces everything. */
+.prefs-import {
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  border: 1px solid var(--color-parchment-edge);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-ink) 4%, transparent);
+}
+
+.prefs-import .prefs-hint {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+/* Left as the browser draws it: a file input is the one control worth not
+   restyling, because it is the only one that carries the operating system's
+   own "choose a file" affordance and its own accessibility behaviour. */
+.prefs-file-input {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.5rem;
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--color-ink-soft);
+}
+
+.prefs-problem {
+  margin: 0.55rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--color-wax);
 }

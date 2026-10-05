@@ -123,12 +123,30 @@ export interface NoteEntity extends EntityBase {
    */
   width: number
   height: number
+  /**
+   * How large the writing is, as a multiple of `NOTE_FONT_SIZE`.
+   *
+   * On the note rather than board-wide: one post-it carrying a long
+   * transcription and another carrying two words are not the same size of
+   * thing, and the one you were squinting at is the one you want bigger.
+   */
+  fontScale: number
 }
 
-/** A sheet of markdown lying on the board. */
+/**
+ * A sheet of markdown lying on the board.
+ *
+ * `board` is the sheet's top-left, like a note's or a picture's — but the sheet
+ * turns about the tab at its top-*centre*, and `rotation` is that angle. The
+ * two are not redundant: rotation moves every corner except the pivot, so the
+ * corner is where the upright sheet is drawn from and the pivot is computed
+ * from it. See `pivot.ts`.
+ */
 export interface ArticleEntity extends EntityBase {
   kind: 'article'
   board: Point
+  /** Degrees of swing about the tab, within ±`MAX_TILT_DEG`. */
+  rotation: number
   options: ArticleOptions
 }
 

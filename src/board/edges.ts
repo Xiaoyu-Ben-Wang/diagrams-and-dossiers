@@ -77,11 +77,11 @@ export { seedFromKey }
  */
 export const EDGE_STYLES = [
   'clean',
-  'burnt',
   'stamped',
+  'scalloped',
+  'burnt',
   'torn',
   'deckled',
-  'scalloped',
   'scorched',
   'frayed',
   'nibbled',
@@ -89,6 +89,35 @@ export const EDGE_STYLES = [
 ] as const
 
 export type EdgeStyle = (typeof EDGE_STYLES)[number]
+
+/**
+ * The two families the styles fall into, in the order they are shown.
+ *
+ * The split is not a matter of taste — it is the `jitter` dial read off. The
+ * presets sit at 0, 0.15 and 0.35 for the styles that repeat a motif, and at
+ * 0.6 and up for the ones the noise drives; nothing lands in between, which is
+ * what makes this a boundary rather than a preference. A style that places its
+ * features at fixed intervals and wobbles them a little reads as something
+ * made; one that lets the noise through reads as wear.
+ *
+ * The picker does not label the split. Ten swatches that visibly differ do not
+ * need a caption saying which is which, and on a control this small a caption
+ * would be most of the control.
+ *
+ * `EDGE_STYLES` is the flat list everything else iterates; this is the same
+ * set, sorted, and a test holds the two together so a new style cannot arrive
+ * without being put in one family or the other.
+ */
+export const EDGE_FAMILIES = [
+  {
+    id: 'pattern',
+    styles: ['clean', 'stamped', 'scalloped'],
+  },
+  {
+    id: 'noise',
+    styles: ['burnt', 'torn', 'deckled', 'scorched', 'frayed', 'nibbled', 'chipped'],
+  },
+] as const satisfies readonly { id: string; styles: readonly EdgeStyle[] }[]
 
 /**
  * Per-style knobs. Every field is optional and every style has its own default
@@ -125,7 +154,11 @@ export type EdgePreset = Required<EdgeOptions>
  * a deckled note and a burnt note are not damaged to the same degree.
  */
 export const EDGE_PRESETS: Readonly<Record<EdgeStyle, EdgePreset>> = {
-  clean: { depth: 0, frequency: 1, jitter: 1, samples: 6, density: 1, spread: 0.35 },
+  // Jitter zero, and not because it is reached: `edgeClipPath` short-circuits
+  // clean to the plain box before any profile runs. It is the honest value for
+  // a style that damages nothing, and the family split reads it — see
+  // `EDGE_FAMILIES`.
+  clean: { depth: 0, frequency: 1, jitter: 0, samples: 6, density: 1, spread: 0.35 },
   burnt: { depth: 0.05, frequency: 5, jitter: 1, samples: 40, density: 6, spread: 0.35 },
   stamped: { depth: 0.055, frequency: 1, jitter: 0.35, samples: 48, density: 6, spread: 0.35 },
   torn: { depth: 0.05, frequency: 3, jitter: 0.9, samples: 44, density: 6, spread: 0.35 },

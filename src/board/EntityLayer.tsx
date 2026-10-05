@@ -1,11 +1,17 @@
 /**
  * Everything lying loose on the cork.
  *
- * The page is not here — it is its own component, because it is not a thing
- * placed at a point the way these are. What is here is the three kinds that
- * are: tacks pushed straight into the board, pictures pinned up, and post-its
- * stuck down. Plus the border bar, which belongs to whichever picture is
- * selected and has nowhere else sensible to live.
+ * Pages are not here. They are placed at a point like these are — the reason
+ * they are their own component is that a page is not described entirely by its
+ * entity: it owns a rendered body, a projection of that body and a measured
+ * paper, all of which the board has to reach through a registry rather than
+ * through props. Drawing one is cheap; *finding* one is what makes it a
+ * component rather than a case in this loop.
+ *
+ * So what is here is the three kinds that are fully described by their entity:
+ * tacks pushed straight into the board, pictures pinned up, and post-its stuck
+ * down — plus the border bar, which belongs to whichever picture is selected
+ * and has nowhere else sensible to live.
  *
  * They share a layer rather than each getting one because the board has exactly
  * one z-order and it is the order they are rendered in. Rendering the pictures
@@ -31,8 +37,15 @@ export interface EntityLayerProps {
   movingPin: string | null
   zoom: number
 
-  /** A point in the article's own space, in board space. */
-  articleToBoard: (local: Point) => Point
+  /**
+   * A point in an article's own space, in board space.
+   *
+   * Takes the article's id, because there is more than one page: an anchored
+   * pin's position is only meaningful against the sheet it is stuck through,
+   * and this layer draws free pins *and* pictures, either of which may be tied
+   * to a different page.
+   */
+  articleToBoard: (articleId: string, local: Point) => Point | null
   /** A viewport point in board space. */
   toBoard: (clientX: number, clientY: number) => Point
   /** Where a string may be tied, by entity id. */
@@ -42,6 +55,8 @@ export interface EntityLayerProps {
   onMoveOne: (id: string, delta: Point) => void
   onMoveEntity: (id: string, delta: Point) => void
   onPinDrop: (id: string, clientX: number, clientY: number) => void
+  /** Open a pin's editor at a point on screen — what its tag does when clicked. */
+  onOpenPinEditor: (id: string, clientX: number, clientY: number) => void
   onPinHover: (pin: PinView, element: Element | null) => void
   onRotate: (id: string, degrees: number) => void
   onResize: (id: string, size: { width: number; height: number }) => void
@@ -49,6 +64,7 @@ export interface EntityLayerProps {
   onSelectNote: (id: string) => void
   onSetBody: (id: string, body: string) => void
   onResizeNote: (id: string, size: { width: number; height: number }) => void
+  onSetFontScale: (id: string, scale: number) => void
   onRemove: (id: string) => void
 }
 
@@ -69,6 +85,7 @@ export function EntityLayer({
   onMoveOne,
   onMoveEntity,
   onPinDrop,
+  onOpenPinEditor,
   onPinHover,
   onRotate,
   onResize,
@@ -76,6 +93,7 @@ export function EntityLayer({
   onSelectNote,
   onSetBody,
   onResizeNote,
+  onSetFontScale,
   onRemove,
 }: EntityLayerProps) {
   return (
@@ -96,6 +114,7 @@ export function EntityLayer({
             onStartYarn={(event) => onStartYarn(event, pin.id, pinPoint(pin, articleToBoard))}
             onMove={onMoveOne}
             onDrop={onPinDrop}
+            onOpenEditor={onOpenPinEditor}
             onHover={onPinHover}
           />
         ) : null,
@@ -137,6 +156,7 @@ export function EntityLayer({
           onDrag={onMoveEntity}
           onChange={onSetBody}
           onResize={onResizeNote}
+          onSetFontScale={onSetFontScale}
           onRemove={onRemove}
         />
       ))}

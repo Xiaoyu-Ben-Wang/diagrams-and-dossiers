@@ -33,6 +33,7 @@ import {
   type Rect,
   type Viewport,
 } from './camera'
+import { CLICK_SLOP, DRAG_THRESHOLD } from './useBoardDrag'
 import type { Point } from './yarn'
 
 export interface BoardContextTarget {
@@ -130,19 +131,11 @@ export interface BoardCanvasProps {
   idleCursor?: string
 }
 
-/** Pointer travel, in pixels, above which a press is a drag rather than a click. */
-const DRAG_THRESHOLD = 5
-
 /**
- * How far a click may land from where a drag ended and still count as that
- * drag's trailing click rather than a new one.
- *
- * Browsers send a click after every press-release pair, drag or not, and they
- * report it wherever the pointer finished. Matching on position is what lets
- * the canvas swallow its own trailing click without also eating a real one a
- * moment later somewhere else.
+ * `DRAG_THRESHOLD` and `CLICK_SLOP` come from `useBoardDrag`: the band and the
+ * objects dragged on the board are told apart from a click by the same rule, and
+ * two copies of it is how they stop agreeing.
  */
-const CLICK_SLOP = 4
 
 /**
  * Capture the pointer if the environment supports it.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { newFreePin, newNote } from '../model/create'
+import { newArticle, newFreePin } from '../model/create'
 import { DEFAULT_ARTICLE_OPTIONS } from '../model/article-options'
 import { ROLES, can, isDm, isEditor, isMember, visibleOnly, visibleTo, type Role } from './permissions'
 
@@ -67,11 +67,10 @@ describe('can', () => {
     // An article whose options forbid editing is not editable even by the
     // owner: the role is a ceiling, not a grant. This is the one place a kind
     // gets a say, because it is the kind's own business.
-    const locked = {
-      ...newNote({ x: 0, y: 0 }),
-      kind: 'article' as const,
-      options: { ...DEFAULT_ARTICLE_OPTIONS, editable: true },
-    }
+    const locked = newArticle({ x: 0, y: 0 }, '', 'A page', {
+      ...DEFAULT_ARTICLE_OPTIONS,
+      editable: true,
+    })
     expect(can(viewer('owner'), 'edit', locked)).toBe(true)
 
     const sealed = { ...locked, options: { ...locked.options, editable: false } }

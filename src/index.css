@@ -120,7 +120,15 @@ body {
 }
 
 /* Parchment: warm vertical falloff plus a soft vignette at the edges. */
+/* The sheet is grabbed by its body, so the paper itself says so — the words
+   inside keep their own text cursor, since a click there still places a caret.
+   While a drag is running the whole sheet says `grabbing` and stops selecting:
+   the press that grabs a page begins a text selection on the way, because
+   nothing knows it is a drag until it has travelled, and this is what stops it
+   dragging a paragraph along with the sheet. `data-dragging` rather than
+   `:active`, which is also true of a click that never moved. */
 .parchment {
+  cursor: grab;
   background-color: var(--color-parchment-100);
   background-image:
     radial-gradient(ellipse at 50% 0%, rgb(201 180 138 / 0.22), transparent 60%),
@@ -132,6 +140,15 @@ body {
     0 2px 6px rgb(0 0 0 / 0.3);
 }
 
+.parchment[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.parchment[data-dragging='true'],
+.parchment[data-dragging='true'] .article {
+  user-select: none;
+}
+
 /* A brass tack: small, shiny, casting a tight shadow onto the paper. */
 .tack {
   background:
@@ -140,6 +157,18 @@ body {
     0 2px 3px rgb(0 0 0 / 0.45),
     0 0 0 1px rgb(0 0 0 / 0.25),
     0 0 10px rgb(201 162 39 / 0.35);
+  /* Brightness and scale rather than another box-shadow: the three status
+     rules below are box-shadows, and a hover that replaced one would hide
+     whether a tack is repaired or orphaned exactly while it is being pointed
+     at. Unless it is selected, whose ring is the one thing that outranks it. */
+  transition:
+    transform 130ms ease,
+    filter 130ms ease;
+}
+
+.tack:hover:not(.is-selected) {
+  transform: scale(1.12);
+  filter: brightness(1.18);
 }
 
 .tack[data-status='repaired'] {
@@ -156,6 +185,156 @@ body {
     0 2px 3px rgb(0 0 0 / 0.5),
     0 0 0 1px rgb(0 0 0 / 0.3),
     0 0 12px rgb(140 47 30 / 0.55);
+}
+
+/* The page's disclosure caret.
+   Its own control since the tab stopped pretending to be a menu: it rolls the
+   page up and does nothing else. Both states answer the pointer — the first
+   version of this only styled the unselected one, so the caret went inert at
+   exactly the moment it was most likely to be reached for, straight after the
+   page was clicked open. */
+.paper-disclosure {
+  background: color-mix(in srgb, var(--color-parchment-200) 85%, transparent);
+  color: var(--color-ink-soft);
+  cursor: pointer;
+  transition:
+    background-color 130ms ease,
+    color 130ms ease;
+}
+
+.paper-disclosure:hover {
+  background: var(--color-parchment-200);
+  color: var(--color-ink);
+}
+
+.paper-disclosure[data-selected='true'] {
+  background: color-mix(in srgb, var(--color-brass) 80%, transparent);
+  color: var(--color-cork-900);
+}
+
+.paper-disclosure[data-selected='true']:hover {
+  background: var(--color-brass);
+}
+
+/* The glyph grows under the pointer — the same trick the sag handle uses, and
+   for the same reason: transform rather than font-size, so a caret cannot
+   resize the tab it is sitting in. */
+.paper-disclosure-glyph {
+  display: block;
+  transition: transform 130ms ease;
+}
+
+.paper-disclosure:hover .paper-disclosure-glyph {
+  transform: scale(1.25);
+}
+
+/* The tag on a tack that has something written on it.
+   It replaces a brass ring that used to sit around those tacks, which said
+   only *that* there was something to read — the words themselves were in the
+   hover card, so finding out what a pin said meant hovering over every pin
+   until one of them answered. A tag says it, on the board, which is what a tag
+   is for. The name of the game is the same as it always was: a board of fifty
+   pins should not hide the half-dozen somebody bothered to write on. */
+.pin-tag {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Hung from the pin's centre rather than from a corner, so it stays under
+     the tack whatever the tag's width turns out to be. */
+  transform: translateX(-50%);
+  /* The tag is a grab handle now, so it is a target — which costs the board
+     the presses it swallows, and the comment on `Tack` says why that is worth
+     it. The cord stays transparent: it is a hairline, and a hairline that ate
+     clicks would be a mystery. So the hit area is the card, which is the part
+     that looks like something you could pick up. */
+  pointer-events: none;
+  z-index: 18;
+}
+
+/* The string it hangs by. Dark enough to read against cork, wool and paper
+   alike, none of which are the same colour. */
+.pin-tag__cord {
+  width: 1px;
+  height: 9px;
+  background: color-mix(in srgb, var(--color-ink) 55%, transparent);
+}
+
+.pin-tag__card {
+  position: relative;
+  /* The one part of the tag that takes a press: the whole thing drags the pin
+     it belongs to, and a click on it opens the pin's editor. See `Tack`. */
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  width: max-content;
+  max-width: 148px;
+  /* Room at the top for the hole and the cut corners. */
+  padding: 10px 9px 6px;
+  background: var(--color-parchment-100);
+  color: var(--color-ink);
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: left;
+  /* The luggage-tag cut: the top two corners taken off at 45 degrees. The
+     whole silhouette rather than two little triangles pasted over a rectangle
+     — the paper is one piece, and its shadow has to follow the cut. */
+  clip-path: polygon(7px 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%, 0 7px);
+  /* drop-shadow and not box-shadow: `clip-path` above cuts a box-shadow off
+     along with the corners it is meant to follow. This one is applied to the
+     clipped shape. */
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.5));
+}
+
+.pin-tag__card:active {
+  cursor: grabbing;
+}
+
+/* The punched hole. A ring rather than a filled disc, because what is behind
+   the tag is the board, and the board is five different colours — a hole
+   painted the colour of cork is a hole painted the wrong colour on leather,
+   felt, slate and the whiteboard. */
+.pin-tag__hole {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 40%, transparent);
+}
+
+.pin-tag__quote {
+  display: block;
+  margin-bottom: 2px;
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.pin-tag__body {
+  display: block;
+}
+
+.pin-tag__date {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 14%, transparent);
+  font-size: 7.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.pin-tag__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-brass);
 }
 
 /* The handle that adjusts a selected string's sag. No chrome: it is a control,
@@ -300,6 +479,92 @@ body {
   font-style: italic;
   color: var(--color-ink-soft);
 }
+/* A mention: the name of another page or picture, in the prose.
+   Dotted rather than solid, and brass rather than the wax red the browser gives
+   a link: it points somewhere on this board, and a solid underline reads as
+   "leaves the page". The missing form keeps its place and its text — see
+   `markdown/mentions.ts` for why the markup never depends on resolution — and
+   only loses the colour that promises somewhere to go. */
+.article a.mention {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, var(--color-brass) 85%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.article a.mention:hover {
+  text-decoration-style: solid;
+  background: color-mix(in srgb, var(--color-brass) 18%, transparent);
+}
+
+.article a.mention--missing {
+  text-decoration-color: color-mix(in srgb, var(--color-ink) 30%, transparent);
+  cursor: text;
+}
+
+.article a.mention--missing:hover {
+  background: none;
+  text-decoration-style: dotted;
+}
+
+/* The mention list, hung under the caret.
+   `left` and `top` are set inline: a textarea reports no caret rectangle, so
+   `textarea-caret.ts` measures one with a mirror div and `placePopup` turns it
+   into a corner of this box. Until that measurement lands the list is hidden,
+   since the alternative is one frame at the panel's top-left corner.
+   The width is capped against the pane as well as in px, because the pane is
+   the thing that clips: it is `overflow-hidden`, so a list wider than it would
+   be cut off rather than spilled. */
+.mention-list {
+  position: absolute;
+  visibility: hidden;
+  width: min(240px, calc(100% - 16px));
+  z-index: 20;
+  max-height: 210px;
+  overflow-y: auto;
+  padding: 3px;
+  border: 1px solid var(--color-parchment-edge);
+  border-radius: 4px;
+  background: var(--color-parchment-100);
+  box-shadow: 0 10px 22px -10px rgb(0 0 0 / 0.6);
+}
+
+.mention-list[data-placed='true'] {
+  visibility: visible;
+}
+
+.mention-option {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  color: var(--color-ink);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 100ms ease;
+}
+
+.mention-option:hover {
+  background: color-mix(in srgb, var(--color-brass) 16%, transparent);
+}
+
+.mention-option[data-selected='true'] {
+  background: color-mix(in srgb, var(--color-brass) 26%, transparent);
+}
+
+/* Which kind it is, said once and quietly: the two are the same to a link, but
+   not to the person looking for one of them. */
+.mention-option-kind {
+  flex-shrink: 0;
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+  opacity: 0.7;
+}
+
 .article code {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 0.875em;
@@ -415,6 +680,14 @@ body {
   color: var(--color-brass);
   cursor: grab;
   touch-action: none;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease;
+}
+
+.image-rotate:hover {
+  transform: scale(1.15);
+  filter: brightness(1.15);
 }
 
 .image-rotate:active {
@@ -430,6 +703,14 @@ body {
   color: var(--color-brass);
   cursor: nwse-resize;
   touch-action: none;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease;
+}
+
+.image-resize:hover {
+  transform: scale(1.15);
+  filter: brightness(1.15);
 }
 
 .image-resize:focus-visible {
@@ -481,7 +762,12 @@ body {
   line-height: 1;
   transition:
     background 120ms ease,
-    color 120ms ease;
+    color 120ms ease,
+    transform 120ms ease;
+}
+
+.post-it-close:hover {
+  transform: scale(1.2);
 }
 
 .post-it-close {
@@ -515,6 +801,7 @@ body {
 
 .sheet-close:hover {
   background: var(--color-wax);
+  transform: scale(1.12);
 }
 
 /* The note's corner. Only on a selected note, like a picture's. */
@@ -527,10 +814,14 @@ body {
   color: color-mix(in srgb, var(--color-ink) 45%, transparent);
   cursor: nwse-resize;
   touch-action: none;
+  transition:
+    color 120ms ease,
+    transform 120ms ease;
 }
 
 .post-it-resize:hover {
   color: var(--color-ink);
+  transform: scale(1.25);
 }
 
 /* The page's edge. A grab strip rather than a corner: a page is resized by its
@@ -544,6 +835,16 @@ body {
   color: var(--color-brass);
   cursor: ew-resize;
   touch-action: none;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease;
+}
+
+/* The grip is already translated to sit on the page's edge, so the hover has
+   to keep that translation or the control jumps to the middle of the sheet. */
+.article-resize:hover {
+  transform: translateY(-50%) scaleX(1.5);
+  filter: brightness(1.2);
 }
 
 .article-resize:focus-visible {
@@ -702,6 +1003,20 @@ body {
 
 .string-note {
   position: absolute;
+  /* Sized to its words, not to the space available beside it.
+     The world layer is a zero-sized box that everything on the board is
+     positioned inside, so an absolutely positioned note that is left to
+     shrink-to-fit is measured against a containing block 0px wide — and the
+     available width comes out as `0 - left`, which is negative for every note
+     anchored right of the board origin. A shrink-to-fit box clamps a negative
+     available width to the minimum, so those notes collapsed to the card's
+     46px floor and `overflow-wrap: anywhere` broke words mid-word: a label
+     reading "the leaves" drew as "the / leave / s". Notes anchored left of the
+     origin got a positive `0 - left` and looked fine, which is why a board
+     with one label near the margin never showed it.
+     `max-content` takes the containing block out of the sum; the card's own
+     `max-width` is what still wraps a long note. */
+  width: max-content;
   /* Under the sag handle: a note defaults to halfway along the rope, which is
      exactly where that handle sits, and the handle is a control while the note
      is content — so the control wins. */
@@ -717,6 +1032,9 @@ body {
 }
 
 .string-note-card {
+  transition:
+    box-shadow 130ms ease,
+    transform 130ms ease;
   min-width: 46px;
   max-width: 168px;
   padding: 3px 6px 4px;
@@ -730,6 +1048,13 @@ body {
     0 1px 0 rgb(255 255 255 / 0.5) inset,
     0 3px 7px -2px rgb(0 0 0 / 0.55);
   cursor: grab;
+}
+
+.string-note-card:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.5) inset,
+    0 5px 11px -2px rgb(0 0 0 / 0.6);
 }
 
 .string-note-card:active {
@@ -796,6 +1121,16 @@ body {
   z-index: 30;
 }
 
+/* The break between the patterned crops and the noisy ones. A hairline rather
+   than a label: the swatches already say which is which, and a caption across a
+   row of ten little pictures would be most of the control. */
+.edge-picker-split {
+  align-self: stretch;
+  width: 1px;
+  margin: 3px 5px;
+  background: rgb(201 180 138 / 0.28);
+}
+
 .edge-swatch {
   display: flex;
   flex-direction: column;
@@ -806,17 +1141,28 @@ body {
   border: 1px solid transparent;
   border-radius: 4px;
   background: none;
-  color: var(--color-board-ink-soft);
+  /* Parchment, not a board-ink token. The bar is near-black in *every* theme,
+     while `--color-board-ink-soft` flips to a dark value on a light board — so
+     naming the board's ink here gave ten swatches and ten unreadable labels
+     the moment somebody switched to the light theme. The bar is a control that
+     chose its own ground; its text has to be chosen against that ground. */
+  color: color-mix(in srgb, var(--color-parchment-200) 72%, transparent);
   cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    transform 120ms ease;
 }
 
 .edge-swatch:hover {
   background: rgb(201 180 138 / 0.12);
+  color: var(--color-parchment-100);
+  transform: translateY(-2px);
 }
 
 .edge-swatch.is-active {
   border-color: var(--color-brass);
-  color: var(--color-board-ink);
+  color: var(--color-parchment-100);
   background: rgb(201 180 138 / 0.18);
 }
 
@@ -879,4 +1225,133 @@ body {
   .tack-enter {
     animation: none;
   }
+
+  /* Every hover above that moves something says so by moving it. The colour
+     changes stay — those are feedback rather than motion, and a control that
+     acknowledges the pointer only by changing shade is still legible. */
+  .tack:hover,
+  .image-rotate:hover,
+  .image-resize:hover,
+  .article-resize:hover,
+  .post-it-resize:hover,
+  .post-it-close:hover,
+  .sheet-close:hover,
+  .edge-swatch:hover,
+  .string-note-card:hover,
+  .paper-disclosure:hover .paper-disclosure-glyph,
+  .yarn-bead:hover .yarn-bead-glyph {
+    transform: none;
+  }
+}
+
+/* The caption under a selected picture: what it is called, and what it is a
+   picture of. A form rather than a label, because a dropped photograph arrives
+   with a filename and nothing else — this is where it gets the name a mention
+   can use.
+
+   It hangs below the picture and counter-rotates to stay upright (see
+   `ImageCard`), so its own type never sits at the picture's angle. */
+.image-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--color-parchment-edge);
+  border-radius: 3px;
+  background: var(--color-parchment-100);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.5) inset,
+    0 10px 20px -10px rgb(0 0 0 / 0.6);
+  /* Not the card's grab cursor: this is text, and the drag it would otherwise
+     start is stopped at the element. */
+  cursor: default;
+  color: var(--color-ink);
+}
+
+.image-caption-title,
+.image-caption-body {
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  text-align: left;
+}
+
+.image-caption-title {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent);
+}
+
+.image-caption-body {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  font-size: 10.5px;
+  line-height: 1.4;
+  padding: 2px;
+}
+
+.image-caption-title::placeholder,
+.image-caption-body::placeholder {
+  color: color-mix(in srgb, var(--color-ink) 35%, transparent);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.image-caption-title:focus,
+.image-caption-body:focus {
+  background: color-mix(in srgb, var(--color-brass) 8%, transparent);
+}
+
+/* The type controls on a selected note: smaller, larger, and back to normal.
+   Sized to the note rather than to the app — a 168px square has no room for
+   full-size buttons, and these ride over the paper's own colour so they read as
+   part of it rather than as chrome sitting on top. */
+.post-it-fonts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-top: 2px;
+  flex: none;
+}
+
+.post-it-font {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  cursor: pointer;
+  transition:
+    background-color 110ms ease,
+    color 110ms ease,
+    transform 110ms ease;
+}
+
+.post-it-font:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-ink) 12%, transparent);
+  color: var(--color-ink);
+  transform: translateY(-1px);
+}
+
+.post-it-font:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* The two As differ by size alone, which is the convention and needs no dashes
+   beside them. */
+.post-it-font-a {
+  font-weight: 600;
+  line-height: 1;
 }

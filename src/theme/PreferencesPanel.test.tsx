@@ -14,11 +14,28 @@ afterEach(() => {
   })
 })
 
-function panel(overrides: { onClose?: () => void; onClearBoard?: () => void } = {}) {
+function panel(
+  overrides: {
+    onClose?: () => void
+    onClearBoard?: () => void
+    onExportBoard?: () => void
+    onImportBoard?: (file: File) => Promise<string | null>
+  } = {},
+) {
   const onClose = overrides.onClose ?? vi.fn()
   const onClearBoard = overrides.onClearBoard ?? vi.fn()
-  render(<PreferencesPanel open onClose={onClose} onClearBoard={onClearBoard} />)
-  return { onClose, onClearBoard }
+  const onExportBoard = overrides.onExportBoard ?? vi.fn()
+  const onImportBoard = overrides.onImportBoard ?? vi.fn(async () => null)
+  render(
+    <PreferencesPanel
+      open
+      onClose={onClose}
+      onClearBoard={onClearBoard}
+      onExportBoard={onExportBoard}
+      onImportBoard={onImportBoard}
+    />,
+  )
+  return { onClose, onClearBoard, onExportBoard, onImportBoard }
 }
 
 /** A trigger with the aria wiring the integrator is told to give the real one. */
@@ -29,7 +46,13 @@ function Harness() {
       <button type="button" aria-expanded={open} aria-controls={PREFERENCES_PANEL_ID} onClick={() => setOpen(true)}>
         Open preferences
       </button>
-      <PreferencesPanel open={open} onClose={() => setOpen(false)} onClearBoard={vi.fn()} />
+      <PreferencesPanel
+        open={open}
+        onClose={() => setOpen(false)}
+        onClearBoard={vi.fn()}
+        onExportBoard={vi.fn()}
+        onImportBoard={vi.fn(async () => null)}
+      />
     </>
   )
 }
@@ -73,7 +96,15 @@ describe('PreferencesPanel dialog behaviour', () => {
 
   it('closes on a backdrop press but not on a press inside the panel', () => {
     const onClose = vi.fn()
-    render(<PreferencesPanel open onClose={onClose} onClearBoard={vi.fn()} />)
+    render(
+      <PreferencesPanel
+        open
+        onClose={onClose}
+        onClearBoard={vi.fn()}
+        onExportBoard={vi.fn()}
+        onImportBoard={vi.fn(async () => null)}
+      />,
+    )
 
     fireEvent.pointerDown(screen.getByRole('dialog'))
     expect(onClose).not.toHaveBeenCalled()
@@ -200,5 +231,74 @@ describe('PreferencesPanel clearing the board', () => {
     // two-step ritual again rather than another click on a live button.
     expect(screen.getByRole('button', { name: 'Clear board…' })).not.toBeNull()
     expect(screen.queryByRole('button', { name: /^Clear board$/ })).toBeNull()
+  })
+})
+
+describe('PreferencesPanel board files', () => {
+  /**
+   * A file input the picker would have filled in.
+   *
+   * Awaited, because the panel's load is a promise: the state it sets when the
+   * board answers lands after the event handler has returned, and a change
+   * outside `act` is a React warning rather than a failing assertion.
+   */
+  async function choose(input: HTMLElement, file: File): Promise<void> {
+    Object.defineProperty(input, 'files', { value: [file], configurable: true })
+    await act(async () => {
+      fireEvent.change(input)
+    })
+  }
+
+  it('will not load a file until the import has been armed', () => {
+    // Loading a file replaces the board and there is no undo, so the button
+    // asks first — the same two-step shape as clearing it.
+    const { onImportBoard } = panel()
+
+    expect(screen.queryByLabelText(/choose a board file/i)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Import board…' }))
+
+    expect(screen.getByLabelText(/choose a board file/i)).not.toBeNull()
+    expect(onImportBoard).not.toHaveBeenCalled()
+  })
+
+  it('hands the chosen file to the board', async () => {
+    const { onImportBoard } = panel()
+    fireEvent.click(screen.getByRole('button', { name: 'Import board…' }))
+
+    const file = new File(['{}'], 'board.json', { type: 'application/json' })
+    await choose(screen.getByLabelText(/choose a board file/i), file)
+
+    expect(onImportBoard).toHaveBeenCalledWith(file)
+  })
+
+  it('shows why a file was refused, and stays armed to try another', async () => {
+    // A refusal nobody can see is indistinguishable from a broken button.
+    const onImportBoard = vi.fn(async () => 'That is JSON, but it is not a case board.')
+    panel({ onImportBoard })
+    fireEvent.click(screen.getByRole('button', { name: 'Import board…' }))
+    await choose(screen.getByLabelText(/choose a board file/i), new File(['{}'], 'x.json'))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('not a case board')
+    expect(screen.getByLabelText(/choose a board file/i)).not.toBeNull()
+  })
+
+  it('arms down again once a file has loaded', async () => {
+    panel({ onImportBoard: vi.fn(async () => null) })
+    fireEvent.click(screen.getByRole('button', { name: 'Import board…' }))
+    await choose(screen.getByLabelText(/choose a board file/i), new File(['{}'], 'x.json'))
+
+    // The confirmation is spent, and the section is back to its resting state.
+    expect(screen.queryByLabelText(/choose a board file/i)).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('exports when asked, and exports nothing on its own', () => {
+    const { onExportBoard } = panel()
+
+    expect(onExportBoard).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Export board…' }))
+
+    expect(onExportBoard).toHaveBeenCalledTimes(1)
   })
 })

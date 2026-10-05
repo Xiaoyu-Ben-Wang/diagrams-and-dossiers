@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   EDGE_CACHE_LIMIT,
+  EDGE_FAMILIES,
   EDGE_PRESETS,
   EDGE_STYLES,
   MAX_DEPTH_RATIO,
@@ -462,5 +463,28 @@ describe('the cache', () => {
     const newest = edgeClipPath('deckled', 40, 30, EDGE_CACHE_LIMIT + 24)
     clearEdgeCache()
     expect(edgeClipPath('deckled', 40, 30, EDGE_CACHE_LIMIT + 24)).toBe(newest)
+  })
+})
+
+describe('the two families', () => {
+  it('sorts every style into exactly one of them, in the order they are shown', () => {
+    // The flat tuple is what everything else iterates and what a saved file is
+    // validated against; the families are only the order and the split. Holding
+    // them equal means a new style cannot arrive without being put in one.
+    expect(EDGE_FAMILIES.flatMap((family) => family.styles)).toEqual([...EDGE_STYLES])
+  })
+
+  it('puts the styles that repeat a motif on the left of the split', () => {
+    // Not a matter of taste: `jitter` is documented as "zero is the regular
+    // ideal", and the presets fall either side of a gap — 0, 0.15 and 0.35 for
+    // the patterned ones, 0.6 and up for the noisy ones.
+    const [pattern, noise] = EDGE_FAMILIES
+
+    for (const style of pattern.styles) {
+      expect(EDGE_PRESETS[style].jitter, style).toBeLessThanOrEqual(0.35)
+    }
+    for (const style of noise.styles) {
+      expect(EDGE_PRESETS[style].jitter, style).toBeGreaterThanOrEqual(0.6)
+    }
   })
 })

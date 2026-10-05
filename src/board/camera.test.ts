@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   boardToScreen,
   camerasDiffer,
+  centreOn,
   easeInOut,
   fitBounds,
   IDENTITY_CAMERA,
@@ -313,5 +314,37 @@ describe('isVisible', () => {
     const far = { x: 1500, y: 100, width: 50, height: 50 }
     expect(isVisible(far, camera, viewport, 0)).toBe(false)
     expect(isVisible(far, { x: 0, y: 0, zoom: 0.5 }, viewport, 0)).toBe(true)
+  })
+})
+
+describe('centring on something', () => {
+  const viewport = { width: 1000, height: 600 }
+
+  it('puts the rect in the middle without changing the zoom', () => {
+    // The difference from `fitBounds`, and the whole reason this exists: going
+    // to a page must not rescale the board under the person looking at it.
+    const camera = centreOn({ x: 2000, y: 1000, width: 400, height: 200 }, viewport, 0.75)
+
+    expect(camera.zoom).toBe(0.75)
+    // The rect's centre lands at the viewport's centre. Close to, not equal:
+    // 1000/(2*0.75) is not a number a float holds exactly.
+    const onScreen = boardToScreen(camera, { x: 2200, y: 1100 })
+    expect(onScreen.x).toBeCloseTo(500, 6)
+    expect(onScreen.y).toBeCloseTo(300, 6)
+  })
+
+  it('centres a point, which is what a pin box is', () => {
+    const camera = centreOn({ x: 100, y: 50, width: 0, height: 0 }, viewport, 1)
+    expect(boardToScreen(camera, { x: 100, y: 50 })).toEqual({ x: 500, y: 300 })
+  })
+
+  it('clamps a zoom the board would not allow', () => {
+    expect(centreOn({ x: 0, y: 0, width: 10, height: 10 }, viewport, 99).zoom).toBe(MAX_ZOOM)
+    expect(centreOn({ x: 0, y: 0, width: 10, height: 10 }, viewport, 0.001).zoom).toBe(MIN_ZOOM)
+  })
+
+  it('works in negative board space, where a page dragged up and left lives', () => {
+    const camera = centreOn({ x: -900, y: -400, width: 200, height: 100 }, viewport, 1)
+    expect(boardToScreen(camera, { x: -800, y: -350 })).toEqual({ x: 500, y: 300 })
   })
 })

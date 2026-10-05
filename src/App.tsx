@@ -1,24 +1,21 @@
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
 
 import { createAnchor } from './anchors/create'
-import {
-  domRangeToFlatRange,
-  flatRangeToDomRange,
-  projectDom,
-  rangeToContainerRects,
-  type DomProjection,
-} from './anchors/dom'
+import { domRangeToFlatRange } from './anchors/dom'
 import { caretRangeFromPoint, caretRangeThroughPins } from './anchors/caret'
-import { resolveAnchor } from './anchors/resolve'
-import { ARTICLE_ID, ARTICLE_TITLE, CAMPAIGN_EPOCH, FIRST_SESSION, INITIAL_MARKDOWN, SESSION_GAP_MS } from './app/demo'
-import { EDGE_PICKER_DROP, NUDGE_SLOP_PX, PAPER_WIDTH, POST_IT_COLORS, SLACK_STEP, SNAP_RADIUS, STRING_HIT_PX } from './board/tuning'
-import { entityIdFromElement, px, withinSlop } from './board/view'
+import { CAMPAIGN_EPOCH, demoBoard, FIRST_SESSION, SESSION_GAP_MS } from './app/demo'
+import { IMAGE_CAPTION_SPACE, IMAGE_CAPTION_TOP, NUDGE_SLOP_PX, POST_IT_COLORS, SLACK_STEP, SNAP_RADIUS, STRING_HIT_PX } from './board/tuning'
+import { DRAG_THRESHOLD } from './board/useBoardDrag'
+import { CAMERA_FLIGHT_MS, prefersReducedMotion } from './board/motion'
+import { MENTION_ATTRIBUTE, resolveMention } from './markdown/mentions'
+import { articleIdFromRange, entityIdFromElement, withinSlop } from './board/view'
+import { useArticleViews, usePinViews } from './board/useArticleViews'
 import { YarnBead } from './board/entities/YarnBead'
 import { Legend } from './board/Legend'
 import { StringLayer } from './board/StringLayer'
 import { EdgePicker } from './board/EdgePicker'
+import { CAPTION_WIDTH, ImageCaption } from './board/ImageCaption'
 import { BoardPalette } from './board/Palette'
 import { StringNote } from './board/StringNote'
 import type { DrawableString, PinView } from './board/view'
@@ -26,11 +23,11 @@ import { TopBar } from './app/TopBar'
 import { can, LOCAL_VIEWER } from './access/permissions'
 import { useRoute } from './app/router'
 import { BoardCanvas, type BoardContextTarget } from './board/BoardCanvas'
-import { createBoardStore, useBoard, type BoardStore } from './board/store'
+import { createBoardStore, useBoard, type BoardState, type BoardStore } from './board/store'
+import { boardFileName, parseBoardFile, readBoardFile, serializeBoard } from './board/board-file'
 import type { EdgeStyle } from './board/edges'
 import { decodeImageFile, firstImage } from './board/image-file'
 import { clampTilt, rotateAbout } from './board/pivot'
-import { useBoardDrag } from './board/useBoardDrag'
 import { Pin } from 'lucide-react'
 
 import { ArticleSheet } from './board/ArticleSheet'
@@ -42,8 +39,11 @@ import { PinTooltip } from './board/PinTooltip'
 import { PinEditor } from './board/PinEditor'
 import {
   boardToScreen,
+  centreOn,
+  easeInOut,
   fitBounds,
   IDENTITY_CAMERA,
+  lerpCamera,
   rectsIntersect,
   screenToBoard,
   type Camera,
@@ -77,6 +77,7 @@ import { pinToBoard, pinToText, sameAnchor } from './model/pinning'
 import {
   isAnchoredPin,
   isPin,
+  type ArticleEntity,
   type BoardEntity,
   type EntityContext,
   type ImageEntity,
@@ -85,13 +86,76 @@ import {
 import { PREFERENCES_PANEL_ID, PreferencesPanel } from './theme/PreferencesPanel'
 import { usePreferences } from './theme/preferences'
 
-export function App() {
+/**
+ * The board-space boxes "frame everything" should enclose.
+ *
+ * One pass over every kind, asking each descriptor for the box it wants framed
+ * and falling back to the box it is hit-tested by. The fallback is not a
+ * formality: a tack's hit footprint is a single point, and a zero-size box
+ * contributes nothing to a fit — the board would frame its notes and crop the
+ * pins holding them.
+ *
+ * Shared by the initial fit and the menu's, so "zoom to fit" and the board's
+ * opening view can never disagree about what "everything" means.
+ */
+/** Nothing to frame. A shared constant so "not yet" does not churn identity. */
+const NO_RECTS: Rect[] = []
+
+function frameTargets(entities: readonly BoardEntity[], context: EntityContext): Rect[] {
+  const targets: Rect[] = []
+  for (const entity of entities) {
+    const descriptor = descriptorFor(entity)
+    const box = descriptor.frameBounds?.(entity, context) ?? descriptor.bounds(entity, context)
+    if (box) targets.push(box)
+  }
+  return targets
+}
+
+/** A file's name without its extension — `map.png` names a file, not a picture. */
+function pictureName(fileName: string): string {
+  const trimmed = fileName.replace(/\.[^.]+$/, '').trim()
+  return trimmed === '' ? fileName : trimmed
+}
+
+/**
+ * A name nothing else on the board is already using.
+ *
+ * A mention is keyed by name, so two pictures called `map` are indistinguishable
+ * — the link resolves to whichever comes first and there is no way to write the
+ * other one. Suffixing at creation is the only place this can be fixed, since a
+ * mention has nothing else to disambiguate with.
+ */
+function uniqueName(desired: string, entities: readonly BoardEntity[]): string {
+  const taken = new Set(
+    entities
+      .map((entity) => entity.title?.trim().toLowerCase())
+      .filter((title): title is string => title !== undefined && title !== ''),
+  )
+  if (!taken.has(desired.toLowerCase())) return desired
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${desired} (${suffix})`
+    if (!taken.has(candidate.toLowerCase())) return candidate
+  }
+}
+
+export interface AppProps {
+  /**
+   * What is already on the board.
+   *
+   * Defaults to the demo board, which is what a person opening the app gets.
+   * Passing one is how a board with a known, minimal contents is rendered —
+   * which is what a test of the board's *behaviour* wants, since a test that
+   * counts things should not have to count around demo content it did not put
+   * there. It is also the seam persistence will come through: a board that
+   * arrives from a server arrives here.
+   */
+  seed?: BoardState
+}
+
+export function App({ seed }: AppProps = {}) {
   const { route } = useRoute()
   const preferences = usePreferences()
 
-  // Board state lives above the route switch on purpose: navigating away and
-  // back must not wipe the board.
-  const [source, setSource] = useState(INITIAL_MARKDOWN)
   /**
    * Everything on the board, of every kind.
    *
@@ -118,11 +182,10 @@ export function App() {
    */
   const storeRef = useRef<BoardStore | null>(null)
   if (!storeRef.current) {
-    storeRef.current = createBoardStore({ viewer: LOCAL_VIEWER })
+    storeRef.current = createBoardStore({ viewer: LOCAL_VIEWER, initial: seed ?? demoBoard() })
   }
   const store = storeRef.current
   const { entities, strings } = useBoard(store)
-  const [pins, setPins] = useState<PinView[]>([])
 
   // Memoised, not filtered inline: these feed useCallback and effect dependency
   // lists, and a fresh array every render would re-run the anchor projection —
@@ -134,18 +197,74 @@ export function App() {
     () => entities.filter((entity): entity is NoteEntity => entity.kind === 'note'),
     [entities],
   )
+  /**
+   * The pages, in board order.
+   *
+   * The same list the descriptors already loop over — the article kind has been
+   * in the registry all along — but held separately because the sheets are the
+   * one thing that has to be rendered *by* the list rather than described by it.
+   */
+  const articles = useMemo(
+    () => entities.filter((entity): entity is ArticleEntity => entity.kind === 'article'),
+    [entities],
+  )
+  /**
+   * The pages by id, for the questions only an id can ask.
+   *
+   * A pin names the article it is stuck through and nothing else about it; so
+   * does an `EntityContext` mapping call. A map rather than a `find` because
+   * these are asked once per pin per resolve, and a resolve runs on every edit.
+   */
+  const articlesById = useMemo(
+    () => new Map(articles.map((article) => [article.id, article])),
+    [articles],
+  )
 
   const [dragFrom, setDragFrom] = useState<string | null>(null)
+  /** Where the string press landed, so the release can tell a click from a drag. */
+  const stringStartRef = useRef<{ x: number; y: number } | null>(null)
   const [fontsLoaded, setFontsLoaded] = useState(() => !globalThis.document?.fonts)
   const [camera, setCamera] = useState<Camera>(IDENTITY_CAMERA)
+  /** The zoom, for the geometry that has to divide it out. Read, not depended on. */
+  const zoomRef = useRef(camera.zoom)
+  zoomRef.current = camera.zoom
+
+  /**
+   * What every page has measured to, and every pin resolved against the page it
+   * actually names.
+   *
+   * Both are derived rather than stored. A projection is a function of the
+   * article as it is rendered and a pin's position is a function of that
+   * projection, so holding either in state is holding an answer the next edit
+   * invalidates — and with more than one page, holding it in *one* piece of
+   * state is holding an answer for the wrong page.
+   */
+  const articleViews = useArticleViews(articles, fontsLoaded)
+  const viewsRef = useRef(articleViews.views)
+  viewsRef.current = articleViews.views
+  // The registry as well as the views: a drop has to measure against the sheet
+  // it landed on, and that needs the element, not the numbers.
+  const articleViewsRef = useRef(articleViews)
+  articleViewsRef.current = articleViews
+  const pins = usePinViews(placed, articlesById, articleViews, zoomRef)
+
   const [editingPin, setEditingPin] = useState<{ id: string; x: number; y: number } | null>(null)
+
+  /**
+   * Open a pin's editor at a point on screen.
+   *
+   * One place, because there are three ways in — a right-click, a click on the
+   * tack, and a click on the tack's tag — and the editor opens where the press
+   * landed, which is the only thing telling the three apart. Three copies of
+   * that line is three chances for one of them to open somewhere else.
+   */
+  const openPinEditorAt = useCallback((id: string, clientX: number, clientY: number) => {
+    setEditingPin({ id, x: clientX, y: clientY })
+  }, [])
   const [contextMenu, setContextMenu] = useState<
     (BoardContextTarget & { board: Point; entityId: string | null }) | null
   >(null)
   const [prefsOpen, setPrefsOpen] = useState(false)
-  const [paperRect, setPaperRect] = useState<Rect | null>(null)
-  /** The editor only appears once a document has been selected. */
-  const [documentSelected, setDocumentSelected] = useState(false)
   /**
    * Pin mode inverts the gesture: with it on, a plain left-click places a pin.
    * Off by default, because a board you can accidentally pin while trying to
@@ -161,64 +280,9 @@ export function App() {
   const [movingPin, setMovingPin] = useState<string | null>(null)
   /** The pin under the pointer, and the element the hover card anchors to. */
   const [hovered, setHovered] = useState<{ id: string; element: Element } | null>(null)
-  /** Where the article sits in board space. Its own position, like any object. */
-  const [paperPos, setPaperPos] = useState<Point>({ x: 0, y: 0 })
-  const paperPosRef = useRef(paperPos)
-  paperPosRef.current = paperPos
-  /**
-   * How far the sheet is swung about its pin, in degrees.
-   *
-   * Its own state rather than a field on an entity, because the article is the
-   * one kind that has not joined the entity list yet — it is still a singleton
-   * with its own paper position. When it does, this moves onto it with `board`.
-   */
-  const [paperTilt, setPaperTilt] = useState(0)
-  const paperTiltRef = useRef(paperTilt)
-  paperTiltRef.current = paperTilt
-  /**
-   * The page's width, which the reader drags.
-   *
-   * `PAPER_WIDTH` is only the width it opens at. Changing it reflows the text,
-   * and that is safe here because an anchor is a character offset rather than a
-   * pixel — every pin re-resolves against the page as it now is, through the
-   * same ladder it uses after an edit. The resolver is pure and idempotent, so
-   * a reflow is just another edit as far as it is concerned.
-   */
-  const [paperWidth, setPaperWidth] = useState(PAPER_WIDTH)
-  const paperWidthRef = useRef(paperWidth)
-  paperWidthRef.current = paperWidth
-  /** Whether the page is rolled up to its tab. */
-  const [paperCollapsed, setPaperCollapsed] = useState(false)
 
   /**
-   * The paper's own padding, i.e. the offset from the paper's top-left corner
-   * to the article inside it.
-   *
-   * Anchor rects are measured against the article, and the tacks are drawn in an
-   * `inset-0` overlay over that same article — so both are in article space,
-   * while `paperPos` is the *paper's* corner. Anything converting an anchor rect
-   * into board space has to cross that gap. Leaving it out put every anchored
-   * tack 48x40 board px away from where it is drawn, which is further than
-   * SNAP_RADIUS: a string could be started but never dropped onto a pin, so no
-   * string was ever created and no yarn ever appeared.
-   */
-  const [paperInset, setPaperInset] = useState<Point>({ x: 0, y: 0 })
-  /** The article's corner in board space — paperPos plus that inset. */
-  const paperOrigin = { x: paperPos.x + paperInset.x, y: paperPos.y + paperInset.y }
-  const paperOriginRef = useRef(paperOrigin)
-  paperOriginRef.current = paperOrigin
-  const paperInsetRef = useRef(paperInset)
-  paperInsetRef.current = paperInset
-
-  /**
-   * What a descriptor cannot know on its own.
-   *
-   * An anchored entity's place is not on the entity — it is wherever its quote
-   * resolved to, which only the projection effect knows. Passing that in keeps
-   * the descriptors pure and keeps the anchor ladder where it belongs.
-   */
-  /**
-   * A point in the article's own space, in board space.
+   * A point in an article's own space, in board space.
    *
    * The paper is turned by a CSS transform whose origin is its own top-centre,
    * so the same three steps reproduce it exactly: into the paper's space, turn
@@ -226,41 +290,131 @@ export function App() {
    * article and drawn on the board — a tack's position for a string's end, for
    * one — has to come through here, or it stays where the sheet was before it
    * was swung.
+   *
+   * The article's id is the argument that matters. The three facts this needs —
+   * where the sheet is, how wide it is, how far it is swung — are read from the
+   * entity, which is always current; only the measured inset comes from the
+   * views, and that changes only when the page reflows. Reading the position
+   * from a *measurement* instead would leave every tack a frame behind a drag.
+   *
+   * Null when the article is not on the board: a pin whose page is gone has no
+   * point in board space, and answering with a number would put it somewhere.
    */
-  const articleToBoard = useCallback((local: Point): Point => {
-    const pivot = { x: paperWidthRef.current / 2, y: 0 }
-    const inset = paperInsetRef.current
-    const inPaper = { x: inset.x + local.x, y: inset.y + local.y }
-    const turned = rotateAbout(pivot, inPaper, paperTiltRef.current)
-    const at = paperPosRef.current
-    return { x: at.x + turned.x, y: at.y + turned.y }
+  const articleToBoard = useCallback((articleId: string, local: Point): Point | null => {
+    const article = articlesByIdRef.current.get(articleId)
+    const view = viewsRef.current.get(articleId)
+    if (!article || !view) return null
+
+    const pivot = { x: article.options.width / 2, y: 0 }
+    const inPaper = { x: view.inset.x + local.x, y: view.inset.y + local.y }
+    const turned = rotateAbout(pivot, inPaper, article.rotation)
+    return { x: article.board.x + turned.x, y: article.board.y + turned.y }
   }, [])
 
-  const entityContext = useMemo<EntityContext>(
-    () => ({
-      articleToBoard: (_articleId, local) => articleToBoard(local),
-      anchorRect: (id) => pins.find((pin) => pin.id === id)?.rect ?? null,
-      articleSize: () =>
-        paperRect && paperRect.width > 0
-          ? { width: paperRect.width, height: paperRect.height }
-          : null,
-    }),
-    [articleToBoard, pins, paperRect],
-  )
+  /**
+   * What a descriptor cannot know on its own.
+   *
+   * An anchored entity's place is not on the entity — it is wherever its quote
+   * resolved to, which only the measurement layer knows. Passing that in keeps
+   * the descriptors pure and keeps the anchor ladder where it belongs.
+   */
+  const entityContext = useMemo<EntityContext>(() => {
+    const rects = new Map(pins.map((pin) => [pin.id, pin.rect]))
+    return {
+      articleToBoard,
+      anchorRect: (id) => rects.get(id) ?? null,
+      articleSize: (articleId) => {
+        const size = articleViews.views.get(articleId)?.size
+        // A page that has not been laid out — jsdom, or a sheet in its first
+        // frame — is not a page with no size. It is one nothing can be placed
+        // against yet, which is what null says, and it is why an unmeasured
+        // board frames nothing rather than framing the origin.
+        return size && size.width > 0 && size.height > 0 ? size : null
+      },
+    }
+  }, [articleToBoard, pins, articleViews])
   const entityContextRef = useRef(entityContext)
   entityContextRef.current = entityContext
 
-  const articleRef = useRef<HTMLDivElement>(null)
-  const paperRef = useRef<HTMLDivElement>(null)
-  const overlayRef = useRef<HTMLDivElement>(null)
   const livePathRef = useRef<SVGPathElement>(null)
-  const projectionRef = useRef<DomProjection | null>(null)
 
   const springRef = useRef({ x: createSpring(0), y: createSpring(0) })
   const targetRef = useRef<Point>({ x: 0, y: 0 })
   const originRef = useRef<Point | null>(null)
   const frameRef = useRef<number>(0)
   const cameraRef = useRef(camera)
+
+  /**
+   * The camera flight in progress, if any.
+   *
+   * A ref rather than state, because the animation writes the camera every
+   * frame and a state variable would rebuild the loop driving it. Deliberately
+   * not `frameRef` either: that one clocks the live-yarn spring, and two
+   * animations sharing a handle would cancel each other.
+   */
+  const flightRef = useRef<number | null>(null)
+
+  const cancelFlight = useCallback(() => {
+    if (flightRef.current !== null) {
+      cancelAnimationFrame(flightRef.current)
+      flightRef.current = null
+    }
+  }, [])
+
+  /**
+   * Move the camera, cancelling anything already flying there.
+   *
+   * Every camera write that is not the flight itself goes through here — pan,
+   * wheel, the zoom readout, zoom-to-fit. Without it, panning during a flight
+   * is overwritten frame by frame by the animation it was meant to interrupt,
+   * and the board fights the pointer for half a second.
+   */
+  const commitCamera = useCallback(
+    (next: Camera) => {
+      cancelFlight()
+      setCamera(next)
+    },
+    [cancelFlight],
+  )
+
+  /**
+   * Put a rect in the middle of the viewport, smoothly.
+   *
+   * The zoom is left alone — `centreOn` says why — and the loop is the shortest
+   * one that works: `lerpCamera` and `easeInOut` were written for this and had
+   * no callers until now.
+   *
+   * Reduced motion jumps rather than declining. Declining would leave the click
+   * looking broken, which is not what anybody asking for less movement asked
+   * for.
+   */
+  const flyTo = useCallback(
+    (rect: Rect) => {
+      const box = document.querySelector('[data-testid="board-canvas"]')?.getBoundingClientRect()
+      if (!box || box.width === 0) return
+
+      cancelFlight()
+      const target = centreOn(
+        rect,
+        { width: box.width, height: box.height },
+        cameraRef.current.zoom,
+      )
+      if (prefersReducedMotion()) {
+        setCamera(target)
+        return
+      }
+
+      const from = cameraRef.current
+      const started = performance.now()
+      const step = (now: number): void => {
+        const t = Math.min(1, (now - started) / CAMERA_FLIGHT_MS)
+        setCamera(lerpCamera(from, target, easeInOut(t)))
+        flightRef.current = t < 1 ? requestAnimationFrame(step) : null
+      }
+      flightRef.current = requestAnimationFrame(step)
+    },
+    [cancelFlight],
+  )
   cameraRef.current = camera
   const dragFromRef = useRef(dragFrom)
   dragFromRef.current = dragFrom
@@ -271,19 +425,14 @@ export function App() {
   // every entity change would rebind mid-gesture.
   const entitiesRef = useRef(entities)
   entitiesRef.current = entities
-  const paperRectRef = useRef(paperRect)
-  paperRectRef.current = paperRect
+  // The same reason as `entitiesRef`: the mapping below is handed to descriptors
+  // and to pointer handlers that must not be rebuilt when a page moves.
+  const articlesByIdRef = useRef(articlesById)
+  articlesByIdRef.current = articlesById
   // Assigned where the strings are resolved, far below. Declared up here because
   // the pointer handlers that pick a string are defined before that, and a ref
   // is what lets them read the latest resolution without depending on it.
   const drawableStringsRef = useRef<DrawableString[]>([])
-
-  // Sanitized before it reaches the DOM: the article is markdown the user can
-  // edit, so it is untrusted input like any other.
-  const html = useMemo(
-    () => DOMPurify.sanitize(marked.parse(source, { async: false })),
-    [source],
-  )
 
   useEffect(() => {
     if (!document.fonts) return
@@ -295,116 +444,6 @@ export function App() {
       cancelled = true
     }
   }, [])
-
-  useLayoutEffect(() => {
-    const paper = paperRef.current
-    if (!paper || !fontsLoaded) return
-
-    const measure = (): void => {
-      const width = paper.offsetWidth
-      const height = paper.offsetHeight
-      // Read rather than assumed: the padding is responsive (px-9/py-8 flips to
-      // sm:px-12/sm:py-10), so a hardcoded 48x40 would be wrong below the
-      // breakpoint. Bail out on an unchanged value so panning, which re-runs
-      // this effect, does not re-render on every frame.
-      const style = getComputedStyle(paper)
-      const insetX = px(style.paddingLeft) + px(style.borderLeftWidth)
-      const insetY = px(style.paddingTop) + px(style.borderTopWidth)
-      setPaperInset((previous) =>
-        previous.x === insetX && previous.y === insetY ? previous : { x: insetX, y: insetY },
-      )
-      // In board space, and offset by wherever the paper has been dragged to —
-      // otherwise "zoom to fit" frames where the paper used to be.
-      if (width > 0 && height > 0) {
-        setPaperRect({ x: paperPosRef.current.x, y: paperPosRef.current.y, width, height })
-      }
-    }
-
-    measure()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(measure)
-    observer.observe(paper)
-    return () => observer.disconnect()
-  }, [fontsLoaded, paperPos])
-
-  useLayoutEffect(() => {
-    const element = articleRef.current
-    if (!element || !fontsLoaded) return
-
-    const projection = projectDom(element)
-    projectionRef.current = projection
-
-    setPins(
-      placed.map((item) => {
-        const base = {
-          id: item.id,
-          body: item.bodyMd,
-          dateLabel: item.dateLabel ?? '',
-          nudge: item.nudge,
-        }
-
-        // A pin stuck into the board has no quote to resolve; its position is
-        // simply its position.
-        if (!isAnchoredPin(item)) {
-          return {
-            ...base,
-            quote: '',
-            status: 'free' as const,
-            detail: 'loose on the board',
-            rect: null,
-            board: item.board,
-          }
-        }
-
-        const result = resolveAnchor(projection.flat.text, item.anchor)
-
-        if (result.status === 'orphaned') {
-          return {
-            ...base,
-            quote: item.anchor.quote,
-            status: 'orphaned' as const,
-            detail:
-              result.reason === 'empty-quote'
-                ? 'no text to anchor to'
-                : 'the words it was pinned to are gone',
-            rect: null,
-            board: null,
-          }
-        }
-
-        const range = flatRangeToDomRange(projection, result.start, result.end)
-        // Read through the ref, not the state: the rects come out in the
-        // article's own space once the scale is divided out, so they do not
-        // depend on which zoom was in force when they were measured — and
-        // taking `camera.zoom` as a dependency would re-resolve every anchor on
-        // every frame of a zoom.
-        const rects = range
-          ? rangeToContainerRects(range, element, cameraRef.current.zoom || 1)
-          : []
-        const first = rects[0] ?? null
-
-        if (result.status === 'exact') {
-          return {
-            ...base,
-            quote: item.anchor.quote,
-            status: 'exact' as const,
-            detail: 'unchanged',
-            rect: first,
-            board: null,
-          }
-        }
-
-        return {
-          ...base,
-          quote: item.anchor.quote,
-          status: 'repaired' as const,
-          detail: `${result.reason.replace('-', ' ')} · ${Math.round(result.confidence * 100)}% context match`,
-          rect: first,
-          board: null,
-        }
-      }),
-    )
-  }, [html, placed, fontsLoaded])
 
   const nextDateLabel = useCallback(
     (index: number) => `Session ${FIRST_SESSION + index}, 1492 DR`,
@@ -434,29 +473,35 @@ export function App() {
   /**
    * Place a pin at a screen position — the single pin gesture.
    *
-   * Where it lands decides what kind of pin it is: over the article it anchors
-   * to the word under the cursor, and anywhere else it is stuck into the board.
+   * Where it lands decides what kind of pin it is: over a page it anchors to
+   * the word under the cursor, and anywhere else it is stuck into the board.
    * Both outcomes are a pin, so both callers (ctrl-click anywhere, and the
    * context menu's "Add pin") go through here rather than each deciding.
    *
-   * It used to bail silently when the caret was not inside the article, which
+   * Which page the cursor was over is the caret's answer, not ours: the range
+   * comes back from the whole document, so the text node it landed in is what
+   * attributes it. A caret over page B used to be indistinguishable from a
+   * caret over bare cork, and every pin placed on a second page fell through to
+   * the cork — a tack sitting on top of the words it was meant to hold.
+   *
+   * It also used to bail silently when the caret was not in the article, which
    * made right-clicking bare board and choosing "Add pin" do nothing at all.
    */
   const pinAt = useCallback(
     (clientX: number, clientY: number) => {
-      const projection = projectionRef.current
-      const element = articleRef.current
+      const range = caretRangeFromPoint(clientX, clientY)
+      const articleId = range ? articleIdFromRange(range) : null
+      const view = articleId ? viewsRef.current.get(articleId) : null
 
-      const range = element ? caretRangeFromPoint(clientX, clientY) : null
-      if (projection && element && range && element.contains(range.startContainer)) {
-        const flatRange = domRangeToFlatRange(projection, range)
+      if (range && articleId && view) {
+        const flatRange = domRangeToFlatRange(view.projection, range)
         const anchor = flatRange
-          ? createAnchor(projection.flat.text, flatRange.start, flatRange.end)
+          ? createAnchor(view.projection.flat.text, flatRange.start, flatRange.end)
           : null
 
         if (anchor?.quote) {
           store.addEntities((state) => [
-            newAnchoredPin(ARTICLE_ID, anchor, {
+            newAnchoredPin(articleId, anchor, {
               occurredAt: CAMPAIGN_EPOCH + state.entities.filter(isPin).length * SESSION_GAP_MS,
               dateLabel: nextDateLabel(state.entities.filter(isPin).length),
             }),
@@ -465,7 +510,8 @@ export function App() {
         }
       }
 
-      // Not over readable text — the caret is in a gap, or on bare cork.
+      // Not over readable text — the caret is in a gap, on a page's margin, or
+      // on bare cork.
       createFreePin(worldPoint(clientX, clientY))
     },
     [createFreePin, nextDateLabel, worldPoint],
@@ -516,10 +562,11 @@ export function App() {
 
       store.addEntities((state) => [
         newImage(board, decoded.src, footprint, {
+          // The filename is what the file is called; the title is what the
+          // picture is called. Only the second is something a mention can name,
+          // and only the second is worth naming a picture after.
           alt: decoded.name,
-          // A picture with no description is a picture nothing can be said
-          // about, and the name it arrived under is the only one there is.
-          bodyMd: decoded.name,
+          title: uniqueName(pictureName(decoded.name), state.entities),
           dateLabel: nextDateLabel(state.entities.length),
         }),
       ])
@@ -527,11 +574,19 @@ export function App() {
     [nextDateLabel, worldPoint],
   )
 
-  /** Swing a sheet about its pin. Shared by images and, later, articles. */
+  /**
+   * Swing a sheet about its pin. Shared by pictures and pages.
+   *
+   * One clamp in one place, because the two are the same gesture on the same
+   * kind of object: something hanging from a single tack, turned about it. Two
+   * copies of the limit is two places for it to drift.
+   */
   const rotateEntity = useCallback((id: string, degrees: number) => {
     const angle = clampTilt(degrees)
     store.updateEntities([id], (entity) =>
-      entity.kind === 'image' ? { ...entity, rotation: angle, updatedAt: Date.now() } : entity,
+      entity.kind === 'image' || entity.kind === 'article'
+        ? { ...entity, rotation: angle, updatedAt: Date.now() }
+        : entity,
     )
   }, [])
 
@@ -593,19 +648,51 @@ export function App() {
   )
 
   /**
-   * Change the page's width, keeping the pin where it is.
+   * Change a page's width, keeping its pin where it is.
    *
    * The sheet is drawn from its top-left, so growing it by width alone would
    * push the pin — which sits at the top-*centre* — half the growth to the
    * right, and the page would crawl sideways every time it was dragged wider.
-   * Half the change comes off `paperPos.x` to hold the pin still, the same
-   * correction the pictures make.
+   * Half the change comes off the sheet's `board.x` to hold the pin still, the
+   * same correction pictures get for the same reason.
+   *
+   * The width goes into the page's own options rather than a board-wide value:
+   * two pages do not have to be the same width, and dragging one must not
+   * reflow the other. Changing it does re-resolve that page's pins, which is
+   * safe because an anchor is a character offset rather than a pixel — the
+   * resolver is pure and idempotent, so a reflow is just another edit.
    */
-  const resizePaper = useCallback((nextWidth: number) => {
-    const delta = nextWidth - paperWidthRef.current
-    setPaperWidth(nextWidth)
-    setPaperPos((previous) => ({ x: previous.x - delta / 2, y: previous.y }))
-  }, [])
+  const resizeArticle = useCallback(
+    (id: string, nextWidth: number) => {
+      store.updateEntities([id], (entity) => {
+        if (entity.kind !== 'article') return entity
+        const pivotX = entity.board.x + entity.options.width / 2
+        return {
+          ...entity,
+          options: { ...entity.options, width: nextWidth },
+          board: { x: pivotX - nextWidth / 2, y: entity.board.y },
+          updatedAt: Date.now(),
+        }
+      })
+    },
+    [store],
+  )
+
+  /** Roll a page up to its tab, or open it again. */
+  const toggleArticleCollapsed = useCallback(
+    (id: string) => {
+      store.updateEntities([id], (entity) =>
+        entity.kind === 'article'
+          ? {
+              ...entity,
+              options: { ...entity.options, collapsed: !entity.options.collapsed },
+              updatedAt: Date.now(),
+            }
+          : entity,
+      )
+    },
+    [store],
+  )
 
   /** Resize a note. Its corner is where it is drawn from, so nothing else moves. */
   const resizeNote = useCallback(
@@ -676,23 +763,55 @@ export function App() {
    * there isn't one. A page with no text at all is the exception, and there the
    * pin keeps its quote rather than being thrown onto the cork.
    */
+  /**
+   * Whether a board-space point is over any page's sheet.
+   *
+   * The axis-aligned footprint, not the swept one: this is the forgiving test
+   * that decides whether a pin dropped on a page keeps the quote it holds or is
+   * pulled out into the cork, and being generous about a swung page is the
+   * right way to be wrong — the alternative is a pin yanked out of the text by
+   * a drop that visibly landed on paper.
+   */
+  const overAnyArticle = useCallback((board: Point): boolean => {
+    for (const article of articlesByIdRef.current.values()) {
+      const size = viewsRef.current.get(article.id)?.size
+      if (!size || size.width <= 0 || size.height <= 0) continue
+      if (
+        board.x >= article.board.x &&
+        board.x <= article.board.x + size.width &&
+        board.y >= article.board.y &&
+        board.y <= article.board.y + size.height
+      ) {
+        return true
+      }
+    }
+    return false
+  }, [])
+
   const handlePinDrop = useCallback(
     (pinId: string, clientX: number, clientY: number) => {
       const pin = entitiesRef.current.find((entity) => entity.id === pinId)
       if (!pin || !isPin(pin)) return
 
-      const projection = projectionRef.current
-      const element = articleRef.current
-      const range = element ? caretRangeThroughPins(clientX, clientY) : null
+      const range = caretRangeThroughPins(clientX, clientY)
+      const articleId = range ? articleIdFromRange(range) : null
+      const view = articleId ? viewsRef.current.get(articleId) : null
+      const element = articleId
+        ? (articleViewsRef.current.nodes().get(articleId)?.article ?? null)
+        : null
 
-      if (projection && element && range && element.contains(range.startContainer)) {
-        const flatRange = domRangeToFlatRange(projection, range)
+      if (range && articleId && view && element) {
+        const flatRange = domRangeToFlatRange(view.projection, range)
         const anchor = flatRange
-          ? createAnchor(projection.flat.text, flatRange.start, flatRange.end)
+          ? createAnchor(view.projection.flat.text, flatRange.start, flatRange.end)
           : null
 
         if (anchor?.quote) {
-          if (isAnchoredPin(pin)) {
+          // The nudge test is only about the pin's *own* words. Dragged onto a
+          // different page, it is being re-pinned, however close the pointer is
+          // to where it used to be — those are two pages' coordinates and
+          // subtracting them is meaningless.
+          if (isAnchoredPin(pin) && pin.articleId === articleId) {
             // Already on these words: a nudge, and the drag stored the offset.
             if (sameAnchor(pin.anchor, anchor)) return
 
@@ -701,32 +820,27 @@ export function App() {
             const box = element.getBoundingClientRect()
             const zoom = cameraRef.current.zoom || 1
             const local = { x: (clientX - box.left) / zoom, y: (clientY - box.top) / zoom }
-            const rect = pinsRef.current.find((view) => view.id === pinId)?.rect
+            const rect = pinsRef.current.find((entry) => entry.id === pinId)?.rect
             if (rect && withinSlop(local, rect, NUDGE_SLOP_PX / zoom)) return
           }
 
-          replaceEntity(pinToText(pin, ARTICLE_ID, anchor))
+          // The page it landed on becomes the page it belongs to, which is what
+          // makes a drag able to *move* a pin between sheets rather than only
+          // between words on one.
+          replaceEntity(pinToText(pin, articleId, anchor))
           return
         }
       }
 
-      // Off the readable text. On the page the pin keeps the quote it holds —
+      // Off the readable text. On a page the pin keeps the quote it holds —
       // this is the page-with-no-words case, where the caret had nothing to
-      // clamp to — and off the page it is pulled out and stuck in the cork.
+      // clamp to — and off every page it is pulled out and stuck in the cork.
       const board = worldPoint(clientX, clientY)
-      const paper = paperRectRef.current
-      const onPaper =
-        paper !== null &&
-        board.x >= paper.x &&
-        board.x <= paper.x + paper.width &&
-        board.y >= paper.y &&
-        board.y <= paper.y + paper.height
-
-      if (onPaper) return
+      if (overAnyArticle(board)) return
 
       replaceEntity(pinToBoard(pin, board))
     },
-    [replaceEntity, worldPoint],
+    [overAnyArticle, replaceEntity, worldPoint],
   )
 
   /**
@@ -794,8 +908,60 @@ export function App() {
     [pinAt, pinMode, movingPin, stringAt],
   )
 
+  /**
+   * Take the camera to an entity a mention named.
+   *
+   * Declared before the click handler that calls it — a `useCallback` reads its
+   * dependencies as it is created, so a `const` declared below would be in its
+   * temporal dead zone and throw on the first render.
+   *
+   * Falls back to the entity's anchor point when it has no measured box: a page
+   * that has not been laid out yet, or one rolled up thin enough that there is
+   * nothing to measure, still has a place on the board, and "went nowhere at
+   * all" is a worse answer than "went to the pin".
+   */
+  const flyToEntity = useCallback(
+    (entity: BoardEntity) => {
+      const [rect] = frameTargets([entity], entityContextRef.current)
+      if (rect) {
+        flyTo(rect)
+        return
+      }
+      const point = descriptorFor(entity).anchorPoint(entity, entityContextRef.current)
+      if (point) flyTo({ x: point.x, y: point.y, width: 0, height: 0 })
+    },
+    [flyTo],
+  )
+
   const handleArticleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      // A mention, before anything else the page's body does with a click.
+      // Gated on the same modifiers as the rest: ctrl-click is how a pin is
+      // placed, and it must go on doing that even over a link.
+      if (!pinMode && !event.ctrlKey && !event.metaKey) {
+        // A click usually lands on a text node, and `closest` is only on an
+        // Element — the deleted linkifier had exactly this guard.
+        const target = event.target
+        const element =
+          target instanceof Element
+            ? target
+            : target instanceof Node
+              ? target.parentElement
+              : null
+        const mention = element?.closest(`[${MENTION_ATTRIBUTE}]`) ?? null
+        if (mention) {
+          const name = mention.getAttribute(MENTION_ATTRIBUTE) ?? ''
+          const entity = resolveMention(name, entitiesRef.current)
+          if (entity) {
+            // The anchor carries an href so it can be focused and reached by
+            // keyboard; this is what stops it navigating there.
+            event.preventDefault()
+            flyToEntity(entity)
+            return
+          }
+        }
+      }
+
       if (!pinMode && !event.ctrlKey && !event.metaKey) {
         // A string drawn across the paper lands here rather than on the canvas,
         // because the article is what the click actually hits. Same pick, other
@@ -806,7 +972,7 @@ export function App() {
       }
       pinAt(event.clientX, event.clientY)
     },
-    [pinAt, pinMode, stringAt, worldPoint],
+    [flyToEntity, pinAt, pinMode, stringAt, worldPoint],
   )
 
   /**
@@ -905,6 +1071,10 @@ export function App() {
       // needing to know which it was.
       if (!origin) return
 
+      // Kept so the release can tell a click from a drag. Screen px, like every
+      // other travel threshold on the board.
+      stringStartRef.current = { x: event.clientX, y: event.clientY }
+
       originRef.current = origin
       targetRef.current = origin
       springRef.current = { x: createSpring(origin.x, 220, 22), y: createSpring(origin.y, 220, 22) }
@@ -921,9 +1091,29 @@ export function App() {
    * listeners, which fire wherever the pointer happens to be.
    */
   const finishString = useCallback(
-    (clientX: number, clientY: number) => {
+    (clientX: number, clientY: number, tapped: boolean) => {
       const from = dragFromRef.current
+      stringStartRef.current = null
       if (!from) return
+
+      // A press that never left the tack is a click on it, not a string meant
+      // to go nowhere, and it opens the editor behind the pin. Right-click has
+      // done that all along; a plain click is the gesture people reach for
+      // first, and a board where the obvious one does nothing is a board you
+      // have to be taught.
+      //
+      // Pins only. The identical gesture starts a string from the pin holding
+      // a picture up, and a picture has no editor to open — for it, a click
+      // that travels nowhere goes on doing nothing, which is what it did
+      // before.
+      if (tapped && byIdRef.current.has(from)) {
+        openPinEditorAt(from, clientX, clientY)
+        cancelAnimationFrame(frameRef.current)
+        originRef.current = null
+        dragFromRef.current = null
+        setDragFrom(null)
+        return
+      }
 
       const drop = worldPoint(clientX, clientY)
 
@@ -960,7 +1150,7 @@ export function App() {
       dragFromRef.current = null
       setDragFrom(null)
     },
-    [store, worldPoint],
+    [store, worldPoint, openPinEditorAt],
   )
 
   /**
@@ -977,15 +1167,26 @@ export function App() {
     const onMove = (event: PointerEvent): void => {
       targetRef.current = worldPoint(event.clientX, event.clientY)
     }
-    const onUp = (event: PointerEvent): void => finishString(event.clientX, event.clientY)
+    // A pointercancel is the browser taking the gesture away — a system
+    // gesture, the window losing focus — and is never somebody clicking a
+    // pin, so it is finished as a drag that simply ended nowhere.
+    const onUp = (event: PointerEvent): void => {
+      const start = stringStartRef.current
+      const travelled = start
+        ? Math.hypot(event.clientX - start.x, event.clientY - start.y)
+        : Number.POSITIVE_INFINITY
+      finishString(event.clientX, event.clientY, travelled < DRAG_THRESHOLD)
+    }
+    const onCancel = (event: PointerEvent): void =>
+      finishString(event.clientX, event.clientY, false)
 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
-    window.addEventListener('pointercancel', onUp)
+    window.addEventListener('pointercancel', onCancel)
     return () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
-      window.removeEventListener('pointercancel', onUp)
+      window.removeEventListener('pointercancel', onCancel)
     }
   }, [dragFrom, worldPoint, finishString])
 
@@ -1052,39 +1253,31 @@ export function App() {
   }, [selection])
 
   /**
-   * Frame everything on the board, not just the document.
+   * Frame everything on the board, not just the pages.
    *
    * Pins stuck into the cork and post-its laid beside the paper are the whole
    * point of a board — fitting to the document alone would deliberately hide
-   * the things you pinned around it.
+   * the things you pinned around it. And the pages themselves are entities now,
+   * so they arrive through the same loop as everything else: there is no longer
+   * one rectangle to push in by hand, and no longer one page it could describe.
    */
   const fitBoard = useCallback(() => {
     const canvas = document.querySelector('[data-testid="board-canvas"]')
     const box = canvas?.getBoundingClientRect()
     if (!box || box.width === 0) return
 
-    const targets: Rect[] = []
-    if (paperRect) targets.push(paperRect)
-
-    for (const entity of entities) {
-      const descriptor = descriptorFor(entity)
-      const box =
-        descriptor.frameBounds?.(entity, entityContextRef.current) ??
-        descriptor.bounds(entity, entityContextRef.current)
-      if (box) targets.push(box)
-    }
-
+    const targets = frameTargets(entities, entityContextRef.current)
     if (targets.length === 0) return
     const fitted = fitBounds(targets, { width: box.width, height: box.height }, 56)
-    if (fitted) setCamera(fitted)
-  }, [entities, paperRect])
+    if (fitted) commitCamera(fitted)
+  }, [entities, commitCamera])
 
   const handleContextTarget = useCallback((target: BoardContextTarget) => {
     const element = target.target instanceof Element ? target.target : null
     const pinId = element?.closest('[data-pin-id]')?.getAttribute('data-pin-id')
 
     if (pinId) {
-      setEditingPin({ id: pinId, x: target.clientX, y: target.clientY })
+      openPinEditorAt(pinId, target.clientX, target.clientY)
       return
     }
 
@@ -1108,7 +1301,7 @@ export function App() {
     // to offer is already up and the thing the menu will act on is visible as
     // the thing you pointed at.
     if (onEntity) setSelection(new Set([onEntity]))
-  }, [])
+  }, [openPinEditorAt])
 
   const createPostIt = useCallback(
     (point: Point) => {
@@ -1122,25 +1315,28 @@ export function App() {
     [nextDateLabel],
   )
 
-  // Tap toggles the editor, drag moves the sheet. Without the tap handler the
-  // tab would be a handle you could only drag, never click.
-  const paperDrag = useBoardDrag({
-    zoom: camera.zoom,
-    onDrag: (delta) =>
-      setPaperPos((previous) => ({ x: previous.x + delta.x, y: previous.y + delta.y })),
-    onTap: () => {
-      // A rolled-up page opens on the first click, because that is what the
-      // tab is for once there is nothing else to click. Only an open page
-      // toggles its selection — otherwise closing one would leave it shut with
-      // no way back that anyone would find.
-      if (paperCollapsed) {
-        setPaperCollapsed(false)
-        setDocumentSelected(true)
+  /**
+   * A tap on a page's tab: open it if it is rolled up, otherwise toggle it.
+   *
+   * Tapping selects the page, and a selected page is one whose editor is open —
+   * so this is also how editing is entered and left. A rolled-up page opens on
+   * the first click rather than toggling, because that is what the tab is for
+   * once there is nothing else on the sheet to click; only an open page toggles,
+   * or closing one would leave it shut with no way back that anyone would find.
+   */
+  const tapArticleTab = useCallback(
+    (id: string) => {
+      if (articlesByIdRef.current.get(id)?.options.collapsed) {
+        toggleArticleCollapsed(id)
+        setSelection(new Set([id]))
         return
       }
-      setDocumentSelected((previous) => !previous)
+      setSelection((previous) =>
+        previous.size === 1 && previous.has(id) ? new Set() : new Set([id]),
+      )
     },
-  })
+    [toggleArticleCollapsed],
+  )
 
   /**
    * Move one entity by a board-space delta, ignoring the selection.
@@ -1191,16 +1387,11 @@ export function App() {
   const handleEntityDrag = useCallback(
     (element: Element, delta: Point) => {
       const id = entityIdFromElement(element)
-      if (id) {
-        moveEntity(id, delta)
-        return
-      }
-
-      // The article is not an entity yet — it is still a singleton with its own
-      // paper position — so it keeps its own branch until it joins the others.
-      if (element.closest('[data-board-entity="article"]')) {
-        setPaperPos((previous) => ({ x: previous.x + delta.x, y: previous.y + delta.y }))
-      }
+      if (id) moveEntity(id, delta)
+      // Nothing to fall back to. Every kind that can be moved now carries its id
+      // on the element, so an element with no id is one this board does not
+      // move — where the page used to need a branch of its own here because it
+      // was the one thing on the board that was not an entity.
     },
     [moveEntity],
   )
@@ -1227,6 +1418,40 @@ export function App() {
     store.updateEntities([id], (entity) => ({ ...entity, bodyMd, updatedAt: Date.now() }))
   }, [])
 
+  /**
+   * Rewrite the words on one entity's date.
+   *
+   * Free text, not a date input, and the reason is the campaign's calendar
+   * rather than laziness: "3rd of Eleint" and "the night of the storm" are
+   * facts about the fiction, and a picker would replace them with a Gregorian
+   * date no one in it has ever written down. `occurredAt` — the stamp that
+   * orders the board — is left alone, so what a pin says and where it sorts
+   * are two different things, which is what having both fields is for.
+   *
+   * Emptying it removes the date rather than storing a blank one: the tag and
+   * the hover card both hide on a falsy label, and a pin from before the party
+   * started dating things should be able to say so.
+   */
+  /** Set how large a note's writing is, as a multiple of the base size. */
+  const setNoteFontScale = useCallback((id: string, fontScale: number) => {
+    store.updateEntities([id], (entity) =>
+      entity.kind === 'note' ? { ...entity, fontScale, updatedAt: Date.now() } : entity,
+    )
+  }, [])
+
+  /** Rewrite what one entity is called. The name a mention resolves against. */
+  const setEntityTitle = useCallback((id: string, title: string) => {
+    store.updateEntities([id], (entity) => ({ ...entity, title, updatedAt: Date.now() }))
+  }, [])
+
+  const setEntityDate = useCallback((id: string, dateLabel: string) => {
+    store.updateEntities([id], (entity) => ({
+      ...entity,
+      dateLabel: dateLabel.trim() === '' ? undefined : dateLabel,
+      updatedAt: Date.now(),
+    }))
+  }, [])
+
   /** Take an entity off the board, and every string that touched it with it. */
   const removeEntity = useCallback(
     (id: string) => {
@@ -1236,12 +1461,87 @@ export function App() {
     [store],
   )
 
+  /**
+   * Whether the camera still owes the board a fit.
+   *
+   * Set by an import, cleared once the pages it brought have been measured. The
+   * board fits itself once, on the first measurement, and a board that arrives
+   * later is a board the camera has already finished with — so without this an
+   * imported case file would open wherever the previous one happened to leave
+   * the view, which for a file written on another machine is off screen
+   * entirely.
+   */
+  const [awaitingFit, setAwaitingFit] = useState(false)
+
+  /** Hand the board to the browser as a file. */
+  const exportBoard = useCallback(() => {
+    const board = store.get()
+    const url = URL.createObjectURL(
+      new Blob([serializeBoard(board)], { type: 'application/json' }),
+    )
+    const link = document.createElement('a')
+    link.href = url
+    link.download = boardFileName(board)
+    link.rel = 'noopener'
+    document.body.append(link)
+    link.click()
+    link.remove()
+    // Revoked on the next turn of the loop rather than straight away: the click
+    // hands the URL to the download machinery, and Safari reads it after the
+    // handler returns. Revoking synchronously is the version that works
+    // everywhere except the browser somebody is actually using.
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }, [store])
+
+  /**
+   * Load a board out of a file, replacing whatever is on the board now.
+   *
+   * Returns the reason it could not be read, or null when it was. The panel
+   * shows it: this owns the store, so it owns the reporting too, and a file
+   * that was refused without a word is the failure mode that makes people think
+   * their board is corrupt when it is their JSON that is.
+   *
+   * The selection, the open editor and the menu all go, for the reason
+   * `clearBoard` gives — they hold ids that the incoming board does not answer
+   * for — and the camera is told to fit again, because the pages it was framing
+   * are gone.
+   */
+  const importBoard = useCallback(
+    async (file: File): Promise<string | null> => {
+      let text: string
+      try {
+        text = await readBoardFile(file)
+      } catch {
+        // A file the browser cannot read at all — a directory, a permission it
+        // will not grant — is reported like any other refusal rather than being
+        // allowed to reject out of the click handler and vanish.
+        return 'That file could not be read.'
+      }
+      const result = parseBoardFile(text)
+      if (!result.ok) return result.reason
+
+      store.replaceAll(result.board)
+      setSelection(new Set())
+      setEditingPin(null)
+      setHovered(null)
+      setContextMenu(null)
+      setAwaitingFit(true)
+      return null
+    },
+    [store],
+  )
+
   const clearBoard = useCallback(() => {
     // Every id, rather than a "clear" the store would have to special-case: a
     // board that is emptied by describing each thing that left it is a board
-    // that can be emptied by a peer too.
+    // that can be emptied by a peer too. It takes the pages with it — an empty
+    // board is empty — which is why the selection has to go too: a selection
+    // holding an id nothing answers for is a set that will silently match
+    // again the day an id is reused.
     store.removeEntities(store.get().entities.map((entity) => entity.id))
+    setSelection(new Set())
     setEditingPin(null)
+    setHovered(null)
     setContextMenu(null)
   }, [store])
 
@@ -1260,19 +1560,6 @@ export function App() {
    * out, so a string to something that no longer exists disappears rather than
    * being drawn to the origin.
    */
-  /**
-   * The page's pin, in board space.
-   *
-   * The paper is turned about this point, so it is the one place on the sheet
-   * that does not move when the sheet swings — no tilt in the sum, and none
-   * needed. Null until the paper has been measured, so a string is never tied
-   * to a page whose position is not yet known.
-   */
-  const articlePin = useMemo(
-    () => (paperRect ? { x: paperPos.x + paperWidth / 2, y: paperPos.y } : null),
-    [paperRect, paperPos.x, paperPos.y, paperWidth],
-  )
-
   const anchorPoints = useMemo(() => {
     const map = new Map<string, Point>()
     for (const entity of entities) {
@@ -1281,14 +1568,14 @@ export function App() {
       const point = descriptor.anchorPoint(entity, entityContext)
       if (point) map.set(entity.id, point)
     }
-    // The article is not an entity yet — it is still a singleton with its own
-    // paper position — but it is a thing a string can be tied to, and it has a
-    // tack at its head to prove it. Keyed by `ARTICLE_ID`, the same id the pins
-    // stuck through it already name it by, so the board has one name for the
-    // page rather than two. No collision with the entity ids, which are UUIDs.
-    if (articlePin) map.set(ARTICLE_ID, articlePin)
+    // No page is spliced in by hand any more. A page's tack is its own entity's
+    // `anchorPoint`, produced by the same loop as a picture's and a post-it's —
+    // which is also what removed the collision this map used to have to be
+    // careful about: the singleton's pin was keyed by a constant, so a real
+    // article entity with that id would have overwritten it or been overwritten
+    // by it, depending on which line ran last.
     return map
-  }, [entities, entityContext, articlePin])
+  }, [entities, entityContext])
   const anchorPointsRef = useRef(anchorPoints)
   anchorPointsRef.current = anchorPoints
 
@@ -1439,9 +1726,17 @@ export function App() {
           removeString(selectedString.id)
           return
         }
-        if (selection.size > 0) {
+        // Pages are not deleted by a keystroke, and the reason is the same one
+        // the close button already runs on: every pin anchored into a page has
+        // nowhere else to be, so a page deleted here orphans all of its notes
+        // at once. The × rolls a page up instead, which is what a page's own
+        // control offers and what the board can come back from.
+        const doomed = [...selection].filter(
+          (id) => articlesByIdRef.current.get(id) === undefined,
+        )
+        if (doomed.length > 0) {
           event.preventDefault()
-          removeEntities([...selection])
+          removeEntities(doomed)
         }
         return
       }
@@ -1478,23 +1773,170 @@ export function App() {
     [images, selection],
   )
 
-  const edgePickerAt = useMemo(() => {
+  /**
+   * The one page whose editor is open, if any.
+   *
+   * Exactly one, for the same reason as the picture above — and this is what
+   * replaced a board-wide `documentSelected` boolean. That flag could not tell
+   * which page it meant, so with two pages it would have opened one editor over
+   * another page's text. Selecting a page *is* opening its editor; the close
+   * button and Escape are how you stop.
+   */
+  const selectedArticle = useMemo(
+    () => (selection.size === 1 ? articles.find((a) => selection.has(a.id)) ?? null : null),
+    [articles, selection],
+  )
+
+  /**
+   * Where the pages are, for the two things that frame them.
+   *
+   * Empty until the sheets have been measured, which is what the board's first
+   * fit waits on — and what disables "zoom to fit" on a board with no pages on
+   * it, where there is nothing to frame but the cork.
+   */
+  const pageRects = useMemo(() => frameTargets(articles, entityContext), [articles, entityContext])
+
+  /**
+   * Where the camera opens.
+   *
+   * Everything on the board — but only once the pages have been measured, which
+   * is what the gate is for. Framing on the pages alone was right when a page
+   * was the only thing on the board; now that there are notes down the margin
+   * and tacks off to the right, it would open with all of them off screen.
+   * Framing on everything *without* the gate is worse in a subtler way: on the
+   * first render the pages have no measured size, so the frame would be built
+   * from the pins and notes alone, fire once, and hold a view of the cork with
+   * both pages cropped out of it.
+   */
+  const openingFrame = useMemo(
+    () => (pageRects.length === 0 ? NO_RECTS : frameTargets(entities, entityContext)),
+    [entities, entityContext, pageRects],
+  )
+
+  /**
+   * Fit the camera to a board that has just arrived.
+   *
+   * Waits for `pageRects`, which is the same gate the opening fit uses and for
+   * the same reason: on the render an import lands, the pages it brought have
+   * no measured size, so framing now would build the view out of the notes and
+   * tacks alone and crop every page out of it. The dependency on `pageRects` is
+   * what makes this run again once the sheets are measured.
+   */
+  useEffect(() => {
+    if (!awaitingFit || pageRects.length === 0) return
+    fitBoard()
+    setAwaitingFit(false)
+  }, [awaitingFit, pageRects, fitBoard])
+
+  /**
+   * The selected picture's footprint in the board's own viewport space.
+   *
+   * A box rather than the single point this used to hand over. The bar has to
+   * decide whether it fits *below* the picture, and that question needs the
+   * picture's top edge as well as its bottom — so the component that knows the
+   * camera hands over the whole rectangle and lets `EdgePicker` place itself.
+   *
+   * `EDGE_PICKER_DROP` is deliberately not added here. It is a screen-pixel
+   * clearance (see `tuning.ts`), and adding it to a board-space point before
+   * this conversion — which is what this did — scales it with the zoom: the
+   * gap was 44px at 100% and 30px at 68%, which is the opposite of what
+   * "screen px" was chosen for.
+   */
+  /**
+   * Where the caption goes: under the picture, in the board's own box.
+   *
+   * Centred on the picture but clamped to the board, so a picture at the edge
+   * does not open a field half off screen. Screen px, like the bar below it.
+   */
+  const captionAt = useMemo(() => {
     if (!selectedImage) return null
     const box = descriptorFor(selectedImage).bounds(selectedImage, entityContext)
     if (!box) return null
-    const below = boardToScreen(camera, {
-      x: box.x + box.width / 2,
-      y: box.y + box.height + EDGE_PICKER_DROP,
-    })
-    return below
+    const topLeft = boardToScreen(camera, { x: box.x, y: box.y })
+    const bottomRight = boardToScreen(camera, { x: box.x + box.width, y: box.y + box.height })
+    return {
+      x: (topLeft.x + bottomRight.x) / 2 - CAPTION_WIDTH / 2,
+      y: bottomRight.y + IMAGE_CAPTION_TOP,
+    }
   }, [selectedImage, entityContext, camera])
 
+  const edgePickerAnchor = useMemo(() => {
+    if (!selectedImage) return null
+    const box = descriptorFor(selectedImage).bounds(selectedImage, entityContext)
+    if (!box) return null
+    const topLeft = boardToScreen(camera, { x: box.x, y: box.y })
+    const bottomRight = boardToScreen(camera, {
+      x: box.x + box.width,
+      y: box.y + box.height,
+    })
+    return {
+      left: topLeft.x,
+      top: topLeft.y,
+      width: bottomRight.x - topLeft.x,
+      // The caption that the selected picture is wearing, in screen px like
+      // the bar itself. Without it the bar is placed 44px under the picture
+      // and lands across the fields you are meant to be typing in.
+      height: bottomRight.y - topLeft.y + IMAGE_CAPTION_SPACE,
+    }
+  }, [selectedImage, entityContext, camera])
+
+  /**
+   * Everything on the board that has a name a mention could use.
+   *
+   * Pages and pictures only — the two kinds `resolveMention` will match — and
+   * only those actually titled, since the empty title a note or a tack carries
+   * is not a name.
+   */
+  const named = useMemo(
+    () =>
+      entities.flatMap((entity) => {
+        if (entity.kind !== 'article' && entity.kind !== 'image') return []
+        const name = entity.title?.trim()
+        return name ? [{ id: entity.id, name, kind: entity.kind }] : []
+      }),
+    [entities],
+  )
+
+  /** The names, lowercased, for deciding whether a mention has gone cold. */
+  const mentionNames = useMemo(
+    () => new Set(named.map((candidate) => candidate.name.toLowerCase())),
+    [named],
+  )
+
+  /** The same list for the editor's `@` list, in board order. */
+  const mentions = useMemo(
+    () => named.map(({ id, name, kind }) => ({ id, name, kind })),
+    [named],
+  )
+
   const byId = useMemo(() => new Map(pins.map((pin) => [pin.id, pin])), [pins])
+  /**
+   * The same map, for a callback that outlives the render that made it.
+   *
+   * `finishString` is bound to window listeners, so it cannot close over a
+   * memo — it would go on answering with the board as it was when the drag
+   * began. It is asked one question: is this id a pin, or the pin holding a
+   * picture up?
+   */
+  const byIdRef = useRef(byId)
+  byIdRef.current = byId
 
   const anchored = pins.filter((pin) => pin.rect)
   const freePins = pins.filter((pin) => pin.board)
   const orphaned = pins.filter((pin) => pin.status === 'orphaned')
   const repaired = pins.filter((pin) => pin.status === 'repaired').length
+  /**
+   * Found exactly where they were pinned, counted by status rather than by
+   * subtraction.
+   *
+   * The legend used to say `pins.length - repaired - orphaned`, which silently
+   * counted every *free* pin as anchored — a tack pushed into the cork has no
+   * quote to resolve and is neither repaired nor orphaned, so it landed in the
+   * "anchored exactly" column. On a board whose pins were mostly in the cork
+   * that read as a confident lie: "Anchored exactly (3)" over three tacks
+   * holding nothing. The count now says what it means.
+   */
+  const exact = pins.filter((pin) => pin.status === 'exact').length
   const activePin = editingPin ? byId.get(editingPin.id) : null
 
   const contextEntity = contextMenu?.entityId
@@ -1531,7 +1973,7 @@ export function App() {
         {
           id: "fit",
           label: "Zoom to fit",
-          disabled: !paperRect,
+          disabled: pageRects.length === 0,
           onSelect: fitBoard,
         },
         {
@@ -1582,12 +2024,13 @@ export function App() {
 
       <main className="relative flex min-h-0 flex-1">
         <>
-          {documentSelected && (
+          {selectedArticle && (
             <PaperEditor
-              title={ARTICLE_TITLE}
-              value={source}
-              onChange={setSource}
-              onClose={() => setDocumentSelected(false)}
+              title={selectedArticle.title?.trim() || 'Untitled sheet'}
+              value={selectedArticle.bodyMd}
+              onChange={(body) => setEntityBody(selectedArticle.id, body)}
+              onClose={() => setSelection(new Set())}
+              mentions={mentions}
             />
           )}
 
@@ -1599,7 +2042,7 @@ export function App() {
               // board can say so without covering it in chrome.
               idleCursor={hoveredString ? "pointer" : "default"}
               camera={camera}
-              onCameraChange={setCamera}
+              onCameraChange={commitCamera}
               onContextTarget={handleContextTarget}
               onFileDrop={handleFileDrop}
               onFileDragOver={handleDragOver}
@@ -1609,7 +2052,7 @@ export function App() {
               onMarquee={pinMode ? undefined : handleMarquee}
               pinMode={pinMode}
               className="min-h-0 flex-1"
-              fitTo={paperRect ? [paperRect] : undefined}
+              fitTo={openingFrame}
               backdrop={(viewport) => <GridLayer camera={camera} viewport={viewport} />}
               overlay={
                 <>
@@ -1617,11 +2060,26 @@ export function App() {
                       here rather than inside the world layer because that layer
                       is a transformed element — its own stacking context — and
                       nothing inside it can be lifted above this palette. */}
-                  {selectedImage && edgePickerAt ? (
+                  {/* The caption, above the bar and below the picture. Both
+                      are chrome, so both are placed here rather than inside
+                      the world layer — see `ImageCaption` for what that cost
+                      the first time. */}
+                  {selectedImage && captionAt ? (
+                    <ImageCaption
+                      x={captionAt.x}
+                      y={captionAt.y}
+                      title={selectedImage.title ?? ''}
+                      description={selectedImage.bodyMd}
+                      onTitle={(next) => setEntityTitle(selectedImage.id, next)}
+                      onDescription={(next) => setEntityBody(selectedImage.id, next)}
+                    />
+                  ) : null}
+
+                  {selectedImage && edgePickerAnchor ? (
                     <EdgePicker
                       seed={selectedImage.edgeSeed}
                       edge={selectedImage.edge}
-                      at={edgePickerAt}
+                      anchor={edgePickerAnchor}
                       onPick={(style) => setImageEdge(selectedImage.id, style)}
                     />
                   ) : null}
@@ -1645,33 +2103,38 @@ export function App() {
                 </>
               }
             >
-              <ArticleSheet
-                html={html}
-                pos={paperPos}
-                tilt={paperTilt}
-                width={paperWidth}
-                collapsed={paperCollapsed}
-                paperRef={paperRef}
-                articleRef={articleRef}
-                overlayRef={overlayRef}
-                anchored={anchored}
-                selected={selection}
-                movingPin={movingPin}
-                zoom={camera.zoom}
-                documentSelected={documentSelected}
-                tabDrag={paperDrag}
-                pinAt={articlePin}
-                onClickArticle={handleArticleClick}
-                onStartYarn={beginString}
-                onMoveOne={moveOne}
-                onPinDrop={handlePinDrop}
-                onPinHover={handlePinHover}
-                onRotate={setPaperTilt}
-                onResize={resizePaper}
-                onToggleCollapsed={() => setPaperCollapsed((previous) => !previous)}
-                toBoard={worldPoint}
-                articleToBoard={articleToBoard}
-              />
+              {/* One sheet per page, in board order — so pages sit under the
+                  things pinned around them, as they always have. Each is given
+                  only its own tacks: a sheet that drew the whole anchored list
+                  would draw every other page's pins too, in its own
+                  coordinates. */}
+              {articles.map((article) => (
+                <ArticleSheet
+                  key={article.id}
+                  article={article}
+                  nodes={articleViews.nodesFor(article.id)}
+                  anchored={anchored.filter((pin) => pin.articleId === article.id)}
+                  selected={selection.has(article.id)}
+                  selectedPins={selection}
+                  movingPin={movingPin}
+                  zoom={camera.zoom}
+                  pinAt={anchorPoints.get(article.id) ?? null}
+                  mentionNames={mentionNames}
+                  onClickArticle={handleArticleClick}
+                  onStartYarn={beginString}
+                  onMoveOne={moveOne}
+                  onPinDrop={handlePinDrop}
+                  onOpenPinEditor={openPinEditorAt}
+                  onPinHover={handlePinHover}
+                  onRotate={(degrees) => rotateEntity(article.id, degrees)}
+                  onResize={(width) => resizeArticle(article.id, width)}
+                  onToggleCollapsed={() => toggleArticleCollapsed(article.id)}
+                  onTapTab={() => tapArticleTab(article.id)}
+                  onMove={(delta) => moveEntity(article.id, delta)}
+                  toBoard={worldPoint}
+                  articleToBoard={articleToBoard}
+                />
+              ))}
 
               <EntityLayer
                 freePins={freePins}
@@ -1687,6 +2150,7 @@ export function App() {
                 onMoveOne={moveOne}
                 onMoveEntity={moveEntity}
                 onPinDrop={handlePinDrop}
+                onOpenPinEditor={openPinEditorAt}
                 onPinHover={handlePinHover}
                 onRotate={rotateEntity}
                 onResize={resizeImage}
@@ -1694,6 +2158,7 @@ export function App() {
                 onSelectNote={selectOnly}
                 onSetBody={setEntityBody}
                 onResizeNote={resizeNote}
+                onSetFontScale={setNoteFontScale}
                 onRemove={removeEntity}
               />
               <StringLayer
@@ -1750,7 +2215,7 @@ export function App() {
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 pb-1 text-[10px] text-board-ink-soft/50">
             <Legend
               colour="var(--color-brass)"
-              label={`Anchored exactly (${pins.length - repaired - orphaned.length})`}
+              label={`Anchored exactly (${exact})`}
             />
             <Legend colour="#d98a2b" label={`Repaired after an edit (${repaired})`} />
             <Legend colour="var(--color-wax)" label={`Orphaned (${orphaned.length})`} />
@@ -1773,7 +2238,13 @@ export function App() {
           hovered && !editingPin && !movingPin
             ? (() => {
                 const pin = byId.get(hovered.id)
-                return pin
+                // Only for a pin whose words are not already on the board. A
+                // described pin wears a tag (`entities/Tack.tsx`), and a card
+                // that repeated it on hover would be the same sentence twice,
+                // one of them covering the other. What is left are the pins
+                // with a quote and no note of their own — the one case where
+                // hovering still has something to add.
+                return pin && pin.body.trim().length === 0
                   ? {
                       id: pin.id,
                       quote: pin.quote,
@@ -1813,6 +2284,7 @@ export function App() {
           x={editingPin.x}
           y={editingPin.y}
           onChange={(body) => setEntityBody(editingPin.id, body)}
+          onDateChange={(dateLabel) => setEntityDate(editingPin.id, dateLabel)}
           onDelete={() => removeEntity(editingPin.id)}
           onMove={() => {
             // Hand the pin to the board and get the editor out of the way —
@@ -1824,7 +2296,13 @@ export function App() {
         />
       )}
 
-      <PreferencesPanel open={prefsOpen} onClose={() => setPrefsOpen(false)} onClearBoard={clearBoard} />
+      <PreferencesPanel
+        open={prefsOpen}
+        onClose={() => setPrefsOpen(false)}
+        onClearBoard={clearBoard}
+        onExportBoard={exportBoard}
+        onImportBoard={importBoard}
+      />
     </div>
   )
 }

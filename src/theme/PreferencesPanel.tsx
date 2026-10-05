@@ -176,11 +176,101 @@ function DangerZone({ onClearBoard }: { onClearBoard: () => void }) {
   )
 }
 
+/**
+ * Saving a board to a file, and loading one back.
+ *
+ * The import half is armed like the danger zone, for the same reason: loading a
+ * file replaces everything on the board, and there is no undo to reach for
+ * (`docs/feature-queue-archive-2026-10-05.md` #15). The file picker is not itself the confirmation — it is
+ * one click away from the button that opens it, and a person who has just
+ * clicked "import" has not thereby decided to lose the board they had.
+ *
+ * The panel owns the error text and none of the board: it asks, the board
+ * answers with a reason or with nothing.
+ */
+function BoardFileSection({
+  onExportBoard,
+  onImportBoard,
+}: {
+  onExportBoard: () => void
+  onImportBoard: (file: File) => Promise<string | null>
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [armed, setArmed] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  const load = (file: File | undefined): void => {
+    if (!file) return
+    void onImportBoard(file).then((reason) => {
+      setProblem(reason)
+      if (!reason) setArmed(false)
+      // Cleared so that choosing the same file twice fires `change` twice —
+      // otherwise a failed load followed by a fixed file of the same name does
+      // nothing at all, which reads as the button being broken.
+      if (inputRef.current) inputRef.current.value = ''
+    })
+  }
+
+  return (
+    <section className="prefs-section" aria-label="Board file">
+      <h3 className="prefs-legend">Board file</h3>
+      <p className="prefs-hint">
+        A board file is JSON: every page, note, tack, picture and string.
+      </p>
+      <div className="prefs-danger-actions">
+        <button type="button" className="prefs-button" onClick={onExportBoard}>
+          Export board…
+        </button>
+        <button
+          type="button"
+          className="prefs-button"
+          onClick={() => {
+            setProblem(null)
+            setArmed(true)
+          }}
+          disabled={armed}
+        >
+          Import board…
+        </button>
+      </div>
+
+      {armed ? (
+        <div className="prefs-import">
+          <p className="prefs-hint">
+            Loading a file replaces everything on the board. It cannot be undone.
+          </p>
+          <input
+            ref={inputRef}
+            className="prefs-file-input"
+            type="file"
+            accept="application/json,.json"
+            aria-label="Choose a board file to load"
+            onChange={(event) => load(event.target.files?.[0])}
+          />
+          <button type="button" className="prefs-button" onClick={() => setArmed(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
+
+      {problem ? (
+        <p className="prefs-problem" role="alert">
+          {problem}
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
 export interface PreferencesPanelProps {
   open: boolean
   onClose: () => void
   /** Ask the board to wipe itself. The panel never clears anything directly. */
   onClearBoard: () => void
+  /** Ask the board to hand itself over as a file. */
+  onExportBoard: () => void
+  /** Ask the board to load a file. Resolves to why it could not, or to null. */
+  onImportBoard: (file: File) => Promise<string | null>
 }
 
 const FOCUSABLE =
@@ -209,7 +299,13 @@ function keepFocusInside(event: KeyboardEvent, container: HTMLElement | null): v
   }
 }
 
-export function PreferencesPanel({ open, onClose, onClearBoard }: PreferencesPanelProps) {
+export function PreferencesPanel({
+  open,
+  onClose,
+  onClearBoard,
+  onExportBoard,
+  onImportBoard,
+}: PreferencesPanelProps) {
   const preferences = usePreferences()
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreFocusRef = useRef<HTMLElement | null>(null)
@@ -308,6 +404,8 @@ export function PreferencesPanel({ open, onClose, onClearBoard }: PreferencesPan
             </button>
             <p className="prefs-hint">Puts theme, surface and yarn back to their defaults. Your board is untouched.</p>
           </div>
+
+          <BoardFileSection onExportBoard={onExportBoard} onImportBoard={onImportBoard} />
 
           <DangerZone onClearBoard={onClearBoard} />
         </div>

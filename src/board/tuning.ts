@@ -78,23 +78,42 @@ export const SLACK_STEP = 1000
 export const EDGE_PICKER_DROP = 44
 
 /**
- * The width of the page, in board px.
+ * The caption under a selected picture: where it starts and how tall it is, in
+ * *screen* px.
  *
- * Fixed rather than fluid so the article reflows identically for everyone
- * looking at it: an anchor is a character offset, and the offset is only
- * meaningful if the text it counts through is the same width. A per-article
- * width is possible — the resolver is pure and idempotent, so it would simply
- * re-resolve that page — but it is not this.
+ * Screen, like `EDGE_PICKER_DROP` and for the same reason — the caption is
+ * chrome rather than part of the picture, so it does not scale with the board.
+ * The top clears the rotate handle, which is already hanging under the picture;
+ * the height is fixed rather than grown to fit the description so that the
+ * border bar below it has somewhere predictable to sit.
  */
-export const PAPER_WIDTH = 720
+export const IMAGE_CAPTION_TOP = 48
+export const IMAGE_CAPTION_HEIGHT = 96
 
 /**
- * How narrow and how wide the page may be dragged.
+ * What the caption takes out of the gap between the picture and the border bar.
  *
- * The floor is about where the article's own margins start eating the text;
- * the ceiling is where a line stops being readable and starts being a
- * headache — past roughly ninety characters the eye loses its place on the
- * return sweep.
+ * Exported as one number because two places have to agree on it: the caption
+ * draws itself here, and the bar is placed that much further down.
+ */
+export const IMAGE_CAPTION_SPACE = IMAGE_CAPTION_TOP + IMAGE_CAPTION_HEIGHT
+
+/**
+ * How narrow and how wide a page may be dragged, in board px.
+ *
+ * Board px rather than screen, because a width is a fact about the page and not
+ * about the camera looking at it: the same sheet dragged wider at 50% zoom must
+ * come back the same width at 100%. Compare `STRING_HIT_PX`, which is measured
+ * the other way round for the other reason.
+ *
+ * Per page, applied by each sheet's own resize — a board can hold several pages
+ * at once and each has its own. This is the clamp and not the width: a page's
+ * own width lives in its `options`, whose default is in
+ * `model/article-options.ts`.
+ *
+ * The floor is about where the article's own margins start eating the text; the
+ * ceiling is where a line stops being readable and starts being a headache —
+ * past roughly ninety characters the eye loses its place on the return sweep.
  */
 export const PAPER_MIN_WIDTH = 380
 export const PAPER_MAX_WIDTH = 1100

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { newArticle, newFreePin, newNote } from '../model/create'
 import { DEFAULT_ARTICLE_OPTIONS } from '../model/article-options'
 import { recordingSync } from '../realtime/transport'
-import { createBoardStore } from './store'
+import { createBoardStore, type BoardState } from './store'
 import { DEFAULT_SLACK, YARN_COLOR } from './yarn'
 
 function open(role: 'viewer' | 'editor' | 'dm' | 'owner' = 'owner') {
@@ -127,6 +127,59 @@ describe('removing', () => {
 
     expect(store.get()).toBe(before)
     expect(sync.published).toEqual([])
+  })
+})
+
+describe('replacing the board', () => {
+  it('puts the new board in place of the old one in a single change', () => {
+    // One emit, not an empty board followed by a full one: the camera, the
+    // selection and every in-flight anchor resolve would otherwise be taken
+    // through a state that never should have existed.
+    const { store } = open()
+    store.addEntities([newFreePin({ x: 0, y: 0 })])
+
+    const seen: number[] = []
+    store.subscribe(() => seen.push(store.get().entities.length))
+
+    const page = newArticle({ x: 5, y: 5 }, '# Loaded', 'Loaded')
+    const note = newNote({ x: 1, y: 1 })
+    store.replaceAll({ entities: [page, note], strings: [] })
+
+    expect(seen).toEqual([2])
+    expect(store.get().entities).toEqual([page, note])
+  })
+
+  it('publishes nothing, because there is no one-thing change for it', () => {
+    // The transport's rule is that a change names one thing, so that two people
+    // moving different pins cannot overwrite each other. A socket will need a
+    // real answer for "the board is now this"; inventing one here would be a
+    // guess the other end would apply wrongly.
+    const { store, sync } = open()
+
+    store.replaceAll({ entities: [newFreePin({ x: 0, y: 0 })], strings: [] })
+
+    expect(sync.published).toEqual([])
+  })
+
+  it('copies, so the caller cannot edit the board through the object it kept', () => {
+    const { store } = open()
+    const incoming: BoardState = { entities: [newFreePin({ x: 0, y: 0 })], strings: [] }
+
+    store.replaceAll(incoming)
+    incoming.entities.push(newFreePin({ x: 9, y: 9 }))
+    incoming.strings.push(link('a', 'b'))
+
+    expect(store.get().entities).toHaveLength(1)
+    expect(store.get().strings).toHaveLength(0)
+  })
+
+  it('is refused for a viewer, like every other write', () => {
+    const { store } = open('viewer')
+    const before = store.get()
+
+    store.replaceAll({ entities: [newFreePin({ x: 0, y: 0 })], strings: [] })
+
+    expect(store.get()).toBe(before)
   })
 })
 

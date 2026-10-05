@@ -2,10 +2,10 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { EdgePicker } from './EdgePicker'
+import { EdgePicker, placeEdgePicker } from './EdgePicker'
 import { EDGE_STYLES, edgeClipPath } from './edges'
 
-const at = { x: 340, y: 420 }
+const anchor = { left: 300, top: 360, width: 80, height: 60 }
 
 function open(over: Partial<Parameters<typeof EdgePicker>[0]> = {}) {
   const onPick = vi.fn()
@@ -13,7 +13,7 @@ function open(over: Partial<Parameters<typeof EdgePicker>[0]> = {}) {
     <EdgePicker
       seed={7}
       edge="clean"
-      at={at}
+      anchor={anchor}
       onPick={onPick}
       {...over}
     />,
@@ -83,12 +83,61 @@ describe('EdgePicker', () => {
     const seen = vi.fn()
     render(
       <div onPointerDown={seen}>
-        <EdgePicker seed={1} edge="clean" at={at} onPick={onPick} />
+        <EdgePicker seed={1} edge="clean" anchor={anchor} onPick={onPick} />
       </div>,
     )
 
     fireEvent.pointerDown(screen.getByTestId('edge-picker'))
 
     expect(seen).not.toHaveBeenCalled()
+  })
+})
+
+describe('placing the bar', () => {
+  const viewport = { width: 1600, height: 900 }
+  const bar = { width: 570, height: 65 }
+  const picture = { left: 700, top: 300, width: 240, height: 180 }
+
+  it('hangs under the picture, centred on it', () => {
+    const placed = placeEdgePicker(picture, bar, viewport)
+
+    expect(placed.side).toBe('below')
+    expect(placed.top).toBe(300 + 180 + 44)
+    expect(placed.left).toBe(Math.round(700 + 120 - 285))
+  })
+
+  it('flips above when it would not fit below', () => {
+    // The bug: a picture low on the board put its bar past the bottom of the
+    // board, which clips — and the first thing to go is the row of labels, so
+    // the bar came up with ten swatches and no way to tell them apart.
+    const low = { left: 700, top: 700, width: 240, height: 180 }
+
+    const placed = placeEdgePicker(low, bar, viewport)
+
+    expect(placed.side).toBe('above')
+    expect(placed.top + bar.height).toBeLessThanOrEqual(viewport.height)
+    expect(placed.top).toBe(700 - 44 - 65)
+  })
+
+  it('clamps inside the board when there is room on neither side', () => {
+    // A picture taller than the space above and below it: something has to be
+    // cut, and it should be the bar's far edge rather than its first swatch.
+    const huge = { left: 700, top: 100, width: 240, height: 800 }
+
+    const placed = placeEdgePicker(huge, bar, viewport)
+
+    expect(placed.top).toBeGreaterThanOrEqual(0)
+    expect(placed.top + bar.height).toBeLessThanOrEqual(viewport.height)
+  })
+
+  it('keeps a wide bar on screen beside a picture against the edge', () => {
+    // A picture at the very left of the board: centring the bar on it would
+    // put nine of the ten swatches off the edge.
+    const edge = { left: 4, top: 300, width: 120, height: 90 }
+
+    const placed = placeEdgePicker(edge, bar, viewport)
+
+    expect(placed.left).toBeGreaterThanOrEqual(0)
+    expect(placed.left + bar.width).toBeLessThanOrEqual(viewport.width)
   })
 })

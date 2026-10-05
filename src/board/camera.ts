@@ -128,6 +128,27 @@ export function fitBounds(
 }
 
 /**
+ * A camera that puts `rect` in the middle of the viewport, at a zoom you name.
+ *
+ * The difference from `fitBounds` is the whole point of it: this one does not
+ * choose a scale. Following a mention to a page should not rescale the board —
+ * the camera keeps the size it had, so the board does not lurch and you keep
+ * your sense of where things are — whereas `fitBounds` picks a zoom that frames
+ * the target, which for a post-it means filling the screen with one post-it.
+ *
+ * The two agree on the arithmetic, and the zoom is clamped here rather than
+ * assumed to have been clamped upstream.
+ */
+export function centreOn(rect: Rect, viewport: Viewport, zoom: number): Camera {
+  const scale = clampZoom(zoom)
+  return {
+    x: rect.x + rect.width / 2 - viewport.width / (2 * scale),
+    y: rect.y + rect.height / 2 - viewport.height / (2 * scale),
+    zoom: scale,
+  }
+}
+
+/**
  * Zoom while keeping the board point under `screenPoint` pinned to the cursor.
  *
  * Without this, zooming drifts towards the viewport's origin and the thing you
