@@ -13,11 +13,12 @@ import {
 import { caretRangeFromPoint, caretRangeThroughPins } from './anchors/caret'
 import { resolveAnchor } from './anchors/resolve'
 import { ARTICLE_ID, ARTICLE_TITLE, CAMPAIGN_EPOCH, FIRST_SESSION, INITIAL_MARKDOWN, SESSION_GAP_MS } from './app/demo'
-import { NUDGE_SLOP_PX, PAPER_WIDTH, POST_IT_COLORS, SLACK_STEP, SNAP_RADIUS, STRING_HIT_PX } from './board/tuning'
+import { EDGE_PICKER_DROP, NUDGE_SLOP_PX, PAPER_WIDTH, POST_IT_COLORS, SLACK_STEP, SNAP_RADIUS, STRING_HIT_PX } from './board/tuning'
 import { entityIdFromElement, px, withinSlop } from './board/view'
 import { YarnBead } from './board/entities/YarnBead'
 import { Legend } from './board/Legend'
 import { StringLayer } from './board/StringLayer'
+import { EdgePicker } from './board/EdgePicker'
 import { BoardPalette } from './board/Palette'
 import { StringNote } from './board/StringNote'
 import type { DrawableString, PinView } from './board/view'
@@ -39,8 +40,8 @@ import { GridLayer } from './board/GridLayer'
 import { PaperEditor } from './board/PaperEditor'
 import { PinTooltip } from './board/PinTooltip'
 import { PinEditor } from './board/PinEditor'
-import { TimelineRibbon } from './board/TimelineRibbon'
 import {
+  boardToScreen,
   fitBounds,
   IDENTITY_CAMERA,
   rectsIntersect,
@@ -48,7 +49,6 @@ import {
   type Camera,
   type Rect,
 } from './board/camera'
-import { activeAt, buildTimeline, clusterTimeline, type TimelineEntry } from './board/timeline'
 import {
   createSpring,
   distance,
@@ -137,8 +137,6 @@ export function App() {
 
   const [dragFrom, setDragFrom] = useState<string | null>(null)
   const [fontsLoaded, setFontsLoaded] = useState(() => !globalThis.document?.fonts)
-  const [cursor, setCursor] = useState(CAMPAIGN_EPOCH)
-  const [playing, setPlaying] = useState(false)
   const [camera, setCamera] = useState<Camera>(IDENTITY_CAMERA)
   const [editingPin, setEditingPin] = useState<{ id: string; x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<
@@ -1247,51 +1245,6 @@ export function App() {
     setContextMenu(null)
   }, [store])
 
-  const timeline = useMemo(
-    () =>
-      buildTimeline([
-        ...placed.map(
-          (item): TimelineEntry => ({
-            id: item.id,
-            // A pin is dated when it is placed; the columns are nullable for
-            // entities that inherit a date from their group instead.
-            occurredAt: item.occurredAt ?? null,
-            dateLabel: item.dateLabel ?? null,
-          }),
-        ),
-      ]),
-    [placed],
-  )
-  const clusters = useMemo(() => clusterTimeline(timeline), [timeline])
-  const activeIds = useMemo(() => new Set(activeAt(timeline, cursor)), [timeline, cursor])
-
-  useEffect(() => {
-    if (!playing) return
-    if (clusters.length === 0) {
-      setPlaying(false)
-      return
-    }
-    const timer = setTimeout(() => {
-      const next = clusters.find((cluster) => cluster.start > cursor)
-      if (!next) {
-        setPlaying(false)
-        return
-      }
-      setCursor(next.start)
-    }, 1200)
-    return () => clearTimeout(timer)
-  }, [playing, cursor, clusters])
-
-  const togglePlay = useCallback(() => {
-    if (!playing && clusters.length > 0) {
-      const last = clusters[clusters.length - 1]
-      if (cursor >= last.start) setCursor(clusters[0].start)
-    }
-    setPlaying((previous) => !previous)
-  }, [playing, cursor, clusters])
-
-  const byId = useMemo(() => new Map(pins.map((pin) => [pin.id, pin])), [pins])
-  const dimming = placed.length > 0
 
   /**
    * Where a string may be tied, for every entity that accepts one.
@@ -1418,6 +1371,15 @@ export function App() {
     })
   }, [store])
 
+  /**
+   * Where the border bar hangs, in the board's own coordinates.
+   *
+   * The picture's *swept* box converted through the camera, so a tilted
+   * picture's bar sits under the picture rather than under the upright
+   * rectangle it is drawn from — and in viewport space, where a control
+   * belongs. Null until the descriptors have a size to work with.
+   */
+
   /** Slide a string's note to a new place along the rope. */
   const slideStringNote = useCallback(
     (id: string, t: number) => {
@@ -1515,6 +1477,19 @@ export function App() {
     () => (selection.size === 1 ? images.find((image) => selection.has(image.id)) ?? null : null),
     [images, selection],
   )
+
+  const edgePickerAt = useMemo(() => {
+    if (!selectedImage) return null
+    const box = descriptorFor(selectedImage).bounds(selectedImage, entityContext)
+    if (!box) return null
+    const below = boardToScreen(camera, {
+      x: box.x + box.width / 2,
+      y: box.y + box.height + EDGE_PICKER_DROP,
+    })
+    return below
+  }, [selectedImage, entityContext, camera])
+
+  const byId = useMemo(() => new Map(pins.map((pin) => [pin.id, pin])), [pins])
 
   const anchored = pins.filter((pin) => pin.rect)
   const freePins = pins.filter((pin) => pin.board)
@@ -1637,9 +1612,23 @@ export function App() {
               fitTo={paperRect ? [paperRect] : undefined}
               backdrop={(viewport) => <GridLayer camera={camera} viewport={viewport} />}
               overlay={
-                <BoardPalette
-                  canCreate={can(LOCAL_VIEWER, 'create')}
-                  onDropNote={(clientX, clientY) => {
+                <>
+                  {/* The border bar hangs under the selected picture, placed
+                      here rather than inside the world layer because that layer
+                      is a transformed element — its own stacking context — and
+                      nothing inside it can be lifted above this palette. */}
+                  {selectedImage && edgePickerAt ? (
+                    <EdgePicker
+                      seed={selectedImage.edgeSeed}
+                      edge={selectedImage.edge}
+                      at={edgePickerAt}
+                      onPick={(style) => setImageEdge(selectedImage.id, style)}
+                    />
+                  ) : null}
+
+                  <BoardPalette
+                    canCreate={can(LOCAL_VIEWER, 'create')}
+                    onDropNote={(clientX, clientY) => {
                     // Centred on the drop, because that is what the note under
                     // the pointer showed: a note that landed with its corner
                     // there would appear half a note from where it was aimed.
@@ -1651,8 +1640,9 @@ export function App() {
                   }}
                   // A tack's own coordinate *is* its centre, so this one lands
                   // where it was put without a correction.
-                  onDropPin={(clientX, clientY) => createFreePin(worldPoint(clientX, clientY))}
-                />
+                    onDropPin={(clientX, clientY) => createFreePin(worldPoint(clientX, clientY))}
+                  />
+                </>
               }
             >
               <ArticleSheet
@@ -1666,8 +1656,6 @@ export function App() {
                 overlayRef={overlayRef}
                 anchored={anchored}
                 selected={selection}
-                dimming={dimming}
-                activeIds={activeIds}
                 movingPin={movingPin}
                 zoom={camera.zoom}
                 documentSelected={documentSelected}
@@ -1689,13 +1677,9 @@ export function App() {
                 freePins={freePins}
                 images={images}
                 postIts={postIts}
-                selectedImage={selectedImage}
                 selection={selection}
-                dimming={dimming}
-                activeIds={activeIds}
                 movingPin={movingPin}
                 zoom={camera.zoom}
-                context={entityContext}
                 articleToBoard={articleToBoard}
                 toBoard={worldPoint}
                 anchorOf={(id) => anchorPoints.get(id) ?? null}
@@ -1707,7 +1691,6 @@ export function App() {
                 onRotate={rotateEntity}
                 onResize={resizeImage}
                 onSelectImage={selectImage}
-                onSetEdge={setImageEdge}
                 onSelectNote={selectOnly}
                 onSetBody={setEntityBody}
                 onResizeNote={resizeNote}
@@ -1779,19 +1762,6 @@ export function App() {
               Scroll to zoom · right/middle-drag to pan · right-click for options
             </span>
           </div>
-          <TimelineRibbon
-            timeline={timeline}
-            clusters={clusters}
-            cursor={cursor}
-            onScrub={(time) => {
-              setPlaying(false)
-              setCursor(time)
-            }}
-            playing={playing}
-            onTogglePlay={togglePlay}
-            activeCount={activeIds.size}
-            totalCount={timeline.placed.length}
-          />
         </footer>
       )}
 

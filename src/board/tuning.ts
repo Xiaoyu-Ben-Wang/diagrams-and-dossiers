@@ -70,6 +70,14 @@ export const HANDLE_SIZE = 20
 export const SLACK_STEP = 1000
 
 /**
+ * How far under a picture the border bar hangs, in *screen* px.
+ *
+ * Screen rather than board: the bar lives in viewport space now, so it does not
+ * scale with the zoom and its clearance from the picture should not either.
+ */
+export const EDGE_PICKER_DROP = 44
+
+/**
  * The width of the page, in board px.
  *
  * Fixed rather than fluid so the article reflows identically for everyone

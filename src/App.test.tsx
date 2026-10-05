@@ -117,21 +117,14 @@ describe('App — document selection', () => {
 })
 
 describe('App — chronology', () => {
-  it('shows the ribbon', () => {
+  it('is off the board for now', () => {
+    // The ribbon was removed from the UI deliberately, not broken. The module
+    // and its tests are kept in `board/timeline.ts` so it can come back; this
+    // is the test that will fail when it does, and the three that used to live
+    // here — the ribbon renders, it explains an empty chronology, playback is
+    // disabled with nothing to play — are what to restore alongside it.
     render(<App />)
-    expect(screen.getByTestId('timeline-ribbon')).toBeTruthy()
-  })
-
-  it('explains that the chronology is empty before anything is dated', () => {
-    render(<App />)
-    expect(screen.getByText(/Pin something to start the chronology/)).toBeTruthy()
-    expect(screen.getAllByText(/no dated items/).length).toBeGreaterThan(0)
-  })
-
-  it('disables playback while there is nothing to play', () => {
-    render(<App />)
-    const play = screen.getByRole('button', { name: /play the campaign as a recap/i })
-    expect((play as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByTestId('timeline-ribbon')).toBeNull()
   })
 })
 

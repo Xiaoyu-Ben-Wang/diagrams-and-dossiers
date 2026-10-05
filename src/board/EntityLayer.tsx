@@ -14,10 +14,7 @@
  * instead.
  */
 
-import { descriptorFor } from '../model/kinds'
-import type { EntityContext, ImageEntity, NoteEntity } from '../model/types'
-import { EdgePicker } from './EdgePicker'
-import type { EdgeStyle } from './edges'
+import type { ImageEntity, NoteEntity } from '../model/types'
 import { ImageCard } from './ImageCard'
 import { PostIt } from './entities/PostIt'
 import { Tack } from './entities/Tack'
@@ -29,18 +26,11 @@ export interface EntityLayerProps {
   freePins: readonly PinView[]
   images: readonly ImageEntity[]
   postIts: readonly NoteEntity[]
-  /** The picture the border bar is for, if exactly one is selected. */
-  selectedImage: ImageEntity | null
 
   selection: ReadonlySet<string>
-  /** Whether the timeline is holding anything back right now. */
-  dimming: boolean
-  activeIds: ReadonlySet<string>
   movingPin: string | null
   zoom: number
 
-  /** What the descriptors need that they cannot know alone. */
-  context: EntityContext
   /** A point in the article's own space, in board space. */
   articleToBoard: (local: Point) => Point
   /** A viewport point in board space. */
@@ -56,7 +46,6 @@ export interface EntityLayerProps {
   onRotate: (id: string, degrees: number) => void
   onResize: (id: string, size: { width: number; height: number }) => void
   onSelectImage: (id: string) => void
-  onSetEdge: (id: string, edge: EdgeStyle) => void
   onSelectNote: (id: string) => void
   onSetBody: (id: string, body: string) => void
   onResizeNote: (id: string, size: { width: number; height: number }) => void
@@ -70,13 +59,9 @@ export function EntityLayer({
   freePins,
   images,
   postIts,
-  selectedImage,
   selection,
-  dimming,
-  activeIds,
   movingPin,
   zoom,
-  context,
   articleToBoard,
   toBoard,
   anchorOf,
@@ -88,7 +73,6 @@ export function EntityLayer({
   onRotate,
   onResize,
   onSelectImage,
-  onSetEdge,
   onSelectNote,
   onSetBody,
   onResizeNote,
@@ -107,7 +91,6 @@ export function EntityLayer({
             x={pin.board.x - TACK_RADIUS + pin.nudge.x}
             y={pin.board.y - TACK_RADIUS + pin.nudge.y}
             selected={selection.has(pin.id)}
-            dimmed={dimming && !activeIds.has(pin.id)}
             moving={movingPin === pin.id}
             zoom={zoom}
             onStartYarn={(event) => onStartYarn(event, pin.id, pinPoint(pin, articleToBoard))}
@@ -142,27 +125,6 @@ export function EntityLayer({
           onStartYarn={(event) => onStartYarn(event, picture.id, anchorOf(picture.id))}
         />
       ))}
-
-      {/* The border bar follows the selection: it belongs to the one picture
-          you are looking at, not to the board. */}
-      {selectedImage ? (
-        <EdgePicker
-          seed={selectedImage.edgeSeed}
-          edge={selectedImage.edge}
-          box={
-            // The swept box, so a tilted picture's bar hangs below the picture
-            // rather than below the upright rectangle it is drawn from.
-            descriptorFor(selectedImage).bounds(selectedImage, context) ?? {
-              x: selectedImage.board.x,
-              y: selectedImage.board.y,
-              width: selectedImage.width,
-              height: selectedImage.height,
-            }
-          }
-          tilt={selectedImage.rotation}
-          onPick={(style) => onSetEdge(selectedImage.id, style)}
-        />
-      ) : null}
 
       {postIts.map((note) => (
         <PostIt

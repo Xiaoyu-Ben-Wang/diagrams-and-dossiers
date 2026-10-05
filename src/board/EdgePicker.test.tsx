@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { EdgePicker } from './EdgePicker'
 import { EDGE_STYLES, edgeClipPath } from './edges'
 
-const box = { x: 100, y: 200, width: 240, height: 120 }
+const at = { x: 340, y: 420 }
 
 function open(over: Partial<Parameters<typeof EdgePicker>[0]> = {}) {
   const onPick = vi.fn()
@@ -13,8 +13,7 @@ function open(over: Partial<Parameters<typeof EdgePicker>[0]> = {}) {
     <EdgePicker
       seed={7}
       edge="clean"
-      box={box}
-      tilt={0}
+      at={at}
       onPick={onPick}
       {...over}
     />,
@@ -84,7 +83,7 @@ describe('EdgePicker', () => {
     const seen = vi.fn()
     render(
       <div onPointerDown={seen}>
-        <EdgePicker seed={1} edge="clean" box={box} tilt={0} onPick={onPick} />
+        <EdgePicker seed={1} edge="clean" at={at} onPick={onPick} />
       </div>,
     )
 

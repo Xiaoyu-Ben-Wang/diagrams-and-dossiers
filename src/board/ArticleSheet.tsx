@@ -49,10 +49,6 @@ export interface ArticleSheetProps {
   /** Tacks through the words, already resolved to rectangles. */
   anchored: readonly PinView[]
   selected: ReadonlySet<string>
-  /** Whether the timeline is holding anything back right now. */
-  dimming: boolean
-  /** Ids the timeline considers current, so dimming can spare them. */
-  activeIds: ReadonlySet<string>
   /** The pin currently being repositioned, if any. */
   movingPin: string | null
   zoom: number
@@ -91,8 +87,6 @@ export function ArticleSheet({
   overlayRef,
   anchored,
   selected,
-  dimming,
-  activeIds,
   movingPin,
   zoom,
   documentSelected,
@@ -264,7 +258,6 @@ export function ArticleSheet({
                   top: pin.rect.y,
                   width: pin.rect.width,
                   height: pin.rect.height,
-                  opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.16,
                 }}
               />
             ) : null,
@@ -278,7 +271,6 @@ export function ArticleSheet({
                 x={pin.rect.x + pin.rect.width + TACK_DX + pin.nudge.x}
                 y={pin.rect.y + TACK_DY + pin.nudge.y}
                 selected={selected.has(pin.id)}
-                dimmed={dimming && !activeIds.has(pin.id)}
                 moving={movingPin === pin.id}
                 zoom={zoom}
                 onStartYarn={(event) => onStartYarn(event, pin.id, pinPoint(pin, articleToBoard))}

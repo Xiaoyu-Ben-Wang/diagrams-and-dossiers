@@ -11,11 +11,19 @@
  * has a nibbled swatch. Drawing ten little pictures by hand would drift from
  * the generator the first time a preset was retuned.
  *
- * The bar hangs in board space under the picture and is counter-rotated, so it
- * stays upright and horizontal while the sheet above it is tilted.
+ * The bar hangs under the picture in *viewport* space, not on the cork, and is
+ * placed by the board which is the only thing that knows the camera. That is
+ * not a detail: inside the world layer it sits in a transformed element, which
+ * is its own stacking context, so its z-index cannot lift it above anything
+ * that is a sibling of that layer — and the palette in the corner is. The
+ * swatches underneath it could not be clicked.
+ *
+ * Viewport space also means it does not scale with the zoom, which is what the
+ * tooltip and the context menu already do: a control nobody can read at 40% is
+ * not a control.
  */
 
-import type { Rect } from './camera'
+import type { Point } from './yarn'
 import { EDGE_STYLES, edgeClipPath, type EdgeStyle } from './edges'
 
 /** What each style is called on screen. */
@@ -48,21 +56,21 @@ const EDGE_HINTS: Readonly<Record<EdgeStyle, string>> = {
 
 const SWATCH_WIDTH = 46
 const SWATCH_HEIGHT = 34
-/** How far under the picture the bar hangs, in board px. */
-const DROP = 44
-
 export interface EdgePickerProps {
   /** The seed the picture's damage is generated from, so swatches match it. */
   seed: number
   edge: EdgeStyle
-  /** The picture's swept box in board space, to hang the bar beneath. */
-  box: Rect
-  /** The sheet's angle in degrees, so the bar can be counter-rotated upright. */
-  tilt: number
+  /**
+   * Where to hang the bar, in coordinates relative to the board's own box.
+   *
+   * The board converts the picture's swept box through the camera and hands
+   * the answer in, so this never has to know what a zoom is.
+   */
+  at: Point
   onPick: (style: EdgeStyle) => void
 }
 
-export function EdgePicker({ seed, edge, box, tilt, onPick }: EdgePickerProps) {
+export function EdgePicker({ seed, edge, at, onPick }: EdgePickerProps) {
   return (
     <div
       role="group"
@@ -70,11 +78,13 @@ export function EdgePicker({ seed, edge, box, tilt, onPick }: EdgePickerProps) {
       data-testid="edge-picker"
       className="edge-picker absolute"
       style={{
-        left: box.x + box.width / 2,
-        top: box.y + box.height + DROP,
-        // Counter-rotated so the bar reads the same however the sheet hangs,
-        // and translated so its centre — not its corner — sits under the pin.
-        transform: `translateX(-50%) rotate(${-tilt}deg)`,
+        left: at.x,
+        top: at.y,
+        // Translated so its centre — not its corner — sits under the pin, and
+        // kept upright however the sheet above it hangs: the bar is a control,
+        // and a control that tilts with the thing it controls is harder to
+        // read for no gain.
+        transform: 'translateX(-50%)',
       }}
       // The bar floats over the board; a press on it is not a press on the cork.
       onPointerDown={(event) => event.stopPropagation()}

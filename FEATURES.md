@@ -88,23 +88,7 @@ A survey of candidate dependencies was run; the report is summarised in `docs/ar
 §7b and the decisions below. **The headline was that most libraries would be a downgrade** — the
 home-made parts are the domain model, not wheel reinvention.
 
-### 6. A known collision: the border bar and the palette
-**A live bug, reproducible.** `edge-probe.js` is 15/16: with a picture selected near the bottom-left,
-the border bar's first swatches are under the palette and cannot be clicked. The picture re-selects
-instead, which re-rolls its edge — so the crop looks like it simply did not take.
-
-Lowering the palette's `z-index` does not fix it, and that is the interesting part: the picker is
-inside the world layer, which is a *transformed* element and therefore its own stacking context, so
-no `z-index` on the picker can lift it above a sibling of that layer. The palette has to be above the
-board (it is chrome) and the picker has to be above the palette (it is the thing being used), and
-those two cannot both be true while one of them is inside the transform.
-
-The fix is to stop positioning floating UI inside the world layer — which is what `PinTooltip` and
-`ContextMenu` already do, and what the `@floating-ui/dom` adoption below would formalise. The edge
-picker should move to viewport space with the rest, converting the picture's board bounds through
-the camera at render. Worth doing together with that adoption rather than as a third mechanism.
-
-### 7. Adopt `@floating-ui/dom` for the tooltip and context menu
+### 6. Adopt `@floating-ui/dom` for the tooltip and context menu
 The one clear win found — and smaller than it first looked. `ContextMenu.tsx` and `PinTooltip.tsx`
 *already* do the hard parts: flip, a tail pointer, clamping, keyboard nav, focus restore on
 unmount, and they are tested (577 test lines between them). The genuine gap is narrower: neither
@@ -117,7 +101,7 @@ handling and the focus behaviour. `@floating-ui/react` (31 KB) is only worth it 
 the portal, which are not what is missing. Do **not** reach for Radix or Base UI for this: both
 take over focus and want a declarative trigger, which fits poorly with one menu per pin.
 
-### 8. Add the missing fuzzy rung to `resolve.ts`
+### 7. Add the missing fuzzy rung to `resolve.ts`
 `docs/architecture.md` §2 claims tier 3 does bitap via `diff-match-patch`. **It does not** —
 `resolve.ts` is a plain `indexOf`. The gap is real: if the *quoted words themselves* are edited,
 every tier misses and the pin orphans.
@@ -128,7 +112,7 @@ with an edit-distance budget** → score candidates by `50·quoteSim + 20·prefi
 starting constants. Prefer hand-rolling the matcher over vendoring `hypothesis/client` (BSD-2, no
 npm package, and it anchors against a live DOM where this anchors against flat text).
 
-### 9. Fix three doc drifts
+### 8. Fix three doc drifts
 Found while surveying, all real:
 
 - §2 claims bitap that does not exist (see #7).
@@ -139,7 +123,7 @@ Found while surveying, all real:
   without saying how. The ladder is a **Hypothesis client convention**, which is a stronger thing
   to be implementing than a spec, and the docs should say so.
 
-### 10. Build the minimap — or take the `react-zoom-pan-pinch` spike
+### 9. Build the minimap — or take the `react-zoom-pan-pinch` spike
 §7b named four things genuinely lost by not using a graph library: **a minimap, viewport culling,
 keyboard navigation, and a selection model.** The first three are buildable: `camera.ts` already
 has `unionRect` / `boardToScreen` / `isVisible`, and `isVisible` is written *and tested* but never
@@ -158,20 +142,20 @@ that React 19.3 behaves (its peer range is `*` and its CI runs React 18).** Keep
 `Camera` type as the boundary so the store never learns about the library's own transform shape.
 If the spike fails, build the minimap by hand; it is about 80 lines.
 
-### 11. Undo/redo, as an inverse-op stack over `BoardChange`
+### 10. Undo/redo, as an inverse-op stack over `BoardChange`
 The change union already describes every mutation (`entity/upsert`, `entity/delete`,
 `string/upsert`, `string/delete`), and an inverse is the same shape. Roughly 80 lines, no
 dependency. `zundo` is stale and drags in zustand; `immer` patches are the alternative but
 `updateEntities` runs once per pointermove during a drag and the store is allocation-light on
 purpose — measure before adopting.
 
-### 12. Accessibility on the board
+### 11. Accessibility on the board
 A real gap. `react-aria` and friends supply *collection* patterns that assume things have an
 order; a free-form 2D transform has no pattern to borrow. The work is design, not a dependency:
 a roving-focus model over entities, arrow-key nudging, a keyboard connections view. `PinTooltip`
 already does the `role="tooltip"` / deterministic-id part well — follow it.
 
-### 13. Consider Yjs, later
+### 12. Consider Yjs, later
 The only library found that would subsume **both** the anchoring ladder and the `transport.ts`
 seam: anchored text lives in a `Y.Text`, relative positions survive edits by construction rather
 than by being re-found, and a deleted position resolves to `null` — which maps onto the orphaned

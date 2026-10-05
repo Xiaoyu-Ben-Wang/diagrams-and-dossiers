@@ -22,7 +22,7 @@ export function Tack({
   x,
   y,
   selected,
-  dimmed,
+  dimmed = false,
   moving,
   zoom,
   onStartYarn,
@@ -34,7 +34,8 @@ export function Tack({
   x: number
   y: number
   selected: boolean
-  dimmed: boolean
+  /** Faded because the timeline is holding it back. Nothing does now. */
+  dimmed?: boolean
   moving: boolean
   zoom: number
   onStartYarn: (event: PointerEvent) => void
