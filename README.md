@@ -55,14 +55,22 @@ pausing after 7 days idle.
 
 ## Stack
 
-React 19 · TypeScript · Vite · Tailwind v4 · Supabase · `motion` · CodeMirror 6
+React 19 · TypeScript · Vite · Tailwind v4 · `marked` · DOMPurify
+
+Four runtime dependencies, and the board is built from them rather than on top
+of a canvas library: the camera, the dragging, the yarn and the edge crop are
+this repository's own. What that costs and what it buys is worth knowing before
+changing it — see *Why not React Flow* in `docs/architecture.md`.
+
+Supabase is designed for (`supabase/migrations/`) but not yet wired: the board
+runs entirely in the browser.
 
 ## Development
 
 ```bash
 npm install
 npm run dev        # the demo board at localhost:5173
-npm test           # 567 tests
+npm test           # 612 tests
 npm run typecheck
 ```
 

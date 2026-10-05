@@ -8,10 +8,19 @@ import {
   flatRangeToDomRange,
   projectDom,
   rangeToContainerRects,
-  type AnchorRect,
   type DomProjection,
 } from './anchors/dom'
+import { caretRangeFromPoint, caretRangeThroughPins } from './anchors/caret'
 import { resolveAnchor } from './anchors/resolve'
+import { ARTICLE_ID, ARTICLE_TITLE, CAMPAIGN_EPOCH, FIRST_SESSION, INITIAL_MARKDOWN, SESSION_GAP_MS } from './app/demo'
+import { NUDGE_SLOP_PX, PAPER_WIDTH, POST_IT_COLORS, SLACK_STEP, SNAP_RADIUS, STRING_HIT_PX } from './board/tuning'
+import { entityIdFromElement, pinPoint, px, withinSlop } from './board/view'
+import { Tack } from './board/entities/Tack'
+import { PostIt } from './board/entities/PostIt'
+import { YarnBead } from './board/entities/YarnBead'
+import { Legend } from './board/Legend'
+import { StringLayer } from './board/StringLayer'
+import type { DrawableString, PinView } from './board/view'
 import { TopBar } from './app/TopBar'
 import { LOCAL_VIEWER } from './access/permissions'
 import { useRoute } from './app/router'
@@ -22,12 +31,12 @@ import type { EdgeStyle } from './board/edges'
 import { ImageCard } from './board/ImageCard'
 import { decodeImageFile, firstImage } from './board/image-file'
 import { clampTilt, rotateAbout } from './board/pivot'
-import { useRotateDrag } from './board/useRotateDrag'
 import { useBoardDrag } from './board/useBoardDrag'
+import { ArticleSheet } from './board/ArticleSheet'
 import { ContextMenu, type ContextMenuEntry } from './board/ContextMenu'
 import { GridLayer } from './board/GridLayer'
 import { PaperEditor } from './board/PaperEditor'
-import { PinTooltip, pinTooltipId } from './board/PinTooltip'
+import { PinTooltip } from './board/PinTooltip'
 import { PinEditor } from './board/PinEditor'
 import { TimelineRibbon } from './board/TimelineRibbon'
 import {
@@ -46,7 +55,6 @@ import {
   DEFAULT_SLACK,
   MAX_SAG_RATIO,
   MAX_SLACK,
-  pointOnYarn,
   sagFor,
   slackForSag,
   stepSpring,
@@ -54,7 +62,7 @@ import {
   YARN_COLOR,
   type Point,
 } from './board/yarn'
-import { maxStrandDeviation, seedFromKey, yarnStrands } from './board/yarn-style'
+import { maxStrandDeviation } from './board/yarn-style'
 import {
   freshEdgeSeed,
   imageFootprint,
@@ -63,7 +71,7 @@ import {
   newImage,
   newNote,
 } from './model/create'
-import { descriptorFor, NOTE_SIZE } from './model/kinds'
+import { descriptorFor } from './model/kinds'
 import { pinToBoard, pinToText, sameAnchor } from './model/pinning'
 import {
   isAnchoredPin,
@@ -75,236 +83,6 @@ import {
 } from './model/types'
 import { PREFERENCES_PANEL_ID, PreferencesPanel } from './theme/PreferencesPanel'
 import { usePreferences } from './theme/preferences'
-
-const INITIAL_MARKDOWN = `# The Drowned Bell
-
-**Session 12** — 3rd of Eleint, 1492 DR
-
-The party returned to Saltmarsh with the bell they pulled from the
-Sea Ghost. Molgar the Pale paid the ferryman in
-silver and said nothing at all about the water.
-
-## What we know
-
-- The bell rings at low tide, though no hand touches it
-- Three dockworkers have gone missing since the harvest festival
-- The harbormaster's ledger lists a fourth name, scratched out
-
-> "The tide keeps what it takes," the ferryman said.
-
-The Black Coin came up twice: once from the ferryman,
-and once in the ledger, in a hand nobody recognised.
-`
-
-const ARTICLE_TITLE = 'The Drowned Bell'
-/**
- * The article the demo board renders.
- *
- * A fixed id rather than a generated one because there is exactly one article
- * and pins must be able to name it — an anchored pin stores `articleId`, and
- * that has to survive a reload once persistence lands.
- */
-const ARTICLE_ID = 'the-drowned-bell'
-
-/**
- * How far off its own word a dropped pin may land and still count as a nudge,
- * in screen px.
- *
- * A caret clamps to the nearest text, so without this a tack shifted by more
- * than the width of the gap after its word silently re-pins itself to the next
- * one — about five pixels of leeway, which is less than the tack is wide.
- *
- * It is a compromise, and worth knowing where it bites: two short words with
- * only a space between them both fall inside one tack's slop, so a pin cannot
- * be re-pinned from one to the other in a single small drag. Dragging it
- * further, or onto a longer word, still re-anchors.
- */
-const NUDGE_SLOP_PX = 18
-
-const SNAP_RADIUS = 34
-/**
- * How close a click must land to a string to select it, in screen px.
- *
- * Added to the fuzz's own reach: 'realistic' sprays filaments up to
- * `maxStrandDeviation()` either side of the base curve, so hit-testing the
- * curve alone would miss a click that plainly landed on visible wool.
- */
-const STRING_HIT_PX = 10
-/**
- * Width of the halo that marks a selected string, in screen px.
- *
- * Screen px, not board px: this is an affordance rather than part of the yarn,
- * so it has to stay legible at any zoom. Divided by zoom where it is drawn.
- */
-const STRING_HALO_PX = 11
-/** The sag handle's footprint in board px, and so how big a target it is to grab. */
-const HANDLE_SIZE = 20
-/**
- * Slack is rounded to this many steps per unit on every change.
- *
- * Slack is interpolated raw into the yarn geometry cache key, so a continuous
- * drag would otherwise mint a fresh cache entry every frame and evict the
- * board's settled strings as it went. Three decimals is sub-pixel: at a 600px
- * gap one step moves the droop by under half a pixel.
- */
-const SLACK_STEP = 1000
-const PAPER_WIDTH = 720
-/** Post-it footprint, shared by the renderer and by fit-bounds. */
-const POST_IT_WIDTH = NOTE_SIZE.width
-
-const CAMPAIGN_EPOCH = Date.UTC(2026, 0, 10)
-const SESSION_GAP_MS = 14 * 24 * 60 * 60 * 1000
-const FIRST_SESSION = 12
-
-/** Post-it colours, keyed to the yarn palette so the board reads as one set. */
-const POST_IT_COLORS = ['#e8d9a8', '#e6c9a8', '#d9c2b0', '#cfd6bd'] as const
-
-interface PinView {
-  id: string
-  quote: string
-  body: string
-  /**
-   * Manual offset from wherever the pin would otherwise sit, in board space.
-   * An anchored pin's position is derived from the words it holds, so nudging
-   * it is stored as a delta rather than by overwriting a position it does not
-   * really have.
-   */
-  nudge: Point
-  /** 'free' is a pin stuck straight into the board rather than into text. */
-  status: 'exact' | 'repaired' | 'orphaned' | 'free'
-  detail: string
-  /** In-world date, shown in the hover card. */
-  dateLabel: string
-  /** Position within the paper, for a pin anchored to text. */
-  rect: AnchorRect | null
-  /** Position in board space, for a pin stuck into the board itself. */
-  board: Point | null
-}
-
-/** A string with both ends resolved to board points, ready to draw or pick. */
-interface DrawableString {
-  id: string
-  slack: number
-  from: Point
-  to: Point
-}
-
-function caretRangeFromPoint(x: number, y: number): Range | null {
-  const doc = document as Document & {
-    caretRangeFromPoint?: (x: number, y: number) => Range | null
-    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
-  }
-
-  if (doc.caretRangeFromPoint) return doc.caretRangeFromPoint(x, y)
-
-  const position = doc.caretPositionFromPoint?.(x, y)
-  if (!position) return null
-  const range = document.createRange()
-  range.setStart(position.offsetNode, position.offset)
-  range.collapse(true)
-  return range
-}
-
-/**
- * The text under a screen point, ignoring any pin that happens to be there.
- *
- * `caretRangeFromPoint` hit-tests the real DOM, and during a pin drag the pin
- * is underneath the cursor — so the caret resolves inside the tack rather than
- * in the sentence it is being dragged over, and every drop reads as "not on any
- * text". The tacks are hidden for the duration of the measurement only; it is
- * all synchronous inside one event handler, so nothing is ever painted in
- * between and the trick is invisible.
- *
- * The inline style is cleared rather than restored to its old value, so the
- * `pointer-events-auto` class that normally applies to a tack takes over again
- * the moment this returns.
- */
-function caretRangeThroughPins(x: number, y: number): Range | null {
-  const tacks = Array.from(document.querySelectorAll<HTMLElement>('[data-pin-id]'))
-  for (const tack of tacks) tack.style.pointerEvents = 'none'
-  try {
-    return caretRangeFromPoint(x, y)
-  } finally {
-    for (const tack of tacks) tack.style.pointerEvents = ''
-  }
-}
-
-function tackPoint(rect: AnchorRect): Point {
-  return { x: rect.x + rect.width - 6 + 7, y: rect.y - 5 + 7 }
-}
-
-/**
- * Whether a point lies within `slack` of a rect, on either axis.
- *
- * Used to decide that a pin dropped just off its word is still being adjusted
- * rather than re-pinned. The slack is passed already divided by the zoom, so
- * the forgiveness is a constant distance on screen rather than one that grows
- * as the board is zoomed in.
- */
-function withinSlop(point: Point, rect: AnchorRect, slack: number): boolean {
-  return (
-    point.x >= rect.x - slack &&
-    point.x <= rect.x + rect.width + slack &&
-    point.y >= rect.y - slack &&
-    point.y <= rect.y + rect.height + slack
-  )
-}
-
-/**
- * The entity an element belongs to, if any.
- *
- * Hit-testing stays in the DOM — the canvas reports whatever element was under
- * the pointer and has no idea what the application calls it — so this is the one
- * place a node becomes an id. Being the only such place is what lets the drag
- * router, the context menu and the middle-drag all stop naming kinds.
- *
- * The older per-kind attributes are still honoured rather than renamed in one
- * go: they are load-bearing for a lot of tests, and a rename is a churn with no
- * behaviour behind it.
- */
-function entityIdFromElement(element: Element): string | null {
-  return (
-    element.closest('[data-entity-id]')?.getAttribute('data-entity-id') ??
-    element.closest('[data-pin-id]')?.getAttribute('data-pin-id') ??
-    element.closest('[data-post-it-id]')?.getAttribute('data-post-it-id') ??
-    null
-  )
-}
-
-/**
- * A computed-style length as a number of px.
- *
- * jsdom has no layout engine and reports these as empty strings, so a bare
- * parseFloat would poison board coordinates with NaN and every string would
- * render as "M NaN NaN".
- */
-function px(value: string): number {
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-/**
- * Where a pin's tack sits in BOARD space.
- *
- * `paper` is the ARTICLE's corner, not the paper's — anchored rects are measured
- * against the article, which begins at the paper's content box. Callers pass
- * `paperOrigin`, which includes that padding; passing `paperPos` instead puts
- * every anchored tack off by the paper's padding, which is enough to stop a
- * dragged string from ever snapping to it. Free pins already are board
- * coordinates and ignore the argument. Returning null for an orphaned pin keeps
- * a string to something that no longer exists out of the render rather than
- * drawing it to the origin.
- */
-function pinPoint(pin: PinView, articleToBoard: (local: Point) => Point): Point | null {
-  if (pin.rect) {
-    const tack = tackPoint(pin.rect)
-    // A tack is stuck through the page, so it turns with the page: the offset
-    // goes through the article's mapping rather than being added to its corner.
-    return articleToBoard({ x: tack.x + pin.nudge.x, y: tack.y + pin.nudge.y })
-  }
-  if (pin.board) return { x: pin.board.x + pin.nudge.x, y: pin.board.y + pin.nudge.y }
-  return null
-}
 
 export function App() {
   const { route } = useRoute()
@@ -619,8 +397,6 @@ export function App() {
     (index: number) => `Session ${FIRST_SESSION + index}, 1492 DR`,
     [],
   )
-
-
 
   /** Stick a pin straight into the board, at a point in board space. */
   const createFreePin = useCallback(
@@ -1678,40 +1454,36 @@ export function App() {
         // picture is the only kind that offers it here: the others each have
         // their own way to go, and a menu that can delete a pin holding a
         // written note is a menu that loses writing.
-        ...(contextEntity?.kind === 'image'
+        ...(contextEntity?.kind === "image"
           ? [
               {
-                id: 'remove-image',
-                label: 'Remove picture',
-                hint: 'Take it off the board',
+                id: "remove-image",
+                label: "Remove picture",
                 onSelect: () => removeEntities([contextEntity.id]),
               },
-              { id: 'sep-0', separator: true } as ContextMenuEntry,
+              { id: "sep-0", separator: true } as ContextMenuEntry,
             ]
           : []),
         {
-          id: 'post-it',
-          label: 'Create post-it',
-          hint: 'A loose note on the board',
+          id: "post-it",
+          label: "Create post-it",
           onSelect: () => createPostIt(contextMenu.board),
         },
         {
-          id: 'pin',
-          label: 'Add pin',
-          hint: 'Pin a note to the text under the cursor',
+          id: "pin",
+          label: "Add pin",
           onSelect: () => pinAt(contextMenu.clientX, contextMenu.clientY),
         },
-        { id: 'sep-1', separator: true },
+        { id: "sep-1", separator: true },
         {
-          id: 'fit',
-          label: 'Zoom to fit',
-          hint: 'Frame everything on the board',
+          id: "fit",
+          label: "Zoom to fit",
           disabled: !paperRect,
           onSelect: fitBoard,
         },
         {
-          id: 'prefs',
-          label: 'Preferences…',
+          id: "prefs",
+          label: "Preferences…",
           onSelect: () => setPrefsOpen(true),
         },
       ]
@@ -1724,7 +1496,7 @@ export function App() {
         preferencesOpen={prefsOpen}
         preferencesPanelId={PREFERENCES_PANEL_ID}
       >
-        {route.name === 'board' && (
+        {route.name === "board" && (
           <>
             <button
               type="button"
@@ -1732,20 +1504,18 @@ export function App() {
               aria-pressed={pinMode}
               aria-label="Pin mode"
               title={
-                pinMode
-                  ? 'Pin mode on — click anywhere to place a pin'
-                  : 'Pin mode off — ctrl-click to place a pin'
+                pinMode ? "Pin mode on — click anywhere to place a pin" : "Pin mode off — ctrl-click to place a pin"
               }
               className={`flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs transition ${
                 pinMode
-                  ? 'border-brass bg-brass/25 text-board-ink'
-                  : 'border-brass/40 bg-cork-700/70 text-board-ink-soft hover:border-brass'
+                  ? "border-brass bg-brass/25 text-board-ink"
+                  : "border-brass/40 bg-cork-700/70 text-board-ink-soft hover:border-brass"
               }`}
             >
               <span
                 aria-hidden
                 className="inline-block h-2.5 w-2.5 rounded-full"
-                style={{ background: pinMode ? 'var(--color-brass)' : 'currentColor' }}
+                style={{ background: pinMode ? "var(--color-brass)" : "currentColor" }}
               />
               Pin<span className="hidden sm:inline">&nbsp;mode</span>
             </button>
@@ -1756,312 +1526,168 @@ export function App() {
       <main className="relative flex min-h-0 flex-1">
         <>
           {documentSelected && (
-              <PaperEditor
-                title={ARTICLE_TITLE}
-                value={source}
-                onChange={setSource}
-                onClose={() => setDocumentSelected(false)}
+            <PaperEditor
+              title={ARTICLE_TITLE}
+              value={source}
+              onChange={setSource}
+              onClose={() => setDocumentSelected(false)}
+            />
+          )}
+
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <BoardCanvas
+              onEntityDrag={handleEntityDrag}
+              onHover={handleCanvasHover}
+              // A string is clickable, and the cursor is the only place the
+              // board can say so without covering it in chrome.
+              idleCursor={hoveredString ? "pointer" : "default"}
+              camera={camera}
+              onCameraChange={setCamera}
+              onContextTarget={handleContextTarget}
+              onFileDrop={handleFileDrop}
+              onFileDragOver={handleDragOver}
+              onBackgroundClick={handleBackgroundClick}
+              // Pin mode claims the left button for pinning, so the rubber
+              // band stands down rather than fighting it for the same drag.
+              onMarquee={pinMode ? undefined : handleMarquee}
+              pinMode={pinMode}
+              className="min-h-0 flex-1"
+              fitTo={paperRect ? [paperRect] : undefined}
+              backdrop={(viewport) => <GridLayer camera={camera} viewport={viewport} />}
+            >
+                            <ArticleSheet
+                html={html}
+                pos={paperPos}
+                tilt={paperTilt}
+                paperRef={paperRef}
+                articleRef={articleRef}
+                overlayRef={overlayRef}
+                anchored={anchored}
+                selected={selection}
+                dimming={dimming}
+                activeIds={activeIds}
+                movingPin={movingPin}
+                zoom={camera.zoom}
+                documentSelected={documentSelected}
+                tabDrag={paperDrag}
+                pinAt={articlePin}
+                onClickArticle={handleArticleClick}
+                onStartYarn={beginString}
+                onMoveOne={moveOne}
+                onPinDrop={handlePinDrop}
+                onPinHover={handlePinHover}
+                onRotate={setPaperTilt}
+                toBoard={worldPoint}
+                articleToBoard={articleToBoard}
               />
-            )}
 
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-              <BoardCanvas
-                onEntityDrag={handleEntityDrag}
-                onHover={handleCanvasHover}
-                // A string is clickable, and the cursor is the only place the
-                // board can say so without covering it in chrome.
-                idleCursor={hoveredString ? 'pointer' : 'default'}
-                camera={camera}
-                onCameraChange={setCamera}
-                onContextTarget={handleContextTarget}
-                onFileDrop={handleFileDrop}
-                onFileDragOver={handleDragOver}
-                onBackgroundClick={handleBackgroundClick}
-                // Pin mode claims the left button for pinning, so the rubber
-                // band stands down rather than fighting it for the same drag.
-                onMarquee={pinMode ? undefined : handleMarquee}
-                pinMode={pinMode}
-                className="min-h-0 flex-1"
-                fitTo={paperRect ? [paperRect] : undefined}
-                backdrop={(viewport) => (
-                  <GridLayer camera={camera} viewport={viewport} />
-                )}
-              >
-
-                <div
-                  ref={paperRef}
-                  data-testid="paper"
-                  data-board-entity="article"
-                  className={`parchment absolute top-0 left-0 rounded-sm px-9 py-8 shadow-xl sm:px-12 sm:py-10 ${
-                    documentSelected ? 'ring-2 ring-brass/70' : ''
-                  }`}
-                  style={{
-                    width: PAPER_WIDTH,
-                    // The origin is the pin, and `articleToBoard` reproduces
-                    // this same transform for anything measured on the board
-                    // rather than drawn on the sheet. If one changes the other
-                    // must: a tack whose string ends somewhere the tack is not.
-                    transformOrigin: '50% 0',
-                    transform: `translate3d(${paperPos.x}px, ${paperPos.y}px, 0) rotate(${paperTilt}deg)`,
-                  }}
-                >
-                  {/* The pin the page hangs from, at the top-centre — the same
-                      place a picture is pinned, and the point `articleToBoard`
-                      turns everything about. Drawn at the pivot, so it stays
-                      put when the sheet is swung, which is what makes the
-                      rotation legible: the page moves, the pin does not. */}
-                  <button
-                    type="button"
-                    data-testid="paper-pin"
-                    aria-label="Pin holding the page up; drag to tie a string"
-                    className="tack absolute h-3.5 w-3.5 cursor-crosshair rounded-full"
-                    style={{ left: '50%', top: 0, marginLeft: -7, marginTop: -7, touchAction: 'none' }}
-                    onPointerDown={(event) => beginString(event, ARTICLE_ID, articlePin)}
-                  />
-
-                  {/* Only offered on a selected sheet, like a picture's. An
-                      unselected board is a board of things to read, not a
-                      control panel. */}
-                  {documentSelected ? (
-                    <ArticleRotateHandle
-                      tilt={paperTilt}
-                      // The pin is the pivot, so it is the one point on the
-                      // sheet that does not move when the sheet turns: no tilt
-                      // in this sum, deliberately.
-                      pivot={{ x: paperPos.x + PAPER_WIDTH / 2, y: paperPos.y }}
-                      toBoard={worldPoint}
-                      onRotate={setPaperTilt}
-                    />
-                  ) : null}
-
-                  {/* The tab is the selection affordance. Clicking the body of
-                      the paper pins a note; clicking the tab selects the
-                      document and opens the editor. Two gestures, one sheet. */}
-                  <button
-                    type="button"
-                    data-testid="paper-tab"
-                    {...paperDrag}
-                    aria-pressed={documentSelected}
-                    className={`drag-bar absolute -top-7 left-0 rounded-t px-3 py-1 text-[11px] transition ${
-                      documentSelected
-                        ? 'bg-brass/80 text-cork-900'
-                        : 'bg-parchment-200/85 text-ink-soft hover:bg-parchment-200'
-                    }`}
-                    title="Click to edit, drag to move"
-                  >
-                    {documentSelected ? '▾ ' : '▸ '}
-                    {ARTICLE_TITLE}
-                  </button>
-
-                  <div className="relative">
-                    <div
-                      ref={articleRef}
-                      onClick={handleArticleClick}
-                      className="article relative cursor-text select-text"
-                      dangerouslySetInnerHTML={{ __html: html }}
-                    />
-
-                    <div ref={overlayRef} className="pointer-events-none absolute inset-0">
-
-                      {anchored.map((pin) =>
-                        pin.rect ? (
-                          <div
-                            key={`mark-${pin.id}`}
-                            className="anchor-mark absolute transition-opacity duration-300"
-                            data-status={pin.status}
-                            style={{
-                              left: pin.rect.x,
-                              top: pin.rect.y,
-                              width: pin.rect.width,
-                              height: pin.rect.height,
-                              opacity: !dimming || activeIds.has(pin.id) ? 1 : 0.16,
-                            }}
-                          />
-                        ) : null,
-                      )}
-
-                      {anchored.map((pin) =>
-                        pin.rect ? (
-                          <Tack
-                            key={`tack-${pin.id}`}
-                            pin={pin}
-                            x={pin.rect.x + pin.rect.width - 6 + pin.nudge.x}
-                            y={pin.rect.y - 5 + pin.nudge.y}
-                            selected={selection.has(pin.id)}
-                            dimmed={dimming && !activeIds.has(pin.id)}
-                            moving={movingPin === pin.id}
-                            zoom={camera.zoom}
-                            onStartYarn={(event) => beginString(event, pin.id, pinPoint(pin, articleToBoard))}
-                            onMove={moveOne}
-                            onDrop={handlePinDrop}
-                            onHover={handlePinHover}
-                          />
-                        ) : null,
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pins stuck into the cork rather than into text. Same object
+              {/* Pins stuck into the cork rather than into text. Same object
                     as an anchored pin, different location — which is why they
                     share the note editor and the yarn. */}
-                {freePins.map((pin) =>
-                  pin.board ? (
-                    <Tack
-                      key={`free-${pin.id}`}
-                      pin={pin}
-                      x={pin.board.x - 7 + pin.nudge.x}
-                      y={pin.board.y - 7 + pin.nudge.y}
-                      selected={selection.has(pin.id)}
-                      dimmed={dimming && !activeIds.has(pin.id)}
-                      moving={movingPin === pin.id}
-                      zoom={camera.zoom}
-                      onStartYarn={(event) => beginString(event, pin.id, pinPoint(pin, articleToBoard))}
-                      onMove={moveOne}
-                      onDrop={handlePinDrop}
-                      onHover={handlePinHover}
-                    />
-                  ) : null,
-                )}
-
-                {images.map((picture) => (
-                  <ImageCard
-                    key={picture.id}
-                    id={picture.id}
-                    src={picture.src}
-                    alt={picture.alt}
-                    x={picture.board.x}
-                    y={picture.board.y}
-                    width={picture.width}
-                    height={picture.height}
-                    rotation={picture.rotation}
-                    fit={picture.fit}
-                    edge={picture.edge}
-                    edgeSeed={picture.edgeSeed}
-                    selected={selection.has(picture.id)}
+              {freePins.map((pin) =>
+                pin.board ? (
+                  <Tack
+                    key={`free-${pin.id}`}
+                    pin={pin}
+                    x={pin.board.x - 7 + pin.nudge.x}
+                    y={pin.board.y - 7 + pin.nudge.y}
+                    selected={selection.has(pin.id)}
+                    dimmed={dimming && !activeIds.has(pin.id)}
+                    moving={movingPin === pin.id}
                     zoom={camera.zoom}
-                    toBoard={worldPoint}
-                    onMove={moveEntity}
-                    onRotate={rotateEntity}
-                    onSelect={selectImage}
-                    onResize={resizeImage}
-                    onStartYarn={(event) => beginString(event, picture.id, anchorPoints.get(picture.id) ?? null)}
+                    onStartYarn={(event) => beginString(event, pin.id, pinPoint(pin, articleToBoard))}
+                    onMove={moveOne}
+                    onDrop={handlePinDrop}
+                    onHover={handlePinHover}
                   />
-                ))}
+                ) : null,
+              )}
 
-                {/* The border bar follows the selection: it belongs to the one
+              {images.map((picture) => (
+                <ImageCard
+                  key={picture.id}
+                  id={picture.id}
+                  src={picture.src}
+                  alt={picture.alt}
+                  x={picture.board.x}
+                  y={picture.board.y}
+                  width={picture.width}
+                  height={picture.height}
+                  rotation={picture.rotation}
+                  fit={picture.fit}
+                  edge={picture.edge}
+                  edgeSeed={picture.edgeSeed}
+                  selected={selection.has(picture.id)}
+                  zoom={camera.zoom}
+                  toBoard={worldPoint}
+                  onMove={moveEntity}
+                  onRotate={rotateEntity}
+                  onSelect={selectImage}
+                  onResize={resizeImage}
+                  onStartYarn={(event) => beginString(event, picture.id, anchorPoints.get(picture.id) ?? null)}
+                />
+              ))}
+
+              {/* The border bar follows the selection: it belongs to the one
                     picture you are looking at, not to the board. */}
-                {selectedImage ? (
-                  <EdgePicker
-                    seed={selectedImage.edgeSeed}
-                    edge={selectedImage.edge}
-                    box={
-                      descriptorFor(selectedImage).bounds(selectedImage, entityContext) ?? {
-                        x: selectedImage.board.x,
-                        y: selectedImage.board.y,
-                        width: selectedImage.width,
-                        height: selectedImage.height,
-                      }
+              {selectedImage ? (
+                <EdgePicker
+                  seed={selectedImage.edgeSeed}
+                  edge={selectedImage.edge}
+                  box={
+                    descriptorFor(selectedImage).bounds(selectedImage, entityContext) ?? {
+                      x: selectedImage.board.x,
+                      y: selectedImage.board.y,
+                      width: selectedImage.width,
+                      height: selectedImage.height,
                     }
-                    tilt={selectedImage.rotation}
-                    onPick={(style) => setImageEdge(selectedImage.id, style)}
-                  />
-                ) : null}
+                  }
+                  tilt={selectedImage.rotation}
+                  onPick={(style) => setImageEdge(selectedImage.id, style)}
+                />
+              ) : null}
 
-                {postIts.map((note) => (
-                  <PostIt
-                    key={note.id}
-                    note={note}
-                    zoom={camera.zoom}
-                    selected={selection.has(note.id)}
-                    onDrag={moveEntity}
-                    onChange={setEntityBody}
-                    onRemove={removeEntity}
-                  />
-                ))}
-                <svg
-                  className="pointer-events-none absolute top-0 left-0 z-20 overflow-visible"
-                  width={1}
-                  height={1}
-                  aria-hidden="true"
-                >
-                  {drawableStrings.map((string) => (
-                    // Yarn is never dimmed with the timeline. Pins carry that
-                    // signal well enough on their own, and 0.12 — which reads as
-                    // "faded" on a chunky brass tack — is indistinguishable from
-                    // absent on a 1-2px hairline, so every string touching a pin
-                    // newer than the cursor simply vanished.
-                    <g key={string.id}>
-                      {/* The halo sits under the strands rather than around
-                          them, so the wool still reads as wool. Drawn in the
-                          yarn's own colour at low opacity: a white glow would
-                          be invisible on the whiteboard and a dark one on
-                          slate, but a red one reads on every surface. */}
-                      {selection.has(string.id) || hoveredString === string.id ? (
-                        <path
-                          data-testid="yarn-halo"
-                          d={yarnPath(string.from, string.to, string.slack)}
-                          fill="none"
-                          stroke={YARN_COLOR}
-                          // Selected reads stronger than merely hovered, so the
-                          // two states are told apart at a glance rather than
-                          // both meaning "something is happening here".
-                          strokeOpacity={selection.has(string.id) ? 0.22 : 0.12}
-                          strokeWidth={STRING_HALO_PX / (camera.zoom || 1)}
-                          strokeLinecap="round"
-                        />
-                      ) : null}
-                      {yarnStrands(
-                        preferences.yarnStyle,
-                        string.from,
-                        string.to,
-                        string.slack,
-                        seedFromKey(string.id),
-                      ).map((strand, index) => (
-                        <path
-                          key={index}
-                          d={strand.d}
-                          fill="none"
-                          stroke={YARN_COLOR}
-                          strokeWidth={strand.width}
-                          strokeOpacity={strand.opacity}
-                          strokeLinecap="round"
-                        />
-                      ))}
-                    </g>
-                  ))}
-
-                  <path
-                    ref={livePathRef}
-                    data-testid="live-yarn"
-                    fill="none"
-                    stroke={YARN_COLOR}
-                    strokeWidth={2.5}
-                    strokeLinecap="round"
-                    opacity={dragFrom ? 0.95 : 0}
-                  />
-                </svg>
-                {/* Rendered LAST so it paints over everything. Yarn lies on
+              {postIts.map((note) => (
+                <PostIt
+                  key={note.id}
+                  note={note}
+                  zoom={camera.zoom}
+                  selected={selection.has(note.id)}
+                  onDrag={moveEntity}
+                  onChange={setEntityBody}
+                  onRemove={removeEntity}
+                />
+              ))}
+              <StringLayer
+                strings={drawableStrings}
+                selected={selection}
+                hovered={hoveredString}
+                style={preferences.yarnStyle}
+                zoom={camera.zoom}
+                livePathRef={livePathRef}
+                drawing={dragFrom !== null}
+              />
+              {/* Rendered LAST so it paints over everything. Yarn lies on
                     top of the board the way it does on a real one — a string
                     running behind a pinned document reads as a mistake. It
                     stays pointer-events-none, so it never intercepts a click
                     meant for a pin or a post-it. */}
-                {selectedString ? (
-                  <YarnBead
-                    key={selectedString.id}
-                    from={selectedString.from}
-                    to={selectedString.to}
-                    slack={selectedString.slack}
-                    zoom={camera.zoom}
-                    onSag={(dy) => dragStringSag(selectedString.id, dy)}
-                  />
-                ) : null}
-              </BoardCanvas>
-            </div>
+              {selectedString ? (
+                <YarnBead
+                  key={selectedString.id}
+                  from={selectedString.from}
+                  to={selectedString.to}
+                  slack={selectedString.slack}
+                  zoom={camera.zoom}
+                  onSag={(dy) => dragStringSag(selectedString.id, dy)}
+                />
+              ) : null}
+            </BoardCanvas>
+          </div>
         </>
       </main>
 
-      {route.name === 'board' && (
+      {route.name === "board" && (
         <footer className="border-t border-parchment-edge/15 bg-cork-900/55 px-4 py-2 lg:px-6">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 pb-1 text-[10px] text-board-ink-soft/50">
             <Legend
@@ -2071,8 +1697,8 @@ export function App() {
             <Legend colour="#d98a2b" label={`Repaired after an edit (${repaired})`} />
             <Legend colour="var(--color-wax)" label={`Orphaned (${orphaned.length})`} />
             <span>
-              {placed.length} pin{placed.length === 1 ? '' : 's'} · {strings.length} string
-              {strings.length === 1 ? '' : 's'}
+              {placed.length} pin{placed.length === 1 ? "" : "s"} · {strings.length} string
+              {strings.length === 1 ? "" : "s"}
             </span>
             <span className="ml-auto hidden lg:inline">
               Scroll to zoom · right/middle-drag to pan · right-click for options
@@ -2117,10 +1743,7 @@ export function App() {
       />
 
       {movingPin && (
-        <div
-          className="pointer-events-none fixed inset-x-0 top-3 z-40 flex justify-center"
-          role="status"
-        >
+        <div className="pointer-events-none fixed inset-x-0 top-3 z-40 flex justify-center" role="status">
           <span className="rounded-full border border-brass/50 bg-cork-900/90 px-3 py-1 text-xs text-board-ink shadow-lg">
             Drag the pin to reposition it · <span className="text-board-ink-soft">Esc to finish</span>
           </span>
@@ -2139,8 +1762,8 @@ export function App() {
       {editingPin && activePin && (
         <PinEditor
           quote={activePin.quote}
-          status={activePin.status === 'free' ? 'exact' : activePin.status}
-          dateLabel={placed.find((item) => item.id === editingPin.id)?.dateLabel ?? ''}
+          status={activePin.status === "free" ? "exact" : activePin.status}
+          dateLabel={placed.find((item) => item.id === editingPin.id)?.dateLabel ?? ""}
           body={activePin.body}
           x={editingPin.x}
           y={editingPin.y}
@@ -2156,296 +1779,7 @@ export function App() {
         />
       )}
 
-      <PreferencesPanel
-        open={prefsOpen}
-        onClose={() => setPrefsOpen(false)}
-        onClearBoard={clearBoard}
-      />
-    </div>
-  )
-}
-
-function Legend({ colour, label }: { colour: string; label: string }) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <span className="h-2.5 w-2.5 rounded-full" style={{ background: colour }} />
-      {label}
-    </span>
-  )
-}
-
-
-/**
- * A brass tack — the same object whether it is holding a word or a patch of
- * cork, so the drag means the same thing on both and you never have to work out
- * which kind you are looking at.
- *
- * Normally dragging one runs a string. While it is the pin being repositioned,
- * the drag moves it instead: a mode rather than a second button, because
- * "connect" and "move" on the same target would otherwise be indistinguishable.
- *
- * `data-described` drives a ring around tacks that have something written on
- * them, so an annotated pin is findable at a glance across a crowded board.
- */
-function Tack({
-  pin,
-  x,
-  y,
-  selected,
-  dimmed,
-  moving,
-  zoom,
-  onStartYarn,
-  onMove,
-  onDrop,
-  onHover,
-}: {
-  pin: PinView
-  x: number
-  y: number
-  selected: boolean
-  dimmed: boolean
-  moving: boolean
-  zoom: number
-  onStartYarn: (event: React.PointerEvent) => void
-  onMove: (id: string, delta: Point) => void
-  /** Only fires in move mode: where the pin was let go of. */
-  onDrop: (id: string, clientX: number, clientY: number) => void
-  onHover: (pin: PinView, element: Element | null) => void
-}) {
-  const drag = useBoardDrag({
-    zoom,
-    onDrag: (delta) => onMove(pin.id, delta),
-    // The drag handlers are bound only in move mode — outside it a press on a
-    // tack starts a string instead — so this can only fire while repositioning.
-    onEnd: (end) => onDrop(pin.id, end.clientX, end.clientY),
-  })
-
-  const described = pin.body.trim().length > 0
-
-  return (
-    <button
-      type="button"
-      data-pin-id={pin.id}
-      data-board-entity="pin"
-      data-described={described ? 'true' : undefined}
-      {...(moving ? drag : { onPointerDown: onStartYarn })}
-      onPointerEnter={(event) => onHover(pin, event.currentTarget)}
-      onPointerLeave={() => onHover(pin, null)}
-      // The id only exists while the card is mounted, which aria-describedby
-      // ignores — so this is safe to declare unconditionally.
-      aria-describedby={pinTooltipId(pin.id)}
-      // pointer-events-auto is load-bearing on anchored pins: their overlay is
-      // pointer-events-none so the article's text keeps its own hit-testing, and
-      // a tack that inherits that cannot be pressed at all — so no yarn could
-      // ever start from a pin stuck in a word. Re-enabling it here, on the tack
-      // alone, leaves the rest of the overlay transparent to the text.
-      className={`tack tack-enter pointer-events-auto absolute h-3.5 w-3.5 rounded-full ${
-        moving ? 'cursor-grabbing' : 'cursor-crosshair'
-      } ${selected ? 'is-selected' : ''}`}
-      data-status={pin.status}
-      style={{
-        left: x,
-        top: y,
-        touchAction: 'none',
-        opacity: dimmed ? 0.2 : 1,
-      }}
-      aria-label={
-        described
-          ? `Pin: ${pin.body}`
-          : pin.quote
-            ? `Pin on "${pin.quote}", ${pin.detail}`
-            : 'Pin on the board, no description yet'
-      }
-    />
-  )
-}
-
-/**
- * The handle on a selected string: the thing you haul up and down to change how
- * much the string sags.
- *
- * Drawn as a bare double-headed arrow rather than as a brass bead. The bead
- * matched the tacks, which made it read as another object resting on the board
- * — something you might click, not something you drag. An arrow is a control,
- * and this is the one part of the board that is one.
- *
- * Its own component so the drag hook lives here, and so the gesture is bound to
- * one string by construction rather than through a ref of "which string is
- * selected right now". Only the vertical component is used — the sag is a
- * single number, and letting sideways travel feed into it would make the string
- * lurch whenever the hand drifted.
- */
-function YarnBead({
-  from,
-  to,
-  slack,
-  zoom,
-  onSag,
-}: {
-  from: Point
-  to: Point
-  slack: number
-  zoom: number
-  onSag: (dy: number) => void
-}) {
-  const drag = useBoardDrag({ zoom, onDrag: (delta) => onSag(delta.y) })
-  // The curve's lowest point is the middle of the rope, and the only part of it
-  // that means "tightness" to the eye.
-  const apex = pointOnYarn(from, to, 0.5, slack)
-
-  return (
-    <button
-      type="button"
-      data-testid="yarn-bead"
-      aria-label="Drag up or down to adjust how much the string sags"
-      className="yarn-bead tack-enter absolute"
-      style={{
-        left: apex.x - HANDLE_SIZE / 2,
-        top: apex.y - HANDLE_SIZE / 2,
-        width: HANDLE_SIZE,
-        height: HANDLE_SIZE,
-        touchAction: 'none',
-      }}
-      {...drag}
-    >
-      {/* Stroked rather than filled, so it stays legible over the string it
-          sits on: the shaft crosses the yarn, and a solid glyph in the same red
-          would merge with it. */}
-      <svg viewBox="0 0 20 20" className="yarn-bead-glyph" aria-hidden="true">
-        <path
-          d="M 10 4.5 V 15.5 M 6.4 8.1 L 10 4.5 L 13.6 8.1 M 6.4 11.9 L 10 15.5 L 13.6 11.9"
-          fill="none"
-          stroke={YARN_COLOR}
-          strokeWidth={2.1}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </button>
-  )
-}
-
-/**
- * The handle that swings the article.
- *
- * At the foot of the sheet, matching a picture's. The head is already busy —
- * the pin the page hangs from, and the tab that selects it — and a control
- * beside the pin reads as part of the pin.
- */
-function ArticleRotateHandle({
-  tilt,
-  pivot,
-  toBoard,
-  onRotate,
-}: {
-  tilt: number
-  pivot: Point
-  toBoard: (clientX: number, clientY: number) => Point
-  onRotate: (degrees: number) => void
-}) {
-  const rotate = useRotateDrag({ pivot, tilt, toBoard, onRotate })
-
-  return (
-    <>
-      <span
-        aria-hidden="true"
-        className="image-rotate-stem absolute"
-        style={{ left: '50%', top: '100%', height: 16, marginLeft: -1 }}
-      />
-      <button
-        type="button"
-        data-testid="article-rotate"
-        aria-label="Drag to swing the page about its pin"
-        className="image-rotate absolute"
-        style={{ left: '50%', top: '100%', marginTop: 16, marginLeft: -11 }}
-        {...rotate}
-      >
-        <svg viewBox="0 0 22 22" aria-hidden="true" className="h-full w-full">
-          <path
-            d="M 4.2 11.4 A 6.8 6.8 0 1 1 8.4 17.4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M 1.4 7.6 L 4.4 11.9 L 8.8 9.6"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-    </>
-  )
-}
-
-/**
- * A post-it on the board.
- *
- * Its own component because it needs a drag hook, and hooks cannot live inside
- * a `.map`. The body is edited in place — a post-it is a thing you scribble on,
- * so opening a dialog to do it would be a step backwards.
- */
-function PostIt({
-  note,
-  zoom,
-  selected,
-  onDrag,
-  onChange,
-  onRemove,
-}: {
-  note: NoteEntity
-  zoom: number
-  selected: boolean
-  onDrag: (id: string, delta: Point) => void
-  onChange: (id: string, body: string) => void
-  onRemove: (id: string) => void
-}) {
-  const drag = useBoardDrag({
-    zoom,
-    onDrag: (delta) => onDrag(note.id, delta),
-  })
-
-  return (
-    <div
-      data-entity-id={note.id}
-      data-post-it-id={note.id}
-      data-board-entity="note"
-      className={`post-it absolute rounded-sm p-2 ${selected ? 'is-selected' : ''}`}
-      style={{
-        left: note.board.x,
-        top: note.board.y,
-        width: POST_IT_WIDTH,
-        background: note.color,
-      }}
-    >
-      {/* The header is the grab handle, so dragging never fights with selecting
-          text inside the note. */}
-      <div
-        {...drag}
-        className="drag-bar mb-1 h-2.5 rounded-sm"
-        title="Drag to move"
-        aria-label="Drag post-it"
-      />
-      <textarea
-        value={note.bodyMd}
-        onChange={(event) => onChange(note.id, event.target.value)}
-        placeholder="Write something…"
-        className="h-24 w-full resize-none bg-transparent text-[12px] leading-snug text-ink outline-none placeholder:text-ink-soft/40"
-        aria-label="Post-it note"
-      />
-      <button
-        type="button"
-        onClick={() => onRemove(note.id)}
-        className="absolute top-1 right-1 text-[11px] text-ink-soft/40 transition hover:text-wax"
-        aria-label="Remove post-it"
-      >
-        ×
-      </button>
+      <PreferencesPanel open={prefsOpen} onClose={() => setPrefsOpen(false)} onClearBoard={clearBoard} />
     </div>
   )
 }
