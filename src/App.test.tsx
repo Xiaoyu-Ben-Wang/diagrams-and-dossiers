@@ -717,6 +717,69 @@ describe('App — pin descriptions', () => {
   })
 })
 
+describe('App — swinging the page', () => {
+  /** A drag: press, travel, release. */
+  function drag(element: Element, from: [number, number], to: [number, number]): void {
+    fireEvent.pointerDown(element, { button: 0, pointerId: 3, clientX: from[0], clientY: from[1] })
+    fireEvent.pointerMove(element, { pointerId: 3, clientX: to[0], clientY: to[1] })
+    fireEvent.pointerUp(element, { pointerId: 3, clientX: to[0], clientY: to[1] })
+  }
+
+  const tiltOf = (container: HTMLElement): number => {
+    const transform = container.querySelector('[data-testid="paper"]')?.getAttribute('style') ?? ''
+    const match = transform.match(/rotate\(([-\d.]+)deg\)/)
+    return match ? Number.parseFloat(match[1]) : 0
+  }
+
+  it('hangs the page from a pin at its top-centre', () => {
+    render(<App />)
+
+    expect(screen.getByTestId('paper-pin')).toBeTruthy()
+  })
+
+  it('offers no rotate handle on an unselected page', () => {
+    // An unselected board is a board of things to read, not a control panel.
+    render(<App />)
+
+    expect(screen.queryByTestId('article-rotate')).toBeNull()
+  })
+
+  it('offers the rotate handle once the page is selected', () => {
+    render(<App />)
+    tap(screen.getByTestId('paper-tab'))
+
+    expect(screen.getByTestId('article-rotate')).toBeTruthy()
+  })
+
+  it('swings the page when the handle is dragged', () => {
+    const { container } = render(<App />)
+    tap(screen.getByTestId('paper-tab'))
+
+    expect(tiltOf(container)).toBe(0)
+
+    // Grab above the pin and pull down and to the right: a clockwise turn.
+    drag(screen.getByTestId('article-rotate'), [400, 100], [700, 400])
+
+    expect(tiltOf(container)).not.toBe(0)
+  })
+
+  it('holds the swing inside 45 degrees', () => {
+    const { container } = render(<App />)
+    tap(screen.getByTestId('paper-tab'))
+
+    // A pull that would be a quarter turn or more if it were allowed.
+    drag(screen.getByTestId('article-rotate'), [400, 100], [1400, 900])
+
+    expect(Math.abs(tiltOf(container))).toBeLessThanOrEqual(45)
+  })
+
+  it('leaves the page hanging straight until it is swung', () => {
+    const { container } = render(<App />)
+
+    expect(tiltOf(container)).toBe(0)
+  })
+})
+
 describe('App — preferences', () => {
   it('opens the preferences panel from the top bar', () => {
     render(<App />)

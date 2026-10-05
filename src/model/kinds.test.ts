@@ -93,7 +93,7 @@ const image = (over: Partial<ImageEntity> = {}): ImageEntity => ({
 
 /** A context with nothing resolved, as before the first measurement lands. */
 const emptyContext: EntityContext = {
-  articleOrigin: () => null,
+  articleToBoard: () => null,
   anchorRect: () => null,
   articleSize: () => null,
 }
@@ -167,14 +167,24 @@ describe('anchor points', () => {
   })
 
   it('resolves an anchored pin through the article, not from a position it lacks', () => {
+    // The article answers where a point in its own space ends up on the board,
+    // rather than handing back a corner for the caller to add to — which is
+    // what lets a tilted page put its tacks in the right place.
+    const placed: { local: unknown }[] = []
     const context: EntityContext = {
       ...emptyContext,
-      articleOrigin: () => ({ x: 1000, y: 500 }),
+      articleToBoard: (_id, local) => {
+        placed.push({ local })
+        return { x: 1000 + local.x, y: 500 + local.y }
+      },
       anchorRect: () => ({ x: 10, y: 20, width: 40, height: 12 }),
     }
+
     const at = descriptorFor(anchoredPin()).anchorPoint(anchoredPin(), context)
     const tack = tackPoint({ x: 10, y: 20, width: 40, height: 12 })
+
     expect(at).toEqual({ x: 1000 + tack.x, y: 500 + tack.y })
+    expect(placed[0].local).toEqual({ x: tack.x, y: tack.y })
   })
 
   it('gives an anchored pin no anchor at all until its quote resolves', () => {

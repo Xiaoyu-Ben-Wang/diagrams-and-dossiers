@@ -13,9 +13,10 @@
  * in the registry, so this component only has to draw it.
  */
 
-import { useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 
-import { clampTilt, tiltAngle, tiltTowards } from './pivot'
+import { clampTilt } from './pivot'
+import { useRotateDrag } from './useRotateDrag'
 import { useBoardDrag } from './useBoardDrag'
 import type { Point } from './yarn'
 
@@ -99,56 +100,18 @@ export function ImageCard({
     [drag.onPointerDown, id, onSelect],
   )
 
-  /**
-   * The pointer direction the handle was grabbed at, and the tilt then.
-   *
-   * In a ref rather than in state because this is applied on every pointer move
-   * and reading it back through a render would lag the pointer by a frame.
-   * Together the two turn an absolute direction into the swing the hand has
-   * made since, which is what keeps the handle under the cursor instead of the
-   * sheet snapping its head to it.
-   */
-  const grabRef = useRef<{ at: number; tilt: number } | null>(null)
-
-  const startRotate = useCallback(
-    (event: React.PointerEvent) => {
-      if (event.button !== 0) return
-      event.stopPropagation()
-      event.preventDefault()
-      try {
-        event.currentTarget.setPointerCapture(event.pointerId)
-      } catch {
-        // Capture is a refinement; the drag still tracks while over the handle.
-      }
-
-      const pointer = toBoard(event.clientX, event.clientY)
-      grabRef.current = { at: tiltAngle(pivot, pointer), tilt: rotation }
-    },
-    // The pivot is rebuilt every render, so it is listed by its parts — the ref
-    // wants the pivot as it is at the moment of the grab.
-    [pivot.x, pivot.y, rotation, toBoard],
-  )
-
-  const moveRotate = useCallback(
-    (event: React.PointerEvent) => {
-      const grab = grabRef.current
-      if (!grab) return
-      event.stopPropagation()
-
-      const pointer = toBoard(event.clientX, event.clientY)
-      onRotate(id, tiltTowards(pivot, pointer, grab.at, grab.tilt))
-    },
-    [id, onRotate, pivot.x, pivot.y, toBoard],
-  )
-
-  const endRotate = useCallback((event: React.PointerEvent) => {
-    grabRef.current = null
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    } catch {
-      // Already released.
-    }
-  }, [])
+  const rotateEntityDrag = useRotateDrag({
+    pivot,
+    tilt: rotation,
+    toBoard,
+    onRotate: (degrees) => onRotate(id, degrees),
+  })
+  const rotateProps = {
+    onPointerDown: rotateEntityDrag.onPointerDown,
+    onPointerMove: rotateEntityDrag.onPointerMove,
+    onPointerUp: rotateEntityDrag.onPointerUp,
+    onPointerCancel: rotateEntityDrag.onPointerCancel,
+  }
 
   return (
     <div
@@ -209,10 +172,7 @@ export function ImageCard({
             aria-label="Drag to swing the picture about its pin"
             className="image-rotate absolute"
             style={{ left: '50%', top: -HANDLE_REACH, marginLeft: -11 }}
-            onPointerDown={startRotate}
-            onPointerMove={moveRotate}
-            onPointerUp={endRotate}
-            onPointerCancel={endRotate}
+            {...rotateProps}
           >
             <svg viewBox="0 0 22 22" aria-hidden="true" className="h-full w-full">
               <path

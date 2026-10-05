@@ -202,8 +202,17 @@ export interface Group {
  * lets the resolution stay where it belongs, in the anchors layer.
  */
 export interface EntityContext {
-  /** Board-space origin of an article's content box. */
-  articleOrigin(articleId: string): Point | null
+  /**
+   * A point in an article's own space, in board space.
+   *
+   * A mapping rather than an origin, because an article can be pinned up at an
+   * angle and a sheet that has been swung is not a sheet that has been moved:
+   * its corner and the tack holding it are no longer in the same relationship,
+   * so a caller that adds an offset to the corner lands in the wrong place as
+   * soon as the page is tilted. The rotation belongs to whoever owns the page —
+   * the descriptors stay pure and simply ask where a point ends up.
+   */
+  articleToBoard(articleId: string, local: Point): Point | null
   /** The resolved rect of a pin's anchor, in that article's space. */
   anchorRect(entityId: string): AnchorRect | null
   /** Measured footprint of an article, which sizes itself to its body. */

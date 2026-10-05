@@ -17,7 +17,8 @@ import { useRoute } from './app/router'
 import { BoardCanvas, type BoardContextTarget } from './board/BoardCanvas'
 import { ImageCard } from './board/ImageCard'
 import { decodeImageFile, firstImage } from './board/image-file'
-import { clampTilt } from './board/pivot'
+import { clampTilt, rotateAbout } from './board/pivot'
+import { useRotateDrag } from './board/useRotateDrag'
 import { useBoardDrag } from './board/useBoardDrag'
 import { ContextMenu, type ContextMenuEntry } from './board/ContextMenu'
 import { GridLayer } from './board/GridLayer'
@@ -284,13 +285,12 @@ function px(value: string): number {
  * a string to something that no longer exists out of the render rather than
  * drawing it to the origin.
  */
-function pinPoint(pin: PinView, paper: Point): Point | null {
+function pinPoint(pin: PinView, articleToBoard: (local: Point) => Point): Point | null {
   if (pin.rect) {
     const tack = tackPoint(pin.rect)
-    return {
-      x: paper.x + tack.x + pin.nudge.x,
-      y: paper.y + tack.y + pin.nudge.y,
-    }
+    // A tack is stuck through the page, so it turns with the page: the offset
+    // goes through the article's mapping rather than being added to its corner.
+    return articleToBoard({ x: tack.x + pin.nudge.x, y: tack.y + pin.nudge.y })
   }
   if (pin.board) return { x: pin.board.x + pin.nudge.x, y: pin.board.y + pin.nudge.y }
   return null
@@ -360,6 +360,16 @@ export function App() {
   const [paperPos, setPaperPos] = useState<Point>({ x: 0, y: 0 })
   const paperPosRef = useRef(paperPos)
   paperPosRef.current = paperPos
+  /**
+   * How far the sheet is swung about its pin, in degrees.
+   *
+   * Its own state rather than a field on an entity, because the article is the
+   * one kind that has not joined the entity list yet — it is still a singleton
+   * with its own paper position. When it does, this moves onto it with `board`.
+   */
+  const [paperTilt, setPaperTilt] = useState(0)
+  const paperTiltRef = useRef(paperTilt)
+  paperTiltRef.current = paperTilt
 
   /**
    * The paper's own padding, i.e. the offset from the paper's top-left corner
@@ -378,6 +388,8 @@ export function App() {
   const paperOrigin = { x: paperPos.x + paperInset.x, y: paperPos.y + paperInset.y }
   const paperOriginRef = useRef(paperOrigin)
   paperOriginRef.current = paperOrigin
+  const paperInsetRef = useRef(paperInset)
+  paperInsetRef.current = paperInset
 
   /**
    * What a descriptor cannot know on its own.
@@ -386,16 +398,35 @@ export function App() {
    * resolved to, which only the projection effect knows. Passing that in keeps
    * the descriptors pure and keeps the anchor ladder where it belongs.
    */
+  /**
+   * A point in the article's own space, in board space.
+   *
+   * The paper is turned by a CSS transform whose origin is its own top-centre,
+   * so the same three steps reproduce it exactly: into the paper's space, turn
+   * about that origin, then out to the board. Anything measured against the
+   * article and drawn on the board — a tack's position for a string's end, for
+   * one — has to come through here, or it stays where the sheet was before it
+   * was swung.
+   */
+  const articleToBoard = useCallback((local: Point): Point => {
+    const pivot = { x: PAPER_WIDTH / 2, y: 0 }
+    const inset = paperInsetRef.current
+    const inPaper = { x: inset.x + local.x, y: inset.y + local.y }
+    const turned = rotateAbout(pivot, inPaper, paperTiltRef.current)
+    const at = paperPosRef.current
+    return { x: at.x + turned.x, y: at.y + turned.y }
+  }, [])
+
   const entityContext = useMemo<EntityContext>(
     () => ({
-      articleOrigin: () => paperOriginRef.current,
+      articleToBoard: (_articleId, local) => articleToBoard(local),
       anchorRect: (id) => pins.find((pin) => pin.id === id)?.rect ?? null,
       articleSize: () =>
         paperRect && paperRect.width > 0
           ? { width: paperRect.width, height: paperRect.height }
           : null,
     }),
-    [pins, paperRect, paperOrigin.x, paperOrigin.y],
+    [articleToBoard, pins, paperRect],
   )
   const entityContextRef = useRef(entityContext)
   entityContextRef.current = entityContext
@@ -1599,9 +1630,41 @@ export function App() {
                   }`}
                   style={{
                     width: PAPER_WIDTH,
-                    transform: `translate3d(${paperPos.x}px, ${paperPos.y}px, 0)`,
+                    // The origin is the pin, and `articleToBoard` reproduces
+                    // this same transform for anything measured on the board
+                    // rather than drawn on the sheet. If one changes the other
+                    // must: a tack whose string ends somewhere the tack is not.
+                    transformOrigin: '50% 0',
+                    transform: `translate3d(${paperPos.x}px, ${paperPos.y}px, 0) rotate(${paperTilt}deg)`,
                   }}
                 >
+                  {/* The pin the page hangs from, at the top-centre — the same
+                      place a picture is pinned, and the point `articleToBoard`
+                      turns everything about. Drawn at the pivot, so it stays
+                      put when the sheet is swung, which is what makes the
+                      rotation legible: the page moves, the pin does not. */}
+                  <span
+                    aria-hidden="true"
+                    data-testid="paper-pin"
+                    className="tack pointer-events-none absolute h-3.5 w-3.5 rounded-full"
+                    style={{ left: '50%', top: 0, marginLeft: -7, marginTop: -7 }}
+                  />
+
+                  {/* Only offered on a selected sheet, like a picture's. An
+                      unselected board is a board of things to read, not a
+                      control panel. */}
+                  {documentSelected ? (
+                    <ArticleRotateHandle
+                      tilt={paperTilt}
+                      // The pin is the pivot, so it is the one point on the
+                      // sheet that does not move when the sheet turns: no tilt
+                      // in this sum, deliberately.
+                      pivot={{ x: paperPos.x + PAPER_WIDTH / 2, y: paperPos.y }}
+                      toBoard={worldPoint}
+                      onRotate={setPaperTilt}
+                    />
+                  ) : null}
+
                   {/* The tab is the selection affordance. Clicking the body of
                       the paper pins a note; clicking the tab selects the
                       document and opens the editor. Two gestures, one sheet. */}
@@ -1659,7 +1722,7 @@ export function App() {
                             dimmed={dimming && !activeIds.has(pin.id)}
                             moving={movingPin === pin.id}
                             zoom={camera.zoom}
-                            onStartYarn={(event) => beginString(event, pin.id, pinPoint(pin, paperOriginRef.current))}
+                            onStartYarn={(event) => beginString(event, pin.id, pinPoint(pin, articleToBoard))}
                             onMove={moveOne}
                             onDrop={handlePinDrop}
                             onHover={handlePinHover}
@@ -1684,7 +1747,7 @@ export function App() {
                       dimmed={dimming && !activeIds.has(pin.id)}
                       moving={movingPin === pin.id}
                       zoom={camera.zoom}
-                      onStartYarn={(event) => beginString(event, pin.id, pinPoint(pin, paperOriginRef.current))}
+                      onStartYarn={(event) => beginString(event, pin.id, pinPoint(pin, articleToBoard))}
                       onMove={moveOne}
                       onDrop={handlePinDrop}
                       onHover={handlePinHover}
@@ -2070,6 +2133,63 @@ function YarnBead({
         />
       </svg>
     </button>
+  )
+}
+
+/**
+ * The handle that swings the article.
+ *
+ * Drawn at the head of the sheet rather than beside the tab, because it turns
+ * about the pin and the pin is at the top-centre. A control at the corner would
+ * describe a rotation the page does not perform.
+ */
+function ArticleRotateHandle({
+  tilt,
+  pivot,
+  toBoard,
+  onRotate,
+}: {
+  tilt: number
+  pivot: Point
+  toBoard: (clientX: number, clientY: number) => Point
+  onRotate: (degrees: number) => void
+}) {
+  const rotate = useRotateDrag({ pivot, tilt, toBoard, onRotate })
+
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className="image-rotate-stem absolute"
+        style={{ left: '50%', top: -34, height: 36, marginLeft: -1 }}
+      />
+      <button
+        type="button"
+        data-testid="article-rotate"
+        aria-label="Drag to swing the page about its pin"
+        className="image-rotate absolute"
+        style={{ left: '50%', top: -34, marginLeft: -11 }}
+        {...rotate}
+      >
+        <svg viewBox="0 0 22 22" aria-hidden="true" className="h-full w-full">
+          <path
+            d="M 4.2 11.4 A 6.8 6.8 0 1 1 8.4 17.4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M 1.4 7.6 L 4.4 11.9 L 8.8 9.6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </>
   )
 }
 

@@ -139,13 +139,15 @@ const pin: EntityDescriptor<BoardEntity & { kind: 'pin' }> = {
       }
     }
     const rect = context.anchorRect(entity.id)
-    const origin = context.articleOrigin(entity.articleId)
-    if (!rect || !origin) return null
+    if (!rect) return null
     const tack = tackPoint(rect)
-    return {
-      x: origin.x + tack.x + entity.nudge.x,
-      y: origin.y + tack.y + entity.nudge.y,
-    }
+    // Through the article's own mapping rather than by adding its corner: the
+    // tack is stuck through the paper, so it turns with the paper, and the
+    // nudge is an offset against those words rather than against the board.
+    return context.articleToBoard(entity.articleId, {
+      x: tack.x + entity.nudge.x,
+      y: tack.y + entity.nudge.y,
+    })
   },
   bounds: (entity, context) => {
     const at = pin.anchorPoint(entity, context)
