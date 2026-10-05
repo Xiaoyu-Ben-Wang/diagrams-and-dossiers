@@ -11,6 +11,10 @@
  * Everything that needs to know where the picture ended up — the marquee, yarn
  * attaching to the tack, zoom-to-fit — goes through `bounds` and `anchorPoint`
  * in the registry, so this component only has to draw it.
+ *
+ * Nothing but the pin is drawn until the picture is selected: an unselected
+ * board is a board of things to look at, and a handle on every sheet at once is
+ * a control panel.
  */
 
 import { useCallback } from 'react'
@@ -53,8 +57,16 @@ export interface ImageCardProps {
   onRemove: (id: string) => void
 }
 
-/** How far above the tack the rotate handle sits, in board px. */
-const HANDLE_REACH = 34
+/**
+ * How far below the sheet the rotate handle hangs, in board px.
+ *
+ * At the foot rather than at the head. The head is where the pin is, and a
+ * control drawn beside a pin reads as part of it — the two overlap, and the one
+ * you can drag is not the one that looks like a handle. A sheet also swings
+ * about its pin, so its foot is the end that travels furthest: the same pull
+ * moves it further and reads as a lever rather than as a nudge.
+ */
+const HANDLE_DROP = 16
 
 export function ImageCard({
   id,
@@ -164,14 +176,14 @@ export function ImageCard({
           <span
             aria-hidden="true"
             className="image-rotate-stem absolute"
-            style={{ left: '50%', top: -HANDLE_REACH, height: HANDLE_REACH + 2, marginLeft: -1 }}
+            style={{ left: '50%', top: '100%', height: HANDLE_DROP, marginLeft: -1 }}
           />
           <button
             type="button"
             data-testid="image-rotate"
             aria-label="Drag to swing the picture about its pin"
             className="image-rotate absolute"
-            style={{ left: '50%', top: -HANDLE_REACH, marginLeft: -11 }}
+            style={{ left: '50%', top: '100%', marginTop: HANDLE_DROP, marginLeft: -11 }}
             {...rotateProps}
           >
             <svg viewBox="0 0 22 22" aria-hidden="true" className="h-full w-full">

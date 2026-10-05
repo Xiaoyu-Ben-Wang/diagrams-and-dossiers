@@ -1376,6 +1376,19 @@ export function App() {
    * out, so a string to something that no longer exists disappears rather than
    * being drawn to the origin.
    */
+  /**
+   * The page's pin, in board space.
+   *
+   * The paper is turned about this point, so it is the one place on the sheet
+   * that does not move when the sheet swings — no tilt in the sum, and none
+   * needed. Null until the paper has been measured, so a string is never tied
+   * to a page whose position is not yet known.
+   */
+  const articlePin = useMemo(
+    () => (paperRect ? { x: paperPos.x + PAPER_WIDTH / 2, y: paperPos.y } : null),
+    [paperRect, paperPos.x, paperPos.y],
+  )
+
   const anchorPoints = useMemo(() => {
     const map = new Map<string, Point>()
     for (const entity of entities) {
@@ -1384,8 +1397,14 @@ export function App() {
       const point = descriptor.anchorPoint(entity, entityContext)
       if (point) map.set(entity.id, point)
     }
+    // The article is not an entity yet — it is still a singleton with its own
+    // paper position — but it is a thing a string can be tied to, and it has a
+    // tack at its head to prove it. Keyed by `ARTICLE_ID`, the same id the pins
+    // stuck through it already name it by, so the board has one name for the
+    // page rather than two. No collision with the entity ids, which are UUIDs.
+    if (articlePin) map.set(ARTICLE_ID, articlePin)
     return map
-  }, [entities, entityContext])
+  }, [entities, entityContext, articlePin])
   const anchorPointsRef = useRef(anchorPoints)
   anchorPointsRef.current = anchorPoints
 
@@ -1643,11 +1662,13 @@ export function App() {
                       turns everything about. Drawn at the pivot, so it stays
                       put when the sheet is swung, which is what makes the
                       rotation legible: the page moves, the pin does not. */}
-                  <span
-                    aria-hidden="true"
+                  <button
+                    type="button"
                     data-testid="paper-pin"
-                    className="tack pointer-events-none absolute h-3.5 w-3.5 rounded-full"
-                    style={{ left: '50%', top: 0, marginLeft: -7, marginTop: -7 }}
+                    aria-label="Pin holding the page up; drag to tie a string"
+                    className="tack absolute h-3.5 w-3.5 cursor-crosshair rounded-full"
+                    style={{ left: '50%', top: 0, marginLeft: -7, marginTop: -7, touchAction: 'none' }}
+                    onPointerDown={(event) => beginString(event, ARTICLE_ID, articlePin)}
                   />
 
                   {/* Only offered on a selected sheet, like a picture's. An
@@ -2139,9 +2160,9 @@ function YarnBead({
 /**
  * The handle that swings the article.
  *
- * Drawn at the head of the sheet rather than beside the tab, because it turns
- * about the pin and the pin is at the top-centre. A control at the corner would
- * describe a rotation the page does not perform.
+ * At the foot of the sheet, matching a picture's. The head is already busy —
+ * the pin the page hangs from, and the tab that selects it — and a control
+ * beside the pin reads as part of the pin.
  */
 function ArticleRotateHandle({
   tilt,
@@ -2161,14 +2182,14 @@ function ArticleRotateHandle({
       <span
         aria-hidden="true"
         className="image-rotate-stem absolute"
-        style={{ left: '50%', top: -34, height: 36, marginLeft: -1 }}
+        style={{ left: '50%', top: '100%', height: 16, marginLeft: -1 }}
       />
       <button
         type="button"
         data-testid="article-rotate"
         aria-label="Drag to swing the page about its pin"
         className="image-rotate absolute"
-        style={{ left: '50%', top: -34, marginLeft: -11 }}
+        style={{ left: '50%', top: '100%', marginTop: 16, marginLeft: -11 }}
         {...rotate}
       >
         <svg viewBox="0 0 22 22" aria-hidden="true" className="h-full w-full">
