@@ -207,6 +207,7 @@ debounce after edits and on `ResizeObserver` when the paper width changes.
 articles(id, board_id, title, slug, body_md,
          visibility: shared|dm, reveal_at,
          board_x, board_y,               -- where the paper sits on the cork
+         rotation,                       -- degrees about the pin, within +/-45
          version, created_by, created_at, updated_at)
 
 items(id, board_id, kind: note|article_ref|image,
@@ -217,6 +218,8 @@ items(id, board_id, kind: note|article_ref|image,
       status: theory|confirmed|disproven,
       date_label, occurred_at, date_precision, date_inherit,
       z_index, version, created_by, created_at, updated_at,
+      -- image only, and null for every other kind
+      src, width, height, rotation,   -- footprint in board px, not file px
       CHECK ((article_id IS NOT NULL AND anchor IS NOT NULL)
           OR (board_x IS NOT NULL AND board_y IS NOT NULL)))
 
@@ -232,6 +235,12 @@ strings(id, board_id, from_item, to_item, slack, style: solid|dashed|double,
 
 **A location is either a free board point or a text anchor inside an article** — never both. The
 `CHECK` constraint enforces it.
+
+**Rotation is a property of a pinned sheet, not a layout tool.** An article and an image are both
+held to the board by one pin at the top-centre and swing about it, within ±45°; a note and a pin
+are not rotated at all. `width`/`height` on an image are the board footprint measured from the
+decoded file — never the file's own pixel dimensions, which for a photograph off a phone would be
+larger than the article it sits beside.
 
 Indexes on `items(board_id)`, `items(article_id)`, `items(occurred_at)` (timeline), and a GIN
 index on a `tsvector` for search.

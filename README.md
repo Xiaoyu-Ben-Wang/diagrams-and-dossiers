@@ -62,7 +62,7 @@ React 19 · TypeScript · Vite · Tailwind v4 · Supabase · `motion` · CodeMir
 ```bash
 npm install
 npm run dev        # the demo board at localhost:5173
-npm test           # 147 tests
+npm test           # 549 tests
 npm run typecheck
 ```
 
@@ -76,7 +76,10 @@ npm run typecheck
 | Left-click a word | Pin it |
 | Drag tack → tack | Run yarn |
 | Middle-drag a pin, note or the paper | Move that thing, rather than the board |
-| Click a string | Select it; drag its bead up or down to tighten or loosen it |
+| Click a string | Select it; drag its arrow up or down to tighten or loosen it |
+| Drag a pin onto other words | Re-pin it to those words; onto the cork, and it is pulled out |
+| Drop or paste an image file | Pin the picture up where it lands |
+| Select a picture or the page, then drag the ↻ handle | Swing it up to 45° about its pin |
 
 **Try the thesis:** click a word in the article to pin it, then press *Insert a sentence above*.
 The pin moves with its words and stays brass-coloured. Press *Delete the pinned sentence* and the
