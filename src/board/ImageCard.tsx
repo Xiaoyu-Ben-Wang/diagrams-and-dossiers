@@ -17,10 +17,10 @@
  * a control panel.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 
-import { edgeClipPath, seedFromKey, type EdgeStyle } from './edges'
-import { clampTilt } from './pivot'
+import { edgeClipPath, type EdgeStyle } from './edges'
+import { clampTilt, rotateAbout } from './pivot'
 import { useRotateDrag } from './useRotateDrag'
 import { useBoardDrag } from './useBoardDrag'
 import type { Point } from './yarn'
@@ -39,6 +39,8 @@ export interface ImageCardProps {
   fit: 'cover' | 'contain'
   /** How the border is damaged, from `board/edges.ts`. */
   edge: EdgeStyle
+  /** The seed that damage was generated from. */
+  edgeSeed: number
   selected: boolean
   /** Screen px per board px. Deltas arrive scaled and must be divided out. */
   zoom: number
@@ -54,10 +56,21 @@ export interface ImageCardProps {
 
   onMove: (id: string, delta: Point) => void
   onRotate: (id: string, degrees: number) => void
+  onResize: (id: string, size: { width: number; height: number }) => void
   /** Start a string at this picture's pin, as a tack does. */
   onStartYarn: (event: React.PointerEvent) => void
   onSelect: (id: string) => void
 }
+
+/**
+ * The picture's shadow.
+ *
+ * Two passes: a soft one offset downward as if the light is above the board,
+ * and a tight one with no offset, which darkens the last couple of pixels
+ * either side of the cut and is what makes a torn edge read as torn rather
+ * than merely cut out.
+ */
+const SHADOW = 'drop-shadow(0 6px 9px rgb(0 0 0 / 0.55)) drop-shadow(0 1px 2px rgb(0 0 0 / 0.5))'
 
 /**
  * How far below the sheet the rotate handle hangs, in board px.
@@ -69,6 +82,51 @@ export interface ImageCardProps {
  * moves it further and reads as a lever rather than as a nudge.
  */
 const HANDLE_DROP = 16
+
+/**
+ * How small and how large a picture may be dragged, in board px.
+ *
+ * A floor because a picture dragged to nothing is a picture you cannot click to
+ * get back; a ceiling generous enough to fill the view, because making one
+ * large is a reasonable thing to want.
+ */
+export const MIN_EDGE = 48
+export const MAX_EDGE = 1600
+
+/**
+ * How big a picture is while a corner is dragged.
+ *
+ * Measured in the sheet's own upright frame rather than the board's, by turning
+ * the pointer back through the tilt. A tilted picture dragged by its corner
+ * would otherwise grow along the board's axes and shear away from the hand.
+ * The width drives and the height follows, so the proportions a photograph
+ * arrived with are the proportions it keeps.
+ */
+export function sizeFor(
+  pivot: Point,
+  pointer: Point,
+  rotation: number,
+  start: { width: number; height: number },
+): { width: number; height: number } {
+  const local = rotateAbout(pivot, pointer, -rotation)
+  const dx = local.x - pivot.x
+  const dy = local.y - pivot.y
+
+  // Projected onto the diagonal the corner started on, so the drag scales the
+  // picture instead of shearing it. Measuring the offset on one axis alone —
+  // or, worse, its absolute value — means dragging the corner *past* the pin
+  // reads as a positive distance and the picture grows when it is pulled in.
+  // This is signed, so it shrinks through zero and clamps there.
+  const ux = start.width / 2
+  const uy = start.height
+  const scale = (dx * ux + dy * uy) / (ux * ux + uy * uy)
+
+  const width = Math.max(MIN_EDGE, Math.min(MAX_EDGE, start.width * scale))
+  return {
+    width: Math.round(width),
+    height: Math.round(width / (start.width / start.height)),
+  }
+}
 
 export function ImageCard({
   id,
@@ -84,16 +142,18 @@ export function ImageCard({
   zoom,
   toBoard,
   edge,
+  edgeSeed,
   onMove,
   onRotate,
+  onResize,
   onSelect,
   onStartYarn,
 }: ImageCardProps) {
   const pivot = { x: x + width / 2, y }
 
-  // Seeded from the picture's own id, so its damage is stable across reloads
-  // and two pictures of the same style are never identical copies.
-  const clipPath = edgeClipPath(edge, width, height, seedFromKey(id))
+  // The stored seed, not one derived from the id: the crop is generated, and
+  // generating it again is what "a fresh look each time you pick it up" means.
+  const clipPath = edgeClipPath(edge, width, height, edgeSeed)
 
   const drag = useBoardDrag({
     zoom,
@@ -124,6 +184,56 @@ export function ImageCard({
     toBoard,
     onRotate: (degrees) => onRotate(id, degrees),
   })
+  /**
+   * Resizing from a corner.
+   *
+   * The size at the start of the drag is kept in a ref alongside the pivot, so
+   * every frame computes from where the drag began rather than accumulating —
+   * rounding the size each frame and feeding it back would drift.
+   */
+  const resizeRef = useRef<{ width: number; height: number } | null>(null)
+
+  const startResize = useCallback(
+    (event: React.PointerEvent) => {
+      if (event.button !== 0) return
+      event.stopPropagation()
+      event.preventDefault()
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {
+        // Capture is a refinement; the drag still tracks while over the handle.
+      }
+      resizeRef.current = { width, height }
+    },
+    [height, width],
+  )
+
+  const moveResize = useCallback(
+    (event: React.PointerEvent) => {
+      const start = resizeRef.current
+      if (!start) return
+      event.stopPropagation()
+      onResize(id, sizeFor(pivot, toBoard(event.clientX, event.clientY), rotation, start))
+    },
+    [id, onResize, pivot.x, pivot.y, rotation, toBoard],
+  )
+
+  const endResize = useCallback((event: React.PointerEvent) => {
+    resizeRef.current = null
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch {
+      // Already released.
+    }
+  }, [])
+
+  const resizeProps = {
+    onPointerDown: startResize,
+    onPointerMove: moveResize,
+    onPointerUp: endResize,
+    onPointerCancel: endResize,
+  }
+
   const rotateProps = {
     onPointerDown: rotateEntityDrag.onPointerDown,
     onPointerMove: rotateEntityDrag.onPointerMove,
@@ -153,19 +263,43 @@ export function ImageCard({
       onPointerCancel={drag.onPointerCancel}
     >
       {/* The picture and its damaged border.
-          The crop lives on this inner box rather than on the card, because a
-          clip on the card would take the pin and the handle with it — the two
-          things that must stay whole for the picture to be grabbable and
-          swingable. `inset` shadow rides the same silhouette, so a torn edge
-          reads as a torn edge rather than as a polygon cut out of a rectangle. */}
-      <div className="image-frame" style={{ clipPath }}>
-        <img
-          src={src}
-          alt={alt ?? ''}
-          draggable={false}
-          className="pointer-events-none h-full w-full select-none"
-          style={{ objectFit: fit }}
-        />
+          Two elements, and the nesting is the point.
+
+          The `clip-path` lives on the inner box rather than on the card,
+          because a clip on the card would take the pin and the handle with it —
+          the two things that must stay whole for the picture to be grabbable
+          and swingable.
+
+          The shadow lives on the outer wrapper as a `drop-shadow` filter,
+          because a `box-shadow` is drawn from the element's rectangle and
+          cannot know about the crop: a torn photograph sat on a perfectly
+          rectangular shadow, which is the one thing that gives away that the
+          edge is a mask rather than damage. `drop-shadow` applies to the
+          *rendered result*, so it follows whatever silhouette the clip cut. It
+          is a static filter — applied when the picture is painted, not
+          animated — so the rule in docs/architecture.md about never animating
+          a filter does not bite.
+
+          The selection rim rides the same filter for the same reason: an
+          `outline` is a rectangle, and a brass box drawn around a torn edge
+          looks like a bug. */}
+      <div
+        className="image-shadow"
+        style={{
+          filter: selected
+            ? `${SHADOW} drop-shadow(0 0 3px rgb(201 162 39 / 0.95))`
+            : SHADOW,
+        }}
+      >
+        <div className="image-frame" style={{ clipPath }}>
+          <img
+            src={src}
+            alt={alt ?? ''}
+            draggable={false}
+            className="pointer-events-none h-full w-full select-none"
+            style={{ objectFit: fit }}
+          />
+        </div>
       </div>
 
       {/* The tack holding it up, drawn where the registry says the anchor is —
@@ -192,6 +326,26 @@ export function ImageCard({
             className="image-rotate-stem absolute"
             style={{ left: '50%', top: '100%', height: HANDLE_DROP, marginLeft: -1 }}
           />
+          <button
+            type="button"
+            data-testid="image-resize"
+            aria-label="Drag to resize the picture"
+            className="image-resize absolute"
+            style={{ right: -9, bottom: -9 }}
+            {...resizeProps}
+          >
+            <svg viewBox="0 0 18 18" aria-hidden="true" className="h-full w-full">
+              <path
+                d="M 15.5 6.5 V 15.5 H 6.5 M 15.5 11 V 15.5 H 11"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+
           <button
             type="button"
             data-testid="image-rotate"

@@ -386,22 +386,19 @@ body {
    component supplies, so the light reads as coming from above whatever angle
    the picture hangs at. */
 
+/* No shadow here: this element is a plain rectangle, and anything it draws is
+   a rectangle. The picture's shadow belongs to `.image-shadow`, which knows the
+   cropped silhouette. */
 .image-card {
   cursor: grab;
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 0.35) inset,
-    0 10px 22px -8px rgb(0 0 0 / 0.6),
-    0 2px 5px rgb(0 0 0 / 0.4);
 }
 
 .image-card:active {
   cursor: grabbing;
 }
 
-.image-card.is-selected {
-  outline: 2px solid var(--color-brass);
-  outline-offset: 2px;
-}
+/* The selection rim is a `drop-shadow` on the wrapper rather than an outline
+   here, so it follows the crop. Nothing to draw on the card itself. */
 
 /* The handle that swings the picture, and the stem tying it to the pin. Both
    ride inside the rotated sheet, so they stay at its head as it turns. */
@@ -420,6 +417,23 @@ body {
   cursor: grabbing;
 }
 
+.image-resize {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-brass);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.image-resize:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 .image-rotate:focus-visible {
   outline: 2px solid var(--color-brass);
   outline-offset: 2px;
@@ -433,13 +447,20 @@ body {
   pointer-events: none;
 }
 
-/* The inset shadow rides the same silhouette as the crop, so a torn border
-   reads as a torn border rather than as a polygon cut out of a rectangle. */
+/* Full-bleed boxes so the crop and the drop-shadow measure the same shape.
+   The frame is the clipped one; the wrapper carries the shadow, because a
+   `box-shadow` is drawn from the rectangle and would sit under a torn edge as
+   a rectangle. The inset vignette stays on the frame, where the clip does
+   apply to it — it darkens the picture toward its own edges. */
+.image-shadow,
 .image-frame {
   width: 100%;
   height: 100%;
-  box-shadow: inset 0 0 22px rgb(0 0 0 / 0.45);
-  background: rgb(0 0 0 / 0.25);
+}
+
+.image-frame {
+  box-shadow: inset 0 0 22px rgb(0 0 0 / 0.4);
+  background: rgb(0 0 0 / 0.2);
 }
 
 /* The bar of edge treatments on a selected picture. */

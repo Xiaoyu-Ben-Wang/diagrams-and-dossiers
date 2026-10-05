@@ -6,17 +6,17 @@
  * only means anything while you are looking at the thing it applies to.
  *
  * Each swatch is a real crop rather than an icon: the same `edgeClipPath` the
- * picture uses, at swatch size, seeded from the same id — so what the button
- * shows is what picking it produces, and a picture whose border is already
- * nibbled has a nibbled swatch. Drawing ten little pictures by hand would drift
- * from the generator the first time a preset was retuned.
+ * picture uses, at swatch size, from the same seed — so what the button shows
+ * is what picking it produces, and a picture whose border is already nibbled
+ * has a nibbled swatch. Drawing ten little pictures by hand would drift from
+ * the generator the first time a preset was retuned.
  *
  * The bar hangs in board space under the picture and is counter-rotated, so it
  * stays upright and horizontal while the sheet above it is tilted.
  */
 
 import type { Rect } from './camera'
-import { EDGE_STYLES, edgeClipPath, seedFromKey, type EdgeStyle } from './edges'
+import { EDGE_STYLES, edgeClipPath, type EdgeStyle } from './edges'
 
 /** What each style is called on screen. */
 const EDGE_LABELS: Readonly<Record<EdgeStyle, string>> = {
@@ -52,8 +52,8 @@ const SWATCH_HEIGHT = 34
 const DROP = 44
 
 export interface EdgePickerProps {
-  /** The picture's id — the seed its damage is derived from. */
-  id: string
+  /** The seed the picture's damage is generated from, so swatches match it. */
+  seed: number
   edge: EdgeStyle
   /** The picture's swept box in board space, to hang the bar beneath. */
   box: Rect
@@ -62,7 +62,7 @@ export interface EdgePickerProps {
   onPick: (style: EdgeStyle) => void
 }
 
-export function EdgePicker({ id, edge, box, tilt, onPick }: EdgePickerProps) {
+export function EdgePicker({ seed, edge, box, tilt, onPick }: EdgePickerProps) {
   return (
     <div
       role="group"
@@ -95,7 +95,7 @@ export function EdgePicker({ id, edge, box, tilt, onPick }: EdgePickerProps) {
             style={{
               width: SWATCH_WIDTH,
               height: SWATCH_HEIGHT,
-              clipPath: edgeClipPath(style, SWATCH_WIDTH, SWATCH_HEIGHT, seedFromKey(id)),
+              clipPath: edgeClipPath(style, SWATCH_WIDTH, SWATCH_HEIGHT, seed),
             }}
           />
           <span className="edge-swatch-label">{EDGE_LABELS[style]}</span>

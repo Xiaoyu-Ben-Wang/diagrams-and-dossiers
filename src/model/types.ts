@@ -154,10 +154,19 @@ export interface ImageEntity extends EntityBase {
    *
    * Per picture rather than a board-wide setting, because the point of the
    * crop is that a photograph and a clipping did not arrive here the same way.
-   * The damage itself is seeded from the entity's own id, so it is stable
-   * across reloads and different for every picture without being stored.
    */
   edge: EdgeStyle
+  /**
+   * The seed that damage is generated from, stored rather than derived.
+   *
+   * `edges.ts` is deterministic on purpose — the same seed gives the same
+   * polygon, in this process and the next, which is what makes its cache sound
+   * and its output testable. Randomness therefore goes in *here*, not in the
+   * generator: a fresh number produces a fresh crop without the geometry ever
+   * being non-deterministic. Re-rolled when a picture is picked up, so no two
+   * looks at the same photograph show the same tear.
+   */
+  edgeSeed: number
 }
 
 export type BoardEntity = PinEntity | NoteEntity | ArticleEntity | ImageEntity

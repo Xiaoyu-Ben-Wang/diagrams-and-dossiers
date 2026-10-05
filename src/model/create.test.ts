@@ -72,6 +72,21 @@ describe('newImage', () => {
     expect(picture.edge).toBe('torn')
   })
 
+  it('gives each picture a border seed of its own', () => {
+    // The crop is generated from this, so two pictures of the same style must
+    // not generate the same damage.
+    const size = { width: 10, height: 10 }
+    const seeds = new Set(
+      Array.from({ length: 20 }, () => newImage({ x: 0, y: 0 }, 'data:,', size).edgeSeed),
+    )
+
+    expect(seeds.size).toBeGreaterThan(1)
+    for (const seed of seeds) {
+      expect(Number.isInteger(seed)).toBe(true)
+      expect(seed).toBeGreaterThanOrEqual(0)
+    }
+  })
+
   it('gives each picture an id of its own', () => {
     const size = { width: 10, height: 10 }
     const a = newImage({ x: 0, y: 0 }, 'data:,', size)

@@ -102,6 +102,17 @@ export function newArticle(
   return { ...base({ ...seed, bodyMd, title }), kind: 'article', board, options }
 }
 
+/**
+ * A seed for a picture's generated border.
+ *
+ * Any 31-bit value; `edges.ts` hashes it, so the only thing asked of this is
+ * that successive calls differ. Kept out of the generator because the
+ * generator's determinism is what its cache and its tests rest on.
+ */
+export function freshEdgeSeed(): number {
+  return Math.floor(Math.random() * 0x7fffffff)
+}
+
 /** The longest edge a dropped image is allowed to occupy, in board px. */
 export const MAX_IMAGE_EDGE = 420
 
@@ -163,5 +174,6 @@ export function newImage(
     // A picture arrives whole. The crop is something you do to it, so an
     // untouched photograph is not already pretending to be a burnt one.
     edge: edge ?? 'clean',
+    edgeSeed: freshEdgeSeed(),
   }
 }

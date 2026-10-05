@@ -53,7 +53,14 @@ import {
   type Point,
 } from './board/yarn'
 import { maxStrandDeviation, seedFromKey, yarnStrands } from './board/yarn-style'
-import { imageFootprint, newAnchoredPin, newFreePin, newImage, newNote } from './model/create'
+import {
+  freshEdgeSeed,
+  imageFootprint,
+  newAnchoredPin,
+  newFreePin,
+  newImage,
+  newNote,
+} from './model/create'
 import { descriptorFor, NOTE_SIZE } from './model/kinds'
 import { pinToBoard, pinToText, sameAnchor } from './model/pinning'
 import {
@@ -724,19 +731,79 @@ export function App() {
     )
   }, [])
 
-  /** Select one thing and nothing else — what a click on a picture means. */
-  const selectOnly = useCallback((id: string) => {
-    setSelection(new Set([id]))
-  }, [])
-
-  /** Re-crop a picture's border. */
-  const setImageEdge = useCallback((id: string, edge: EdgeStyle) => {
+  /**
+   * Give a picture's border a new shape.
+   *
+   * The geometry is deterministic and stays that way — this changes the *seed*
+   * it is generated from, which is the one input that is allowed to be random.
+   * `edges.ts` keeps its guarantee, its cache stays sound, and a picture's crop
+   * is still a pure function of what is stored on it.
+   */
+  const rerollEdge = useCallback((id: string) => {
     setEntities((previous) =>
       previous.map((entity) =>
         entity.id === id && entity.kind === 'image'
-          ? { ...entity, edge, updatedAt: Date.now() }
+          ? { ...entity, edgeSeed: freshEdgeSeed(), updatedAt: Date.now() }
           : entity,
       ),
+    )
+  }, [])
+
+  /**
+   * Re-crop a picture's border, damaging it freshly.
+   *
+   * Re-rolled on every pick, not only when the style changes, so choosing
+   * "burnt" twice gives two different burns rather than nothing happening the
+   * second time.
+   */
+  const setImageEdge = useCallback(
+    (id: string, edge: EdgeStyle) => {
+      setEntities((previous) =>
+        previous.map((entity) =>
+          entity.id === id && entity.kind === 'image'
+            ? { ...entity, edge, edgeSeed: freshEdgeSeed(), updatedAt: Date.now() }
+            : entity,
+        ),
+      )
+    },
+    [],
+  )
+
+  /**
+   * Select a picture, and damage its border afresh.
+   *
+   * Picking a picture up is the moment you look at it, so it is the moment the
+   * crop is regenerated — a torn edge that is the same tear every time is a
+   * stamp, not damage. Re-rolled only when the selection actually moves to this
+   * picture: dragging one that is already selected must not reshuffle its edge
+   * under the hand that is moving it.
+   */
+  const selectImage = useCallback(
+    (id: string) => {
+      const alreadySelected = selection.size === 1 && selection.has(id)
+      setSelection(new Set([id]))
+      if (!alreadySelected) rerollEdge(id)
+    },
+    [rerollEdge, selection],
+  )
+
+  /** Resize a picture, keeping the pin it hangs from where it is. */
+  const resizeImage = useCallback((id: string, size: { width: number; height: number }) => {
+    setEntities((previous) =>
+      previous.map((entity) => {
+        if (entity.id !== id || entity.kind !== 'image') return entity
+        // Anchored at the pin at the top-centre, so a picture grows and shrinks
+        // from where it is pinned rather than from a corner that the eye is not
+        // watching.
+        const pivotX = entity.board.x + entity.width / 2
+        return {
+          ...entity,
+          width: size.width,
+          height: size.height,
+          board: { x: pivotX - size.width / 2, y: entity.board.y },
+          updatedAt: Date.now(),
+        }
+      }),
     )
   }, [])
 
@@ -1876,12 +1943,14 @@ export function App() {
                     rotation={picture.rotation}
                     fit={picture.fit}
                     edge={picture.edge}
+                    edgeSeed={picture.edgeSeed}
                     selected={selection.has(picture.id)}
                     zoom={camera.zoom}
                     toBoard={worldPoint}
                     onMove={moveEntity}
                     onRotate={rotateEntity}
-                    onSelect={selectOnly}
+                    onSelect={selectImage}
+                    onResize={resizeImage}
                     onStartYarn={(event) => beginString(event, picture.id, anchorPoints.get(picture.id) ?? null)}
                   />
                 ))}
@@ -1890,7 +1959,7 @@ export function App() {
                     picture you are looking at, not to the board. */}
                 {selectedImage ? (
                   <EdgePicker
-                    id={selectedImage.id}
+                    seed={selectedImage.edgeSeed}
                     edge={selectedImage.edge}
                     box={
                       descriptorFor(selectedImage).bounds(selectedImage, entityContext) ?? {

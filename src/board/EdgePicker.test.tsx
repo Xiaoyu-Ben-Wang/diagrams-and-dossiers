@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { EdgePicker } from './EdgePicker'
-import { EDGE_STYLES, edgeClipPath, seedFromKey } from './edges'
+import { EDGE_STYLES, edgeClipPath } from './edges'
 
 const box = { x: 100, y: 200, width: 240, height: 120 }
 
@@ -11,7 +11,7 @@ function open(over: Partial<Parameters<typeof EdgePicker>[0]> = {}) {
   const onPick = vi.fn()
   render(
     <EdgePicker
-      id="picture-1"
+      seed={7}
       edge="clean"
       box={box}
       tilt={0}
@@ -53,7 +53,7 @@ describe('EdgePicker', () => {
     // the picture's id — so what the button shows is what picking it produces.
     // Hand-drawn swatches would drift from the presets the first time one was
     // retuned, and nothing would notice.
-    open({ id: 'picture-7' })
+    open({ seed: 4242 })
 
     for (const style of EDGE_STYLES) {
       const face = screen.getByTestId(`edge-${style}`).querySelector('.edge-swatch-face')
@@ -62,14 +62,12 @@ describe('EdgePicker', () => {
 
       expect(clip, style).toContain('polygon')
       // Same generator, same seed as the picture it belongs to.
-      expect(clip, style).toBe(
-        edgeClipPath(style, 46, 34, seedFromKey('picture-7')),
-      )
+      expect(clip, style).toBe(edgeClipPath(style, 46, 34, 4242))
     }
   })
 
   it('gives two different crops two different shapes', () => {
-    open({ id: 'picture-7' })
+    open({ seed: 4242 })
 
     const face = (style: string) =>
       (screen.getByTestId(`edge-${style}`).querySelector('.edge-swatch-face') as HTMLElement)
@@ -86,7 +84,7 @@ describe('EdgePicker', () => {
     const seen = vi.fn()
     render(
       <div onPointerDown={seen}>
-        <EdgePicker id="p" edge="clean" box={box} tilt={0} onPick={onPick} />
+        <EdgePicker seed={1} edge="clean" box={box} tilt={0} onPick={onPick} />
       </div>,
     )
 
