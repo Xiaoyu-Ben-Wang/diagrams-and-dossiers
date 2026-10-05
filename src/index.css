@@ -162,18 +162,22 @@ body {
    and dressing it as board hardware made it read as another object to click.
    The glyph carries the meaning; this is just the target around it. */
 .yarn-bead {
+  /* Above the string notes: see `.string-note`. */
+  z-index: 26;
   cursor: ns-resize;
   background: none;
   border: 0;
   padding: 0;
 }
 
-/* The target is the whole box, plus a margin — the glyph is only 20px, and the
-   point of a handle is that it is easy to catch. */
+/* The target is the whole box plus a small fringe — the glyph is only 20px, and
+   the point of a handle is that it is easy to catch. Kept small rather than
+   generous: a note hung on the string sits just above the rope, and a handle
+   that reached 8px further would swallow the click meant for the note. */
 .yarn-bead::after {
   content: '';
   position: absolute;
-  inset: -8px;
+  inset: -2px;
 }
 
 .yarn-bead-glyph {
@@ -558,9 +562,17 @@ body {
 
 .string-note {
   position: absolute;
-  z-index: 25;
+  /* Under the sag handle: a note defaults to halfway along the rope, which is
+     exactly where that handle sits, and the handle is a control while the note
+     is content — so the control wins. */
+  z-index: 21;
   /* Anchored by the point it hangs from, not by a corner. */
   transform: translate(-50%, -100%);
+  /* The gap that keeps the card clear of that handle. The padding is inside the
+     anchor, so the pin still sits exactly on the wool while the card rides
+     above it — without this the handle's target covers the card's middle, and a
+     note left at the halfway point could be neither clicked nor dragged. */
+  padding-bottom: 8px;
   touch-action: none;
 }
 
