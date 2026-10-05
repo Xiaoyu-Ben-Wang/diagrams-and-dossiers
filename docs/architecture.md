@@ -426,6 +426,78 @@ feedback channel.
 
 ---
 
+## 7b. Why not React Flow
+
+The question is fair: this is a pan-and-zoom canvas of boxes joined by lines, which is what
+[React Flow](https://reactflow.dev) is for. The honest answer has two halves.
+
+**Nobody decided against it.** There is no trace of it in this repository — not in
+`package.json`, not in a comment, not in a rejected alternative. The board was built on four
+runtime dependencies (`react`, `react-dom`, `marked`, `dompurify`) and the canvas is home-made
+because it was written before anyone asked. That is a real gap in the decision record, and this
+section is the decision being made late rather than the decision being defended.
+
+**What it would replace.** Measured:
+
+| | Lines |
+|---|---|
+| `board/camera.ts` (pan, zoom, fit, screen↔board) | 245 |
+| `board/BoardCanvas.tsx` (gestures, marquee, context, drop) | 646 |
+| `board/useBoardDrag.ts` (press-vs-drag, pointer capture) | 142 |
+| `board/GridLayer.tsx` | 38 |
+| **Total a viewport library would own** | **~1071** |
+
+**What it would not touch.** The parts that are actually difficult:
+
+| | Lines |
+|---|---|
+| `anchors/` (quote/position selectors, the resolution ladder) | 638 |
+| `board/yarn-style.ts` (seeded procedural wool) | 444 |
+| `board/edges.ts` (ten generated border crops) | 735 |
+| `board/yarn.ts` (sag geometry, springs) | 207 |
+| `board/pivot.ts` (rotation about a pin) | 135 |
+| **Total untouched** | **~2159** |
+
+So it is roughly a third of the canvas tier and none of the domain. And the third it does cover
+is the third with the most tests and the fewest bugs.
+
+### The mismatch is at the model, not the API
+
+React Flow's unit is a **node**: a box at an `{x, y}`, with `Handle`s on its edges, joined by
+`Edge`s between those handles. Every one of the board's four kinds resists that:
+
+- **An anchored pin has no position.** Its place is derived from a character offset in an
+  article — resolved through exact → windowed → global → orphaned on every edit. It is a tack
+  through a *word*, not a box at a coordinate, and its coordinate is an output of text
+  measurement rather than an input. A React Flow node whose position is recomputed from a DOM
+  range every time the prose changes is a node fighting the library that owns it.
+- **A string is not an edge.** Its two ends are anchors, not handles; it has slack and sag
+  physics; it renders as seeded strands of wool rather than a bezier. `yarnPath` is the only
+  thing React Flow would still need to be told about, so the edge layer would be a custom edge
+  type that bypasses most of what an edge type is for.
+- **The article is a document, not a node.** 720px wide, reflowing, measured, projected, with
+  four coordinate spaces (board, viewport, paper, article) between its corner and a tack. React
+  Flow's viewport would be a fifth, or would have to become the only one.
+
+### What is genuinely lost by not using it
+
+Not nothing, and worth stating plainly:
+
+- **A minimap.** Cheap in React Flow, absent here. On a large board this is the first thing
+  anyone will ask for.
+- **Virtualization at scale.** React Flow culls nodes outside the viewport. This board renders
+  everything and would need its own culling (the roadmap's AABB pass).
+- **Keyboard navigation and focus management** on nodes, which is a solved problem there.
+- **A selection model** with the conventions people already know.
+
+### When to revisit
+
+Adopt it if the board's centre of gravity moves from *a document with things pinned to it*
+toward *a graph of boxes* — or the moment a minimap and viewport culling are needed and the
+1,071 lines above start being maintained rather than inherited. The seam to adopt it through
+already exists: `board/camera.ts` is the only module that knows what a viewport is, and
+`BoardCanvas` is the only one that reads a gesture.
+
 ## 8. Animation architecture — one writer per property
 
 Three engines (physics, motion library, ambient CSS) will fight if allowed to. The rules:
