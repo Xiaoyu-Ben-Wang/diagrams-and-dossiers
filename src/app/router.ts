@@ -1,15 +1,14 @@
 /**
- * A router for two routes.
+ * The board's address.
  *
- * The board and the wiki are separate pages, not two modes of one page — `/wiki`
- * is a real URL you can bookmark, link to, and reload into. That matters for a
- * wiki specifically: half the point of a wiki is that a page about a thing has
- * an address you can paste into chat.
+ * One real route today — the board at `/` — plus the catch-all that every URL
+ * bar needs. Keeping the URL honest is what lets the back button work and a
+ * reload land where you were, and it is the seam a second page would slot into.
  *
- * Hand-rolled rather than pulling in a router library. Two routes with no nested
- * layouts, no loaders, and no params beyond one optional slug do not justify a
- * dependency; this is about forty lines and it is testable. If the app grows
- * routes with real nesting, replacing this is an afternoon.
+ * Hand-rolled rather than pulling in a router library: one route with no nested
+ * layouts, no loaders and no params does not justify a dependency, and this is
+ * testable on its own. If the app grows routes with real nesting, replacing it
+ * is an afternoon.
  *
  * `pushState` does not fire `popstate`, so navigation also dispatches a custom
  * event. Without it the app would not re-render on an in-app link, only on the
@@ -18,10 +17,7 @@
 
 import { useCallback, useSyncExternalStore } from 'react'
 
-export type Route =
-  | { name: 'board' }
-  | { name: 'wiki'; slug: string | null }
-  | { name: 'notFound'; path: string }
+export type Route = { name: 'board' } | { name: 'notFound'; path: string }
 
 /** Fired after `pushState`/`replaceState`, which the browser does not announce. */
 export const ROUTE_CHANGE_EVENT = 'case-board:route-change'
@@ -32,13 +28,6 @@ export function parseRoute(pathname: string): Route {
   const path = normalizePath(pathname)
 
   if (path === '/') return { name: 'board' }
-
-  if (path === '/wiki') return { name: 'wiki', slug: null }
-
-  if (path.startsWith('/wiki/')) {
-    const slug = path.slice('/wiki/'.length)
-    if (slug.length > 0) return { name: 'wiki', slug: decodeURIComponent(slug) }
-  }
 
   return { name: 'notFound', path }
 }
@@ -58,8 +47,6 @@ export function routeToPath(route: Route): string {
   switch (route.name) {
     case 'board':
       return '/'
-    case 'wiki':
-      return route.slug ? `/wiki/${encodeURIComponent(route.slug)}` : '/wiki'
     case 'notFound':
       return route.path
   }

@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import {
   anchorOnBox,
-  colorForPair,
   controlPoint,
   createSpring,
   distance,
   distanceToYarn,
+  MAX_SAG_RATIO,
+  MAX_SLACK,
   pointOnYarn,
   sagFor,
+  slackForSag,
   springAtRest,
   stepSpring,
   yarnPath,
@@ -44,6 +46,38 @@ describe('sagFor', () => {
   it('caps sag so a long string cannot balloon off the board', () => {
     const capped = sagFor(1000, 10)
     expect(capped).toBeLessThanOrEqual(1000 * 0.55)
+  })
+})
+
+describe('slackForSag', () => {
+  // The pair has to be exact inverses, or a drag would drift away from the
+  // pointer: every step would re-derive slack from a sag it had already lost a
+  // little of, and the string would creep.
+  it('round-trips sagFor exactly', () => {
+    for (const gap of [40, 200, 600, 900]) {
+      for (const slack of [0, 0.02, 0.18, 0.4, 0.8]) {
+        const sag = sagFor(gap, slack)
+        expect(sagFor(gap, slackForSag(gap, sag))).toBeCloseTo(sag, 9)
+      }
+    }
+  })
+
+  it('is scale-free, so the same droop is the same slack at any span', () => {
+    expect(slackForSag(200, 40)).toBeCloseTo(slackForSag(600, 120), 12)
+  })
+
+  it('treats a negative sag, and no span, as no sag', () => {
+    expect(slackForSag(400, -50)).toBe(0)
+    expect(slackForSag(0, 100)).toBe(0)
+  })
+
+  it('reaches MAX_SLACK exactly where the sag cap bites', () => {
+    // Past the cap the sag is pinned, so this is the last slack that means
+    // anything — beyond it the number would describe a droop the string does
+    // not have.
+    expect(MAX_SLACK).toBeCloseTo(slackForSag(500, 500 * MAX_SAG_RATIO), 12)
+    expect(sagFor(500, MAX_SLACK)).toBeCloseTo(500 * MAX_SAG_RATIO, 9)
+    expect(sagFor(500, MAX_SLACK * 4)).toBeCloseTo(500 * MAX_SAG_RATIO, 9)
   })
 })
 
@@ -199,25 +233,6 @@ describe('spring', () => {
     const spring = createSpring(0, 200, 26)
     for (let i = 0; i < 400; i++) stepSpring(spring, 50, 1 / 60)
     expect(springAtRest(spring, 50)).toBe(true)
-  })
-})
-
-describe('colorForPair', () => {
-  it('is stable across calls and independent of direction', () => {
-    expect(colorForPair('a', 'b')).toBe(colorForPair('a', 'b'))
-    expect(colorForPair('a', 'b')).toBe(colorForPair('b', 'a'))
-  })
-
-  it('spreads different connections across the palette', () => {
-    const pairs: Array<[string, string]> = [
-      ['a', 'b'],
-      ['a', 'c'],
-      ['b', 'c'],
-      ['x', 'y'],
-      ['p', 'q'],
-    ]
-    const used = new Set(pairs.map(([a, b]) => colorForPair(a, b)))
-    expect(used.size).toBeGreaterThan(1)
   })
 })
 

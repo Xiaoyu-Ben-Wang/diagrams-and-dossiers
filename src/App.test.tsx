@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { App } from './App'
+import { DEFAULT_SLACK, sagFor, YARN_COLOR } from './board/yarn'
 
 /**
  * Smoke tests.
@@ -13,8 +14,8 @@ import { App } from './App'
  * timeline — without any of the measurement machinery throwing.
  *
  * The URL is real state that persists across tests in a file, so it is reset
- * between them; otherwise a test that navigates to /wiki leaves every later test
- * on the wiki page.
+ * between them; otherwise a test that navigates leaves every later test on
+ * whichever path it went to.
  */
 beforeEach(() => {
   window.history.replaceState(null, '', '/')
@@ -53,20 +54,14 @@ describe('App — the board', () => {
     expect(container.querySelector('script')).toBeNull()
   })
 
-  it('renders wikilinks as anchors, without their brackets', () => {
+  it('renders the article as prose, with no wiki markup left in it', () => {
     const { container } = render(<App />)
     const article = container.querySelector('.article')!
 
-    expect(article.querySelectorAll('a.wikilink').length).toBeGreaterThan(0)
     expect(article.textContent).not.toContain('[[')
     expect(article.textContent).toContain('Molgar the Pale')
-  })
-
-  it('marks a link to a missing article rather than dropping it', () => {
-    const { container } = render(<App />)
-    const missing = container.querySelectorAll('.article a.wikilink-missing')
-    expect(missing.length).toBeGreaterThan(0)
-    expect(missing[0].textContent).toBe('Sea Ghost')
+    // Nothing in the article navigates anywhere now that the wiki is gone.
+    expect(article.querySelectorAll('a').length).toBe(0)
   })
 
   it('renders the board grid', () => {
@@ -99,7 +94,6 @@ describe('App — document selection', () => {
     const toolbar = screen.getByTestId('markdown-toolbar')
     expect(within(toolbar).getByLabelText(/Bold/)).toBeTruthy()
     expect(within(toolbar).getByLabelText(/Italic/)).toBeTruthy()
-    expect(within(toolbar).getByLabelText(/Wikilink/)).toBeTruthy()
   })
 
   it('closes the editor when the tab is clicked again', () => {
@@ -142,45 +136,17 @@ describe('App — chronology', () => {
 })
 
 describe('App — routing', () => {
-  it('links to the wiki rather than toggling a mode', () => {
-    // A real href, so middle-click and cmd-click open a new tab for free.
+  it('serves the board at the root', () => {
     render(<App />)
-    const link = screen.getByRole('link', { name: 'Wiki' })
-    expect(link.getAttribute('href')).toBe('/wiki')
-  })
-
-  it('navigates to the wiki and changes the URL', () => {
-    render(<App />)
-    fireEvent.click(screen.getByRole('link', { name: 'Wiki' }))
-
-    expect(window.location.pathname).toBe('/wiki')
-    expect(screen.getByLabelText('Notes in this article')).toBeTruthy()
-    // The board's editing surface belongs to the board page.
-    expect(screen.queryByTestId('paper-editor')).toBeNull()
-    expect(screen.queryByTestId('board-canvas')).toBeNull()
-  })
-
-  it('comes back to the board', () => {
-    render(<App />)
-    fireEvent.click(screen.getByRole('link', { name: 'Wiki' }))
-    fireEvent.click(screen.getByRole('link', { name: 'Board' }))
-
     expect(window.location.pathname).toBe('/')
     expect(screen.getByTestId('board-canvas')).toBeTruthy()
   })
 
-  it('shows the wiki directly when the app loads at /wiki', () => {
-    // A deep link has to work — that is the point of giving a page a URL.
-    window.history.replaceState(null, '', '/wiki')
+  it('has no nav to anywhere else', () => {
+    // The board is the only page; a tab strip with one always-active tab was
+    // chrome with no function.
     render(<App />)
-
-    expect(screen.getByLabelText('Notes in this article')).toBeTruthy()
-  })
-
-  it('says so when the article has no notes yet', () => {
-    render(<App />)
-    fireEvent.click(screen.getByRole('link', { name: 'Wiki' }))
-    expect(screen.getByText(/No notes in this article yet/)).toBeTruthy()
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull()
   })
 })
 
@@ -312,6 +278,63 @@ describe('App — placing pins', () => {
     }
   })
 
+  it('positions an anchored tack across the paper padding, not from its corner', async () => {
+    // Regression: anchor rects are measured against the ARTICLE, which begins at
+    // the paper's content box. Measuring from the paper's own corner left every
+    // anchored tack 48x40 board px away from where it was drawn — further than
+    // SNAP_RADIUS, so a dragged string could never snap onto a pin and no yarn
+    // was ever created.
+    //
+    // jsdom lays nothing out and reports no padding, which is exactly why the
+    // bug was invisible to the rest of this file, so the paper's computed style
+    // is stubbed. Only the paper's is replaced; the real one is delegated to for
+    // every other element, since the theme code reads it too.
+    const realGetComputedStyle = window.getComputedStyle
+    window.getComputedStyle = ((element: Element, pseudo?: string | null) => {
+      if ((element as HTMLElement).dataset?.testid === 'paper') {
+        return {
+          paddingLeft: '48px',
+          paddingTop: '40px',
+          borderLeftWidth: '0px',
+          borderTopWidth: '0px',
+        } as CSSStyleDeclaration
+      }
+      return realGetComputedStyle.call(window, element, pseudo ?? undefined)
+    }) as typeof window.getComputedStyle
+
+    const { container } = render(<App />)
+    const article = container.querySelector('.article')!
+
+    const caret = (document as Document & { caretRangeFromPoint?: unknown }).caretRangeFromPoint
+    ;(document as Document & { caretRangeFromPoint?: unknown }).caretRangeFromPoint = () => {
+      const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT)
+      const text = walker.nextNode() as Text | null
+      if (!text) return null
+      const range = document.createRange()
+      range.setStart(text, 0)
+      range.collapse(true)
+      return range
+    }
+
+    try {
+      fireEvent.click(article, { ctrlKey: true, clientX: 120, clientY: 60 })
+      const tack = container.querySelector('button[data-pin-id]') as HTMLElement
+      expect(tack).not.toBeNull()
+
+      fireEvent.pointerDown(tack, { button: 0, pointerId: 7, clientX: 181, clientY: 52 })
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+      })
+
+      // The tack is at 181,52 inside the article; the paper's padding carries it
+      // to 229,92 in board space.
+      expect(screen.getByTestId('live-yarn').getAttribute('d')).toMatch(/^M 229 92/)
+    } finally {
+      window.getComputedStyle = realGetComputedStyle
+      ;(document as Document & { caretRangeFromPoint?: unknown }).caretRangeFromPoint = caret
+    }
+  })
+
   it('connects two pins on the board with a string', () => {
     // The whole point of the board: drag from one pin to another and get yarn.
     const { container } = render(<App />)
@@ -332,6 +355,121 @@ describe('App — placing pins', () => {
     // made.
     const yarn = container.querySelectorAll('svg[aria-hidden="true"] g')
     expect(yarn.length).toBeGreaterThan(0)
+
+    // Every strand is the one red. A per-connection palette used to hand out
+    // 'bone', which is 1.2:1 against the parchment a string mostly crosses —
+    // i.e. invisible rather than merely dull.
+    const strands = container.querySelectorAll('svg[aria-hidden="true"] g path')
+    expect(strands.length).toBeGreaterThan(0)
+    for (const strand of strands) {
+      expect(strand.getAttribute('stroke')).toBe(YARN_COLOR)
+    }
+
+    // And never dimmed with the timeline. Strings used to drop to 0.12 whenever
+    // both endpoints were not yet "known" — which, since the cursor starts at
+    // the campaign epoch, meant every string touching any pin but the first.
+    // That reads as "faded" on a brass tack and as absent on a hairline.
+    const group = container.querySelector('svg[aria-hidden="true"] g') as SVGGElement
+    expect(group.style.opacity).toBe('')
+  })
+
+  /** The y of the first string's quadratic control point, in board px. */
+  function yarnControlY(container: HTMLElement): number {
+    const d = container.querySelector('svg[aria-hidden="true"] g path')?.getAttribute('d') ?? ''
+    const match = d.match(/Q [\d.-]+ ([\d.-]+)/)
+    return match ? Number(match[1]) : Number.NaN
+  }
+
+  it('selects a string by clicking it, and re-sags it by dragging the bead', () => {
+    const { container } = render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 })
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 })
+    const tacks = container.querySelectorAll('button[data-pin-id]')
+    fireEvent.pointerDown(tacks[0], { button: 0, pointerId: 21, clientX: 300, clientY: 200 })
+    fireEvent.pointerMove(canvas, { pointerId: 21, clientX: 520, clientY: 260 })
+    fireEvent.pointerUp(canvas, { pointerId: 21, clientX: 520, clientY: 260 })
+
+    // Nothing is selectable until it is asked for: no bead before the click.
+    expect(screen.queryByTestId('yarn-bead')).toBeNull()
+
+    // Aim at the curve's lowest point — the chord midpoint, half the control
+    // offset below it — rather than at either tack.
+    const span = Math.hypot(520 - 300, 260 - 200)
+    const apexY = 230 + sagFor(span, DEFAULT_SLACK) / 2
+    fireEvent.click(canvas, { clientX: 410, clientY: apexY })
+
+    expect(screen.queryByTestId('yarn-bead')).not.toBeNull()
+    expect(screen.queryByTestId('yarn-halo')).not.toBeNull()
+
+    // Drag the bead down: the string takes up more rope and sags further.
+    const slackBefore = yarnControlY(container)
+    const bead = screen.getByTestId('yarn-bead')
+    fireEvent.pointerDown(bead, { button: 0, pointerId: 9, clientX: 410, clientY: apexY })
+    fireEvent.pointerMove(bead, { pointerId: 9, clientX: 410, clientY: apexY + 40 })
+    fireEvent.pointerUp(bead, { pointerId: 9, clientX: 410, clientY: apexY + 40 })
+    const sagged = yarnControlY(container)
+    expect(sagged).toBeGreaterThan(slackBefore)
+
+    // And back up, past where it started.
+    fireEvent.pointerDown(bead, { button: 0, pointerId: 10, clientX: 410, clientY: apexY })
+    fireEvent.pointerMove(bead, { pointerId: 10, clientX: 410, clientY: apexY - 60 })
+    fireEvent.pointerUp(bead, { pointerId: 10, clientX: 410, clientY: apexY - 60 })
+    expect(yarnControlY(container)).toBeLessThan(sagged)
+  })
+
+  it('removes a selected string on Delete, and lets go of it on Escape', () => {
+    const { container } = render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 })
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 })
+    const tacks = container.querySelectorAll('button[data-pin-id]')
+    fireEvent.pointerDown(tacks[0], { button: 0, pointerId: 21, clientX: 300, clientY: 200 })
+    fireEvent.pointerMove(canvas, { pointerId: 21, clientX: 520, clientY: 260 })
+    fireEvent.pointerUp(canvas, { pointerId: 21, clientX: 520, clientY: 260 })
+
+    const span = Math.hypot(520 - 300, 260 - 200)
+    const apexY = 230 + sagFor(span, DEFAULT_SLACK) / 2
+    fireEvent.click(canvas, { clientX: 410, clientY: apexY })
+    expect(screen.queryByTestId('yarn-bead')).not.toBeNull()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('yarn-bead')).toBeNull()
+    // Letting go is not deleting: the string is still on the board.
+    expect(container.querySelectorAll('svg[aria-hidden="true"] g').length).toBe(1)
+
+    fireEvent.click(canvas, { clientX: 410, clientY: apexY })
+    fireEvent.keyDown(document, { key: 'Delete' })
+    expect(container.querySelectorAll('svg[aria-hidden="true"] g').length).toBe(0)
+    // The pins it joined are untouched — only the string goes.
+    expect(container.querySelectorAll('button[data-pin-id]').length).toBe(2)
+  })
+
+  it('does not delete while a field has focus', () => {
+    // Backspace in the article is someone editing prose, not deleting yarn.
+    const { container } = render(<App />)
+    const canvas = screen.getByTestId('board-canvas')
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 })
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 })
+    const tacks = container.querySelectorAll('button[data-pin-id]')
+    fireEvent.pointerDown(tacks[0], { button: 0, pointerId: 21, clientX: 300, clientY: 200 })
+    fireEvent.pointerMove(canvas, { pointerId: 21, clientX: 520, clientY: 260 })
+    fireEvent.pointerUp(canvas, { pointerId: 21, clientX: 520, clientY: 260 })
+
+    const span = Math.hypot(520 - 300, 260 - 200)
+    const apexY = 230 + sagFor(span, DEFAULT_SLACK) / 2
+    fireEvent.click(canvas, { clientX: 410, clientY: apexY })
+
+    const field = document.createElement('textarea')
+    document.body.appendChild(field)
+    try {
+      fireEvent.keyDown(field, { key: 'Backspace' })
+      expect(container.querySelectorAll('svg[aria-hidden="true"] g').length).toBe(1)
+    } finally {
+      field.remove()
+    }
   })
 
   it('draws yarn above the article, not behind it', () => {

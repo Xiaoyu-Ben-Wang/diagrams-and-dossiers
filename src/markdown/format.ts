@@ -28,7 +28,6 @@ export type MarkdownAction =
   | 'strikethrough'
   | 'code'
   | 'link'
-  | 'wikilink'
   | 'heading'
   | 'bullet'
   | 'ordered'
@@ -46,7 +45,6 @@ const WRAPPERS: Partial<Record<MarkdownAction, [string, string]>> = {
   italic: ['*', '*'],
   strikethrough: ['~~', '~~'],
   code: ['`', '`'],
-  wikilink: ['[[', ']]'],
 }
 
 /** Placeholder inserted when an action is used with nothing selected. */
@@ -56,7 +54,6 @@ const PLACEHOLDERS: Partial<Record<MarkdownAction, string>> = {
   strikethrough: 'struck text',
   code: 'code',
   link: 'link text',
-  wikilink: 'Article Title',
   heading: 'Heading',
   bullet: 'List item',
   ordered: 'List item',

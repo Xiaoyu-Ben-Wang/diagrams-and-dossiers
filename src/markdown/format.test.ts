@@ -56,10 +56,6 @@ describe('applyMarkdownAction — wrapping', () => {
     })
   }
 
-  it('wraps a wikilink in double brackets', () => {
-    const result = applyMarkdownAction('Molgar', ...all('Molgar'), 'wikilink')
-    expect(result.text).toBe('[[Molgar]]')
-  })
 })
 
 describe('applyMarkdownAction — links', () => {

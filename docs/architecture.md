@@ -2,7 +2,7 @@
 
 A private, collaborative "detective board" for a D&D group. Players pin notes and long-form
 markdown articles to a shared corkboard, connect them with colored yarn, and read the same
-content as a conventional wiki when they don't want the board view. The visual target is a
+content on a shared board. The visual target is a
 *fantasy detective's office* — cork, parchment, brass tacks, wax seals, candlelight — where every
 interaction animates as a physical object.
 
@@ -189,8 +189,8 @@ debounce after edits and on `ResizeObserver` when the paper width changes.
   dragging every anchor with them. Always emit intrinsic dimensions.
 - **Paper width must be locked in board space** (720px at zoom 1) so reflow is deterministic and
   zoom cannot shift an anchor. Zoom scales the whole board with one transform, so text metrics
-  never change. The wiki view renders at a different width and therefore re-resolves on resize —
-  which is exactly why the algorithm must be pure and idempotent.
+  never change. Any renderer that lays the article out at a *different* width would re-resolve on
+  resize — which is exactly why the algorithm must be pure and idempotent.
 
 ### Edge cases
 
@@ -225,7 +225,7 @@ groups(id, board_id, name, color, visibility,
 
 group_items(group_id, item_id, PRIMARY KEY (group_id, item_id))   -- many-to-many
 
-strings(id, board_id, from_item, to_item, color, style: solid|dashed|double,
+strings(id, board_id, from_item, to_item, slack, style: solid|dashed|double,
         label, visibility, created_by, created_at,
         CHECK (from_item <> to_item))
 ```
@@ -324,20 +324,18 @@ head.
 
 ---
 
-## 6. Views: board and wiki
+## 6. Views: the board
 
-Same data, same `resolveAnchor()`, two renderers.
+One view today. Everything below is drawn from the same data and the same `resolveAnchor()`, so a
+second renderer is a rendering decision rather than a data one — which is the property that
+matters, whether or not a second renderer ever exists.
 
 - **Board** — papers at board positions, pins, yarn. Toolbelt styled as a detective's kit:
   Select · Pin · Yarn · Lasso · Article · Eraser. Pan via space/middle-drag; zoom to cursor via
-  ctrl-scroll or pinch.
-- **Wiki** — article at reading width, where anchored pins become **margin markers** at their
-  vertical anchor position (Google-Docs-comment style), with `[[wikilinks]]` and a backlinks
-  panel. On the board, wikilinks optionally render as *faint implicit threads* between papers,
-  visually distinct from hand-drawn yarn.
+  ctrl-scroll or pinch. Middle-drag on a pin, note or paper moves that object instead of the
+  camera.
 
-Bidirectional: clicking a margin marker flies the board to that pin; clicking a pin opens the
-article at that anchor.
+Clicking a pin opens the article at that anchor.
 
 ---
 
@@ -478,7 +476,7 @@ is static, so migrating later is a weekend, not a rewrite.
 
 Vite · React 19 · TypeScript · Tailwind v4.
 
-Markdown via a **`unified` pipeline** — `remark-parse` → `remark-gfm` → `remark-wiki-link` →
+Markdown via a **`unified` pipeline** — `remark-parse` → `remark-gfm` →
 `remark-rehype` → `rehype-sanitize` → `rehype-react` — rather than `react-markdown` as the
 primary renderer, because the anchor-index plugin must run *before* sanitize and that requires
 direct control of the pipeline.
@@ -503,7 +501,6 @@ detective-board/
 │  ├─ anchors/resolve.ts            ← fast-path → windowed → global → fuzzy → orphan
 │  ├─ board/clock.ts                ← the single rAF loop
 │  ├─ board/                        ← camera, items, yarn, groups, selection, timeline
-│  ├─ wiki/                         ← reader, margin markers, backlinks
 │  ├─ realtime/                     ← channels, presence, catch-up sync
 │  ├─ theme/                        ← tokens, textures, audio, motion specs
 │  └─ app/
@@ -556,8 +553,7 @@ every member; a view-link session cannot write; timeline scrub flies the camera.
   browsers, and full animation for place-note / draw-yarn / unroll-article. Nothing else.
 - **Phase 2 — breadth.** Case files and multi-select, marquee + lasso, DM link and timed reveals,
   theory/confirmed/disproven, dates and bulk date editing.
-- **Phase 3 — timeline and wiki.** Chronology ribbon with scrub and auto-play, wiki reader with
-  margin markers, `[[wikilinks]]` and backlinks, full-text search.
+- **Phase 3 — timeline.** Chronology ribbon with scrub and auto-play, full-text search.
 - **Phase 4 — polish.** Ambient and sound, export (board PNG + markdown vault), mobile/tablet
   read-and-quick-note, orphan re-attach UI, session history scrubber.
 

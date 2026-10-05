@@ -39,7 +39,6 @@ const TOOLS: Array<ToolButton | 'separator'> = [
   { action: 'quote', label: '”', title: 'Block quote' },
   'separator',
   { action: 'link', label: 'Link', title: 'Link — [text](url)' },
-  { action: 'wikilink', label: '[[ ]]', title: 'Wikilink to another article', className: 'font-mono text-[10px]' },
 ]
 
 export function MarkdownToolbar({ onAction, disabled = false, className }: MarkdownToolbarProps) {

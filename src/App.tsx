@@ -12,7 +12,6 @@ import {
   type DomProjection,
 } from './anchors/dom'
 import { resolveAnchor } from './anchors/resolve'
-import type { TextAnchor } from './anchors/types'
 import { TopBar } from './app/TopBar'
 import { useRoute } from './app/router'
 import { BoardCanvas, type BoardContextTarget } from './board/BoardCanvas'
@@ -33,27 +32,40 @@ import {
 } from './board/camera'
 import { activeAt, buildTimeline, clusterTimeline, type TimelineEntry } from './board/timeline'
 import {
-  colorForPair,
   createSpring,
+  distance,
+  distanceToYarn,
+  DEFAULT_SLACK,
+  MAX_SAG_RATIO,
+  MAX_SLACK,
+  pointOnYarn,
+  sagFor,
+  slackForSag,
   stepSpring,
   yarnPath,
-  YARN_HEX,
+  YARN_COLOR,
   type Point,
-  type YarnColor,
 } from './board/yarn'
-import { seedFromKey, yarnStrands } from './board/yarn-style'
+import { maxStrandDeviation, seedFromKey, yarnStrands } from './board/yarn-style'
+import { newAnchoredPin, newFreePin, newNote } from './model/create'
+import { descriptorFor, NOTE_SIZE } from './model/kinds'
+import {
+  isAnchoredPin,
+  isPin,
+  type BoardEntity,
+  type EntityContext,
+  type NoteEntity,
+  type StringLink,
+} from './model/types'
 import { PREFERENCES_PANEL_ID, PreferencesPanel } from './theme/PreferencesPanel'
 import { usePreferences } from './theme/preferences'
-import { WikiView } from './wiki/WikiView'
-import { linkifyHtml, wikiLinkFromEvent } from './wiki/linkify'
-import { slugify } from './wiki/links'
 
 const INITIAL_MARKDOWN = `# The Drowned Bell
 
 **Session 12** — 3rd of Eleint, 1492 DR
 
-The party returned to [[Saltmarsh]] with the bell they pulled from the
-[[The Sea Ghost|Sea Ghost]]. [[Molgar the Pale]] paid the ferryman in
+The party returned to Saltmarsh with the bell they pulled from the
+Sea Ghost. Molgar the Pale paid the ferryman in
 silver and said nothing at all about the water.
 
 ## What we know
@@ -64,27 +76,50 @@ silver and said nothing at all about the water.
 
 > "The tide keeps what it takes," the ferryman said.
 
-The [[The Black Coin|Black Coin]] came up twice: once from the ferryman,
+The Black Coin came up twice: once from the ferryman,
 and once in the ledger, in a hand nobody recognised.
 `
 
 const ARTICLE_TITLE = 'The Drowned Bell'
+/**
+ * The article the demo board renders.
+ *
+ * A fixed id rather than a generated one because there is exactly one article
+ * and pins must be able to name it — an anchored pin stores `articleId`, and
+ * that has to survive a reload once persistence lands.
+ */
+const ARTICLE_ID = 'the-drowned-bell'
 
-const DEMO_ARTICLES = [
-  { slug: 'saltmarsh', title: 'Saltmarsh' },
-  { slug: 'molgar-the-pale', title: 'Molgar the Pale' },
-  { slug: 'the-black-coin', title: 'The Black Coin' },
-  { slug: 'the-drowned-bell', title: 'The Drowned Bell' },
-]
-
-const SLACK = 0.18
 const SNAP_RADIUS = 34
+/**
+ * How close a click must land to a string to select it, in screen px.
+ *
+ * Added to the fuzz's own reach: 'realistic' sprays filaments up to
+ * `maxStrandDeviation()` either side of the base curve, so hit-testing the
+ * curve alone would miss a click that plainly landed on visible wool.
+ */
+const STRING_HIT_PX = 10
+/**
+ * Width of the halo that marks a selected string, in screen px.
+ *
+ * Screen px, not board px: this is an affordance rather than part of the yarn,
+ * so it has to stay legible at any zoom. Divided by zoom where it is drawn.
+ */
+const STRING_HALO_PX = 11
+/** The bead's footprint in board px, and so how big a target it is to grab. */
+const BEAD_SIZE = 20
+/**
+ * Slack is rounded to this many steps per unit on every change.
+ *
+ * Slack is interpolated raw into the yarn geometry cache key, so a continuous
+ * drag would otherwise mint a fresh cache entry every frame and evict the
+ * board's settled strings as it went. Three decimals is sub-pixel: at a 600px
+ * gap one step moves the droop by under half a pixel.
+ */
+const SLACK_STEP = 1000
 const PAPER_WIDTH = 720
 /** Post-it footprint, shared by the renderer and by fit-bounds. */
-const POST_IT_WIDTH = 168
-const POST_IT_HEIGHT = 128
-/** Half-extent of a free pin's footprint, which is just a tack. */
-const PIN_RADIUS = 10
+const POST_IT_WIDTH = NOTE_SIZE.width
 
 const CAMPAIGN_EPOCH = Date.UTC(2026, 0, 10)
 const SESSION_GAP_MS = 14 * 24 * 60 * 60 * 1000
@@ -115,34 +150,12 @@ interface PinView {
   board: Point | null
 }
 
-interface PlacedPin {
+/** A string with both ends resolved to board points, ready to draw or pick. */
+interface DrawableString {
   id: string
-  /** Set for a pin anchored to a quote. Null for a free board pin. */
-  anchor: TextAnchor | null
-  /** Manual offset, set by "Move pin". Absent means none. */
-  nudge?: Point
-  /** Set for a free board pin. Null for an anchored one. */
-  board: Point | null
-  body: string
-  occurredAt: number
-  dateLabel: string
-}
-
-/** A free-floating note. Unlike a pin, its position is its own, in board space. */
-interface PostIt {
-  id: string
-  x: number
-  y: number
-  body: string
-  color: string
-  dateLabel: string
-}
-
-interface StringView {
-  id: string
-  from: string
-  to: string
-  color: YarnColor
+  slack: number
+  from: Point
+  to: Point
 }
 
 function caretRangeFromPoint(x: number, y: number): Range | null {
@@ -166,12 +179,49 @@ function tackPoint(rect: AnchorRect): Point {
 }
 
 /**
+ * The entity an element belongs to, if any.
+ *
+ * Hit-testing stays in the DOM — the canvas reports whatever element was under
+ * the pointer and has no idea what the application calls it — so this is the one
+ * place a node becomes an id. Being the only such place is what lets the drag
+ * router, the context menu and the middle-drag all stop naming kinds.
+ *
+ * The older per-kind attributes are still honoured rather than renamed in one
+ * go: they are load-bearing for a lot of tests, and a rename is a churn with no
+ * behaviour behind it.
+ */
+function entityIdFromElement(element: Element): string | null {
+  return (
+    element.closest('[data-entity-id]')?.getAttribute('data-entity-id') ??
+    element.closest('[data-pin-id]')?.getAttribute('data-pin-id') ??
+    element.closest('[data-post-it-id]')?.getAttribute('data-post-it-id') ??
+    null
+  )
+}
+
+/**
+ * A computed-style length as a number of px.
+ *
+ * jsdom has no layout engine and reports these as empty strings, so a bare
+ * parseFloat would poison board coordinates with NaN and every string would
+ * render as "M NaN NaN".
+ */
+function px(value: string): number {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+/**
  * Where a pin's tack sits in BOARD space.
  *
- * Anchored pins are measured inside the paper, so they need the paper's own
- * offset added; free pins already are board coordinates. Returning null for an
- * orphaned pin keeps a string to something that no longer exists out of the
- * render rather than drawing it to the origin.
+ * `paper` is the ARTICLE's corner, not the paper's — anchored rects are measured
+ * against the article, which begins at the paper's content box. Callers pass
+ * `paperOrigin`, which includes that padding; passing `paperPos` instead puts
+ * every anchored tack off by the paper's padding, which is enough to stop a
+ * dragged string from ever snapping to it. Free pins already are board
+ * coordinates and ignore the argument. Returning null for an orphaned pin keeps
+ * a string to something that no longer exists out of the render rather than
+ * drawing it to the origin.
  */
 function pinPoint(pin: PinView, paper: Point): Point | null {
   if (pin.rect) {
@@ -186,16 +236,37 @@ function pinPoint(pin: PinView, paper: Point): Point | null {
 }
 
 export function App() {
-  const { route, navigate } = useRoute()
+  const { route } = useRoute()
   const preferences = usePreferences()
 
-  // Board state lives above the route switch on purpose: navigating to /wiki
-  // and back must not wipe the board.
+  // Board state lives above the route switch on purpose: navigating away and
+  // back must not wipe the board.
   const [source, setSource] = useState(INITIAL_MARKDOWN)
-  const [placed, setPlaced] = useState<PlacedPin[]>([])
-  const [postIts, setPostIts] = useState<PostIt[]>([])
+  /**
+   * Everything on the board, of every kind.
+   *
+   * One collection rather than one per kind: a pin, a note, an article and an
+   * image are the same row to the database, differing by `kind`, and the
+   * operations that matter — move, hit-test, select, frame — are the same for
+   * all of them. The per-kind differences live in the descriptors in
+   * `model/kinds.ts`, so a caller loops over entities once instead of looping
+   * over a collection per kind and remembering what each one can do.
+   */
+  const [entities, setEntities] = useState<BoardEntity[]>([])
   const [pins, setPins] = useState<PinView[]>([])
-  const [strings, setStrings] = useState<StringView[]>([])
+  const [strings, setStrings] = useState<StringLink[]>([])
+
+  // Memoised, not filtered inline: these feed useCallback and effect dependency
+  // lists, and a fresh array every render would re-run the anchor projection —
+  // which sets state, so the board would re-resolve in a loop.
+  /** Pins of both kinds: the entities that wear a tack. */
+  const placed = useMemo(() => entities.filter(isPin), [entities])
+  /** Loose notes on the cork. */
+  const postIts = useMemo(
+    () => entities.filter((entity): entity is NoteEntity => entity.kind === 'note'),
+    [entities],
+  )
+
   const [dragFrom, setDragFrom] = useState<string | null>(null)
   const [fontsLoaded, setFontsLoaded] = useState(() => !globalThis.document?.fonts)
   const [cursor, setCursor] = useState(CAMPAIGN_EPOCH)
@@ -229,6 +300,45 @@ export function App() {
   const paperPosRef = useRef(paperPos)
   paperPosRef.current = paperPos
 
+  /**
+   * The paper's own padding, i.e. the offset from the paper's top-left corner
+   * to the article inside it.
+   *
+   * Anchor rects are measured against the article, and the tacks are drawn in an
+   * `inset-0` overlay over that same article — so both are in article space,
+   * while `paperPos` is the *paper's* corner. Anything converting an anchor rect
+   * into board space has to cross that gap. Leaving it out put every anchored
+   * tack 48x40 board px away from where it is drawn, which is further than
+   * SNAP_RADIUS: a string could be started but never dropped onto a pin, so no
+   * string was ever created and no yarn ever appeared.
+   */
+  const [paperInset, setPaperInset] = useState<Point>({ x: 0, y: 0 })
+  /** The article's corner in board space — paperPos plus that inset. */
+  const paperOrigin = { x: paperPos.x + paperInset.x, y: paperPos.y + paperInset.y }
+  const paperOriginRef = useRef(paperOrigin)
+  paperOriginRef.current = paperOrigin
+
+  /**
+   * What a descriptor cannot know on its own.
+   *
+   * An anchored entity's place is not on the entity — it is wherever its quote
+   * resolved to, which only the projection effect knows. Passing that in keeps
+   * the descriptors pure and keeps the anchor ladder where it belongs.
+   */
+  const entityContext = useMemo<EntityContext>(
+    () => ({
+      articleOrigin: () => paperOriginRef.current,
+      anchorRect: (id) => pins.find((pin) => pin.id === id)?.rect ?? null,
+      articleSize: () =>
+        paperRect && paperRect.width > 0
+          ? { width: paperRect.width, height: paperRect.height }
+          : null,
+    }),
+    [pins, paperRect, paperOrigin.x, paperOrigin.y],
+  )
+  const entityContextRef = useRef(entityContext)
+  entityContextRef.current = entityContext
+
   const articleRef = useRef<HTMLDivElement>(null)
   const paperRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -245,26 +355,16 @@ export function App() {
   dragFromRef.current = dragFrom
   const pinsRef = useRef(pins)
   pinsRef.current = pins
+  // Assigned where the strings are resolved, far below. Declared up here because
+  // the pointer handlers that pick a string are defined before that, and a ref
+  // is what lets them read the latest resolution without depending on it.
+  const drawableStringsRef = useRef<DrawableString[]>([])
 
-  const resolveWikiTarget = useCallback((target: string) => {
-    const wanted = slugify(target)
-    return (
-      DEMO_ARTICLES.find(
-        (article) =>
-          article.slug === wanted || article.title.toLowerCase() === target.toLowerCase(),
-      )?.slug ?? null
-    )
-  }, [])
-
-  // Sanitize, then linkify — both before the article reaches the DOM.
-  // Linkifying after the article was projected would shift every offset below a
-  // link by the width of the brackets it removes.
+  // Sanitized before it reaches the DOM: the article is markdown the user can
+  // edit, so it is untrusted input like any other.
   const html = useMemo(
-    () =>
-      linkifyHtml(DOMPurify.sanitize(marked.parse(source, { async: false })), {
-        resolve: resolveWikiTarget,
-      }),
-    [source, resolveWikiTarget],
+    () => DOMPurify.sanitize(marked.parse(source, { async: false })),
+    [source],
   )
 
   useEffect(() => {
@@ -285,6 +385,16 @@ export function App() {
     const measure = (): void => {
       const width = paper.offsetWidth
       const height = paper.offsetHeight
+      // Read rather than assumed: the padding is responsive (px-9/py-8 flips to
+      // sm:px-12/sm:py-10), so a hardcoded 48x40 would be wrong below the
+      // breakpoint. Bail out on an unchanged value so panning, which re-runs
+      // this effect, does not re-render on every frame.
+      const style = getComputedStyle(paper)
+      const insetX = px(style.paddingLeft) + px(style.borderLeftWidth)
+      const insetY = px(style.paddingTop) + px(style.borderTopWidth)
+      setPaperInset((previous) =>
+        previous.x === insetX && previous.y === insetY ? previous : { x: insetX, y: insetY },
+      )
       // In board space, and offset by wherever the paper has been dragged to —
       // otherwise "zoom to fit" frames where the paper used to be.
       if (width > 0 && height > 0) {
@@ -310,17 +420,17 @@ export function App() {
       placed.map((item) => {
         const base = {
           id: item.id,
-          quote: item.anchor?.quote ?? '',
-          body: item.body,
-          dateLabel: item.dateLabel,
-          nudge: item.nudge ?? { x: 0, y: 0 },
+          body: item.bodyMd,
+          dateLabel: item.dateLabel ?? '',
+          nudge: item.nudge,
         }
 
         // A pin stuck into the board has no quote to resolve; its position is
         // simply its position.
-        if (!item.anchor) {
+        if (!isAnchoredPin(item)) {
           return {
             ...base,
+            quote: '',
             status: 'free' as const,
             detail: 'loose on the board',
             rect: null,
@@ -333,6 +443,7 @@ export function App() {
         if (result.status === 'orphaned') {
           return {
             ...base,
+            quote: item.anchor.quote,
             status: 'orphaned' as const,
             detail:
               result.reason === 'empty-quote'
@@ -350,6 +461,7 @@ export function App() {
         if (result.status === 'exact') {
           return {
             ...base,
+            quote: item.anchor.quote,
             status: 'exact' as const,
             detail: 'unchanged',
             rect: first,
@@ -359,6 +471,7 @@ export function App() {
 
         return {
           ...base,
+          quote: item.anchor.quote,
           status: 'repaired' as const,
           detail: `${result.reason.replace('-', ' ')} · ${Math.round(result.confidence * 100)}% context match`,
           rect: first,
@@ -378,16 +491,12 @@ export function App() {
   /** Stick a pin straight into the board, at a point in board space. */
   const createFreePin = useCallback(
     (board: Point) => {
-      setPlaced((previous) => [
+      setEntities((previous) => [
         ...previous,
-        {
-          id: crypto.randomUUID(),
-          anchor: null,
-          board,
-          body: '',
-          occurredAt: CAMPAIGN_EPOCH + previous.length * SESSION_GAP_MS,
-          dateLabel: nextDateLabel(previous.length),
-        },
+        newFreePin(board, {
+          occurredAt: CAMPAIGN_EPOCH + previous.filter(isPin).length * SESSION_GAP_MS,
+          dateLabel: nextDateLabel(previous.filter(isPin).length),
+        }),
       ])
     },
     [nextDateLabel],
@@ -424,16 +533,12 @@ export function App() {
           : null
 
         if (anchor?.quote) {
-          setPlaced((previous) => [
+          setEntities((previous) => [
             ...previous,
-            {
-              id: crypto.randomUUID(),
-              anchor,
-              board: null,
-              body: '',
-              occurredAt: CAMPAIGN_EPOCH + previous.length * SESSION_GAP_MS,
-              dateLabel: nextDateLabel(previous.length),
-            },
+            newAnchoredPin(ARTICLE_ID, anchor, {
+              occurredAt: CAMPAIGN_EPOCH + previous.filter(isPin).length * SESSION_GAP_MS,
+              dateLabel: nextDateLabel(previous.filter(isPin).length),
+            }),
           ])
           return
         }
@@ -444,6 +549,33 @@ export function App() {
     },
     [createFreePin, nextDateLabel, worldPoint],
   )
+
+  /**
+   * The string under a board-space point, if any.
+   *
+   * Yarn stays `pointer-events-none`. It is painted over everything, so making
+   * it hit-testable through the DOM would swallow clicks meant for the pins and
+   * notes underneath it — the reason it was made non-interactive in the first
+   * place. Asking the geometry instead answers "is this click on the string?"
+   * against the same curve the eye sees, and leaves the layering alone.
+   */
+  const stringAt = useCallback((boardPoint: Point): string | null => {
+    // Constant on screen: a string should be no easier to hit at 400% than at
+    // 40%. The fuzz's own reach counts too — 'realistic' sprays filaments
+    // either side of the base curve, and a click on visible wool is a hit.
+    const zoom = cameraRef.current.zoom || 1
+    const tolerance = (maxStrandDeviation() + STRING_HIT_PX) / zoom
+    let best: { id: string; distance: number } | null = null
+
+    for (const string of drawableStringsRef.current) {
+      const { distance: away } = distanceToYarn(string.from, string.to, boardPoint, string.slack)
+      if (away <= tolerance && (!best || away < best.distance)) {
+        best = { id: string.id, distance: away }
+      }
+    }
+
+    return best?.id ?? null
+  }, [])
 
   const handleBackgroundClick = useCallback(
     ({ point, ctrlKey, metaKey }: { point: Point; ctrlKey: boolean; metaKey: boolean }) => {
@@ -457,34 +589,45 @@ export function App() {
         return
       }
 
+      // The canvas reports viewport coordinates; everything below wants board
+      // ones.
+      const board = screenToBoard(cameraRef.current, point)
+
       if (!pinMode && !ctrlKey && !metaKey) {
+        // A string lies on the bare board as much as on the paper, and it is
+        // the only thing a plain click there does not already mean.
+        const string = stringAt(board)
+        if (string) {
+          setSelection(new Set([string]))
+          return
+        }
         // A plain click on bare cork is a deselect, which is what every canvas
         // does and what people reach for without thinking.
         setSelection(new Set())
         return
       }
-      // The canvas reports viewport coordinates; pinAt wants screen ones, and
-      // converts itself. Undo the canvas's local offset.
+      // pinAt wants screen coordinates and converts itself. Undo the canvas's
+      // local offset.
       const box = document.querySelector('[data-testid="board-canvas"]')?.getBoundingClientRect()
       if (!box) return
       pinAt(point.x + box.left, point.y + box.top)
     },
-    [pinAt, pinMode, movingPin],
+    [pinAt, pinMode, movingPin, stringAt],
   )
 
   const handleArticleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
-      const link = wikiLinkFromEvent(event.nativeEvent)
-      if (link) {
-        event.preventDefault()
-        // A wikilink is an address, so it navigates for real.
-        navigate({ name: 'wiki', slug: link.resolved ? link.slug : null })
+      if (!pinMode && !event.ctrlKey && !event.metaKey) {
+        // A string drawn across the paper lands here rather than on the canvas,
+        // because the article is what the click actually hits. Same pick, other
+        // entry point — otherwise strings would only be selectable on cork.
+        const string = stringAt(worldPoint(event.clientX, event.clientY))
+        if (string) setSelection(new Set([string]))
         return
       }
-      if (!pinMode && !event.ctrlKey && !event.metaKey) return
       pinAt(event.clientX, event.clientY)
     },
-    [navigate, pinAt, pinMode],
+    [pinAt, pinMode, stringAt, worldPoint],
   )
 
   const runClock = useCallback(() => {
@@ -495,7 +638,10 @@ export function App() {
     const spring = springRef.current
     stepSpring(spring.x, targetRef.current.x, 1 / 60)
     stepSpring(spring.y, targetRef.current.y, 1 / 60)
-    path.setAttribute('d', yarnPath(origin, { x: spring.x.value, y: spring.y.value }, SLACK))
+    path.setAttribute(
+      'd',
+      yarnPath(origin, { x: spring.x.value, y: spring.y.value }, DEFAULT_SLACK),
+    )
     frameRef.current = requestAnimationFrame(runClock)
   }, [])
 
@@ -513,7 +659,7 @@ export function App() {
       // Board space, matching what moveString computes. This was paper-local
       // while the target was board-space, so the live string was drawn from
       // near the board origin instead of from the tack.
-      const origin = pinPoint(pin, paperPosRef.current)
+      const origin = pinPoint(pin, paperOriginRef.current)
       if (!origin) return
 
       originRef.current = origin
@@ -541,7 +687,7 @@ export function App() {
       let nearest: { id: string; distance: number } | null = null
       for (const pin of pinsRef.current) {
         if (pin.id === from) continue
-        const point = pinPoint(pin, paperPosRef.current)
+        const point = pinPoint(pin, paperOriginRef.current)
         if (!point) continue
         const distance = Math.hypot(point.x - drop.x, point.y - drop.y)
         if (distance <= SNAP_RADIUS && (!nearest || distance < nearest.distance)) {
@@ -556,7 +702,18 @@ export function App() {
             (s) => (s.from === from && s.to === to) || (s.from === to && s.to === from),
           )
           if (exists) return previous
-          return [...previous, { id: crypto.randomUUID(), from, to, color: colorForPair(from, to) }]
+          return [
+            ...previous,
+            {
+              id: crypto.randomUUID(),
+              from,
+              to,
+              slack: DEFAULT_SLACK,
+              color: YARN_COLOR,
+              style: 'solid' as const,
+              visibility: 'shared' as const,
+            },
+          ]
         })
       }
 
@@ -631,38 +788,31 @@ export function App() {
 
       const hits = new Set<string>()
 
-      for (const note of postIts) {
-        if (rectsIntersect(band, { x: note.x, y: note.y, width: POST_IT_WIDTH, height: POST_IT_HEIGHT })) {
-          hits.add(note.id)
-        }
-      }
-
-      for (const pin of placed) {
-        if (!pin.board) continue
-        // A pin has no area, so it is a zero-size rect at its point.
-        if (rectsIntersect(band, { x: pin.board.x, y: pin.board.y, width: 0, height: 0 })) {
-          hits.add(pin.id)
-        }
+      // One pass for every kind. Each descriptor answers for its own shape and
+      // for whether a band may pick it up at all — a tack in a word has nothing
+      // on the board to enclose.
+      for (const entity of entities) {
+        const descriptor = descriptorFor(entity)
+        if (!descriptor.capabilities(entity).marqueeSelectable) continue
+        const box = descriptor.bounds(entity, entityContextRef.current)
+        if (box && rectsIntersect(band, box)) hits.add(entity.id)
       }
 
       setSelection(hits)
     },
-    [placed, postIts],
+    [entities],
   )
 
   /** Move everything selected by a board-space delta. */
   const moveSelection = useCallback((delta: Point) => {
-    setPostIts((previous) =>
-      previous.map((note) =>
-        selection.has(note.id) ? { ...note, x: note.x + delta.x, y: note.y + delta.y } : note,
-      ),
-    )
-    setPlaced((previous) =>
-      previous.map((pin) =>
-        pin.board && selection.has(pin.id)
-          ? { ...pin, board: { x: pin.board.x + delta.x, y: pin.board.y + delta.y } }
-          : pin,
-      ),
+    setEntities((previous) =>
+      previous.map((entity) => {
+        if (!selection.has(entity.id)) return entity
+        const descriptor = descriptorFor(entity)
+        // An anchored pin, if one were ever selected, stores the shift against
+        // its words rather than moving — the descriptor decides that, not us.
+        return descriptor.capabilities(entity).movable ? descriptor.move(entity, delta) : entity
+      }),
     )
   }, [selection])
 
@@ -681,24 +831,18 @@ export function App() {
     const targets: Rect[] = []
     if (paperRect) targets.push(paperRect)
 
-    for (const pin of placed) {
-      if (!pin.board) continue
-      targets.push({
-        x: pin.board.x - PIN_RADIUS,
-        y: pin.board.y - PIN_RADIUS,
-        width: PIN_RADIUS * 2,
-        height: PIN_RADIUS * 2,
-      })
-    }
-
-    for (const note of postIts) {
-      targets.push({ x: note.x, y: note.y, width: POST_IT_WIDTH, height: POST_IT_HEIGHT })
+    for (const entity of entities) {
+      const descriptor = descriptorFor(entity)
+      const box =
+        descriptor.frameBounds?.(entity, entityContextRef.current) ??
+        descriptor.bounds(entity, entityContextRef.current)
+      if (box) targets.push(box)
     }
 
     if (targets.length === 0) return
     const fitted = fitBounds(targets, { width: box.width, height: box.height }, 56)
     if (fitted) setCamera(fitted)
-  }, [paperRect, placed, postIts])
+  }, [entities, paperRect])
 
   const handleContextTarget = useCallback((target: BoardContextTarget) => {
     const element = target.target instanceof Element ? target.target : null
@@ -723,16 +867,12 @@ export function App() {
 
   const createPostIt = useCallback(
     (point: Point) => {
-      setPostIts((previous) => [
+      setEntities((previous) => [
         ...previous,
-        {
-          id: crypto.randomUUID(),
-          x: point.x,
-          y: point.y,
-          body: '',
+        newNote(point, {
           color: POST_IT_COLORS[previous.length % POST_IT_COLORS.length],
           dateLabel: nextDateLabel(previous.length),
-        },
+        }),
       ])
     },
     [nextDateLabel],
@@ -747,43 +887,71 @@ export function App() {
     onTap: () => setDocumentSelected((previous) => !previous),
   })
 
-  const dragPostIt = useCallback(
+  /**
+   * Move one entity by a board-space delta, ignoring the selection.
+   *
+   * How a kind moves is the descriptor's business: a free pin and a note shift
+   * their own position, while an anchored pin stores the delta as an offset
+   * against the words it holds — which is what makes its move temporary, since
+   * it still belongs to its quote and will follow it through edits.
+   */
+  const moveOne = useCallback((id: string, delta: Point) => {
+    setEntities((previous) =>
+      previous.map((entity) => {
+        if (entity.id !== id) return entity
+        const descriptor = descriptorFor(entity)
+        return descriptor.capabilities(entity).movable ? descriptor.move(entity, delta) : entity
+      }),
+    )
+  }, [])
+
+  /**
+   * Drag one entity.
+   *
+   * Dragging one of several selected objects moves the whole set; dragging an
+   * unselected one moves only it. Same rule for every kind, because the rule is
+   * about selection rather than about what was grabbed.
+   */
+  const moveEntity = useCallback(
     (id: string, delta: Point) => {
-      // Dragging one of several selected objects moves the whole set; dragging
-      // an unselected one moves only it.
       if (selection.has(id)) {
         moveSelection(delta)
         return
       }
-      setPostIts((previous) =>
-        previous.map((item) =>
-          item.id === id ? { ...item, x: item.x + delta.x, y: item.y + delta.y } : item,
-        ),
-      )
+      moveOne(id, delta)
     },
-    [selection, moveSelection],
+    [moveOne, moveSelection, selection],
   )
 
   /**
-   * Reposition a pin by a board-space delta.
+   * Middle-drag on a thing moves that thing.
    *
-   * A free pin's position is its own, so it just moves. An anchored pin's
-   * position is derived from the words it holds, so the delta is kept as an
-   * offset — which is what makes the move temporary: the pin still belongs to
-   * its quote and will follow it, just nudged.
+   * Which thing is settled by the DOM, the way the context menu already does it:
+   * the canvas hands back whatever was under the press and this resolves it
+   * innermost-first. A tack is drawn inside the paper's wrapper, so testing the
+   * pin before the article is what makes dragging a pin move the pin rather than
+   * the sheet it is stuck through.
+   *
+   * Both kinds of pin and post-its route through their own move functions, so an
+   * anchored pin still stores the shift as a nudge against its words and a
+   * selected post-it still takes its neighbours with it.
    */
-  const movePinBy = useCallback((id: string, delta: Point) => {
-    setPlaced((previous) =>
-      previous.map((pin) => {
-        if (pin.id !== id) return pin
-        if (pin.board) {
-          return { ...pin, board: { x: pin.board.x + delta.x, y: pin.board.y + delta.y } }
-        }
-        const nudge = pin.nudge ?? { x: 0, y: 0 }
-        return { ...pin, nudge: { x: nudge.x + delta.x, y: nudge.y + delta.y } }
-      }),
-    )
-  }, [])
+  const handleEntityDrag = useCallback(
+    (element: Element, delta: Point) => {
+      const id = entityIdFromElement(element)
+      if (id) {
+        moveEntity(id, delta)
+        return
+      }
+
+      // The article is not an entity yet — it is still a singleton with its own
+      // paper position — so it keeps its own branch until it joins the others.
+      if (element.closest('[data-board-entity="article"]')) {
+        setPaperPos((previous) => ({ x: previous.x + delta.x, y: previous.y + delta.y }))
+      }
+    },
+    [moveEntity],
+  )
 
   /**
    * Drop the hover card whenever the camera moves.
@@ -802,23 +970,24 @@ export function App() {
     setHovered(element ? { id: pin.id, element } : null)
   }, [])
 
-  const setPinBody = useCallback((id: string, body: string) => {
-    setPlaced((previous) => previous.map((item) => (item.id === id ? { ...item, body } : item)))
+  /** Rewrite one entity's body. Shared by kinds — a body is a body. */
+  const setEntityBody = useCallback((id: string, bodyMd: string) => {
+    setEntities((previous) =>
+      previous.map((entity) =>
+        entity.id === id ? { ...entity, bodyMd, updatedAt: Date.now() } : entity,
+      ),
+    )
   }, [])
 
-  const setPostItBody = useCallback((id: string, body: string) => {
-    setPostIts((previous) => previous.map((item) => (item.id === id ? { ...item, body } : item)))
-  }, [])
-
-  const removePin = useCallback((id: string) => {
-    setPlaced((previous) => previous.filter((item) => item.id !== id))
+  /** Take an entity off the board, and every string that touched it with it. */
+  const removeEntity = useCallback((id: string) => {
+    setEntities((previous) => previous.filter((entity) => entity.id !== id))
     setStrings((previous) => previous.filter((s) => s.from !== id && s.to !== id))
     setEditingPin(null)
   }, [])
 
   const clearBoard = useCallback(() => {
-    setPlaced([])
-    setPostIts([])
+    setEntities([])
     setStrings([])
     setEditingPin(null)
     setContextMenu(null)
@@ -830,8 +999,10 @@ export function App() {
         ...placed.map(
           (item): TimelineEntry => ({
             id: item.id,
-            occurredAt: item.occurredAt,
-            dateLabel: item.dateLabel,
+            // A pin is dated when it is placed; the columns are nullable for
+            // entities that inherit a date from their group instead.
+            occurredAt: item.occurredAt ?? null,
+            dateLabel: item.dateLabel ?? null,
           }),
         ),
       ]),
@@ -873,21 +1044,124 @@ export function App() {
     const to = byId.get(string.to)
     if (!from || !to) return []
 
-    const fromPoint = pinPoint(from, paperPos)
-    const toPoint = pinPoint(to, paperPos)
+    const fromPoint = pinPoint(from, paperOrigin)
+    const toPoint = pinPoint(to, paperOrigin)
     if (!fromPoint || !toPoint) return []
 
     return [
       {
         id: string.id,
-        fromId: string.from,
-        toId: string.to,
-        color: string.color,
+        slack: string.slack,
         from: fromPoint,
         to: toPoint,
       },
     ]
   })
+
+  drawableStringsRef.current = drawableStrings
+
+  // The selection is a single untyped set shared with pins and post-its, so a
+  // string is "selected" only if one of these ids is in it.
+  const selectedString = drawableStrings.find((string) => selection.has(string.id)) ?? null
+
+  /**
+   * The string under the pointer.
+   *
+   * Yarn is the one thing on the board you cannot discover by pointing at it:
+   * it is drawn `pointer-events-none` so it never steals a click from a pin,
+   * which also means the browser gives it no hover state of its own. Probing
+   * the geometry on every move is what buys back the affordance — a string that
+   * lights up under the cursor is a string you know you can click.
+   */
+  const [hoveredString, setHoveredString] = useState<string | null>(null)
+  const handleCanvasHover = useCallback(
+    (point: Point | null) => {
+      setHoveredString(point ? stringAt(screenToBoard(cameraRef.current, point)) : null)
+    },
+    [stringAt],
+  )
+
+  /**
+   * The string under a board-space point, if any.
+   *
+   * Yarn stays `pointer-events-none`. It is painted over everything, so making
+   * it hit-testable through the DOM would swallow clicks meant for the pins and
+   * notes underneath it — the reason it was made non-interactive in the first
+   * place. Asking the geometry instead answers "is this click on the string?"
+   * against the same curve the eye sees, and leaves the layering alone.
+   */
+  /**
+   * Droop a string further, or take up its rope, by `dy` board px.
+   *
+   * The dragged point is the curve's lowest — `pointOnYarn(…, 0.5)` — which sits
+   * at half the control offset, so one pixel of pointer travel is two of sag.
+   * Inverting `sagFor` (rather than nudging slack) is what makes the string
+   * track the hand: sag grows as the square root of slack, so a linear nudge
+   * would crawl when taut and lurch when loose.
+   *
+   * The clamp is applied to the SAG. Past `MAX_SAG_RATIO` the droop is pinned,
+   * so letting slack keep climbing would store a number that no longer
+   * described the string — and would only unwind on the way back down.
+   */
+  const dragStringSag = useCallback((id: string, dy: number) => {
+    setStrings((previous) =>
+      previous.map((string) => {
+        if (string.id !== id) return string
+        const drawn = drawableStringsRef.current.find((item) => item.id === id)
+        if (!drawn) return string
+
+        const gap = distance(drawn.from, drawn.to)
+        if (gap <= 0) return string
+
+        const sag = Math.min(Math.max(sagFor(gap, string.slack) + dy * 2, 0), gap * MAX_SAG_RATIO)
+        // Rounded because slack is interpolated raw into the yarn geometry
+        // cache key: a continuous drag would otherwise mint a fresh entry every
+        // frame and evict the board's settled strings as it went.
+        const slack = Math.round(Math.min(MAX_SLACK, slackForSag(gap, sag)) * SLACK_STEP) / SLACK_STEP
+        return slack === string.slack ? string : { ...string, slack }
+      }),
+    )
+  }, [])
+
+  const removeString = useCallback((id: string) => {
+    setStrings((previous) => previous.filter((string) => string.id !== id))
+    setSelection((previous) => new Set([...previous].filter((selected) => selected !== id)))
+  }, [])
+
+  /**
+   * Delete takes the selected string off the board; Escape lets go of it.
+   *
+   * This is the first keyboard deletion in the app, so it is deliberate about
+   * where it may fire. Not while a field has focus — the article is selectable
+   * text, a post-it is a textarea and the pin editor is full of inputs, and
+   * Backspace in any of them is someone editing, not deleting. And not while a
+   * card is open, where Escape already means "close me".
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null
+      if (
+        target?.isContentEditable ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      ) {
+        return
+      }
+      if (editingPin || contextMenu || prefsOpen || movingPin) return
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (!selectedString) return
+        event.preventDefault()
+        removeString(selectedString.id)
+        return
+      }
+      if (event.key === 'Escape' && selection.size > 0) setSelection(new Set())
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [contextMenu, editingPin, movingPin, prefsOpen, removeString, selectedString, selection])
 
   const anchored = pins.filter((pin) => pin.rect)
   const freePins = pins.filter((pin) => pin.board)
@@ -928,8 +1202,6 @@ export function App() {
   return (
     <div className="app-shell flex h-screen flex-col overflow-hidden">
       <TopBar
-        route={route}
-        navigate={navigate}
         onOpenPreferences={() => setPrefsOpen(true)}
         preferencesOpen={prefsOpen}
         preferencesPanelId={PREFERENCES_PANEL_ID}
@@ -964,24 +1236,8 @@ export function App() {
       </TopBar>
 
       <main className="relative flex min-h-0 flex-1">
-        {route.name === 'wiki' ? (
-          <div className="min-h-0 flex-1 overflow-auto p-5 lg:p-8">
-            <WikiView
-              html={html}
-              pins={placed.flatMap((item) =>
-                item.anchor
-                  ? [{ id: item.id, anchor: item.anchor, dateLabel: item.dateLabel }]
-                  : [],
-              )}
-              activeIds={activeIds}
-              dimming={dimming}
-              fontsLoaded={fontsLoaded}
-              onShowOnBoard={() => setDocumentSelected(true)}
-            />
-          </div>
-        ) : (
-          <>
-            {documentSelected && (
+        <>
+          {documentSelected && (
               <PaperEditor
                 title={ARTICLE_TITLE}
                 value={source}
@@ -992,6 +1248,11 @@ export function App() {
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               <BoardCanvas
+                onEntityDrag={handleEntityDrag}
+                onHover={handleCanvasHover}
+                // A string is clickable, and the cursor is the only place the
+                // board can say so without covering it in chrome.
+                idleCursor={hoveredString ? 'pointer' : 'default'}
                 camera={camera}
                 onCameraChange={setCamera}
                 onContextTarget={handleContextTarget}
@@ -1010,6 +1271,7 @@ export function App() {
                 <div
                   ref={paperRef}
                   data-testid="paper"
+                  data-board-entity="article"
                   className={`parchment absolute top-0 left-0 rounded-sm px-9 py-8 shadow-xl sm:px-12 sm:py-10 ${
                     documentSelected ? 'ring-2 ring-brass/70' : ''
                   }`}
@@ -1076,7 +1338,7 @@ export function App() {
                             moving={movingPin === pin.id}
                             zoom={camera.zoom}
                             onStartYarn={(event) => beginString(event, pin)}
-                            onMove={movePinBy}
+                            onMove={moveOne}
                             onHover={handlePinHover}
                           />
                         ) : null,
@@ -1100,7 +1362,7 @@ export function App() {
                       moving={movingPin === pin.id}
                       zoom={camera.zoom}
                       onStartYarn={(event) => beginString(event, pin)}
-                      onMove={movePinBy}
+                      onMove={moveOne}
                       onHover={handlePinHover}
                     />
                   ) : null,
@@ -1112,11 +1374,9 @@ export function App() {
                     note={note}
                     zoom={camera.zoom}
                     selected={selection.has(note.id)}
-                    onDrag={dragPostIt}
-                    onChange={setPostItBody}
-                    onRemove={(id) =>
-                      setPostIts((previous) => previous.filter((item) => item.id !== id))
-                    }
+                    onDrag={moveEntity}
+                    onChange={setEntityBody}
+                    onRemove={removeEntity}
                   />
                 ))}
                 <svg
@@ -1126,28 +1386,43 @@ export function App() {
                   aria-hidden="true"
                 >
                   {drawableStrings.map((string) => (
-                    <g
-                      key={string.id}
-                      className="transition-opacity duration-300"
-                      style={{
-                        opacity:
-                          !dimming || (activeIds.has(string.fromId) && activeIds.has(string.toId))
-                            ? 1
-                            : 0.12,
-                      }}
-                    >
+                    // Yarn is never dimmed with the timeline. Pins carry that
+                    // signal well enough on their own, and 0.12 — which reads as
+                    // "faded" on a chunky brass tack — is indistinguishable from
+                    // absent on a 1-2px hairline, so every string touching a pin
+                    // newer than the cursor simply vanished.
+                    <g key={string.id}>
+                      {/* The halo sits under the strands rather than around
+                          them, so the wool still reads as wool. Drawn in the
+                          yarn's own colour at low opacity: a white glow would
+                          be invisible on the whiteboard and a dark one on
+                          slate, but a red one reads on every surface. */}
+                      {selection.has(string.id) || hoveredString === string.id ? (
+                        <path
+                          data-testid="yarn-halo"
+                          d={yarnPath(string.from, string.to, string.slack)}
+                          fill="none"
+                          stroke={YARN_COLOR}
+                          // Selected reads stronger than merely hovered, so the
+                          // two states are told apart at a glance rather than
+                          // both meaning "something is happening here".
+                          strokeOpacity={selection.has(string.id) ? 0.22 : 0.12}
+                          strokeWidth={STRING_HALO_PX / (camera.zoom || 1)}
+                          strokeLinecap="round"
+                        />
+                      ) : null}
                       {yarnStrands(
                         preferences.yarnStyle,
                         string.from,
                         string.to,
-                        SLACK,
+                        string.slack,
                         seedFromKey(string.id),
                       ).map((strand, index) => (
                         <path
                           key={index}
                           d={strand.d}
                           fill="none"
-                          stroke={YARN_HEX[string.color]}
+                          stroke={YARN_COLOR}
                           strokeWidth={strand.width}
                           strokeOpacity={strand.opacity}
                           strokeLinecap="round"
@@ -1160,7 +1435,7 @@ export function App() {
                     ref={livePathRef}
                     data-testid="live-yarn"
                     fill="none"
-                    stroke={YARN_HEX[colorForPair(dragFrom ?? 'a', 'b')]}
+                    stroke={YARN_COLOR}
                     strokeWidth={2.5}
                     strokeLinecap="round"
                     opacity={dragFrom ? 0.95 : 0}
@@ -1171,10 +1446,19 @@ export function App() {
                     running behind a pinned document reads as a mistake. It
                     stays pointer-events-none, so it never intercepts a click
                     meant for a pin or a post-it. */}
+                {selectedString ? (
+                  <YarnBead
+                    key={selectedString.id}
+                    from={selectedString.from}
+                    to={selectedString.to}
+                    slack={selectedString.slack}
+                    zoom={camera.zoom}
+                    onSag={(dy) => dragStringSag(selectedString.id, dy)}
+                  />
+                ) : null}
               </BoardCanvas>
             </div>
-          </>
-        )}
+        </>
       </main>
 
       {route.name === 'board' && (
@@ -1260,8 +1544,8 @@ export function App() {
           body={activePin.body}
           x={editingPin.x}
           y={editingPin.y}
-          onChange={(body) => setPinBody(editingPin.id, body)}
-          onDelete={() => removePin(editingPin.id)}
+          onChange={(body) => setEntityBody(editingPin.id, body)}
+          onDelete={() => removeEntity(editingPin.id)}
           onMove={() => {
             // Hand the pin to the board and get the editor out of the way —
             // you cannot drag something accurately with a card over it.
@@ -1337,6 +1621,7 @@ function Tack({
     <button
       type="button"
       data-pin-id={pin.id}
+      data-board-entity="pin"
       data-described={described ? 'true' : undefined}
       {...(moving ? drag : { onPointerDown: onStartYarn })}
       onPointerEnter={(event) => onHover(pin, event.currentTarget)}
@@ -1344,7 +1629,12 @@ function Tack({
       // The id only exists while the card is mounted, which aria-describedby
       // ignores — so this is safe to declare unconditionally.
       aria-describedby={pinTooltipId(pin.id)}
-      className={`tack tack-enter absolute h-3.5 w-3.5 rounded-full ${
+      // pointer-events-auto is load-bearing on anchored pins: their overlay is
+      // pointer-events-none so the article's text keeps its own hit-testing, and
+      // a tack that inherits that cannot be pressed at all — so no yarn could
+      // ever start from a pin stuck in a word. Re-enabling it here, on the tack
+      // alone, leaves the rest of the overlay transparent to the text.
+      className={`tack tack-enter pointer-events-auto absolute h-3.5 w-3.5 rounded-full ${
         moving ? 'cursor-grabbing' : 'cursor-crosshair'
       } ${selected ? 'is-selected' : ''}`}
       data-status={pin.status}
@@ -1366,6 +1656,52 @@ function Tack({
 }
 
 /**
+ * The bead on a selected string: the handle you haul up and down to change how
+ * much the string sags.
+ *
+ * Its own component so the drag hook lives here, and so the gesture is bound to
+ * one string by construction rather than through a ref of "which string is
+ * selected right now". Only the vertical component is used — the sag is a
+ * single number, and letting sideways travel feed into it would make the string
+ * lurch whenever the hand drifted.
+ */
+function YarnBead({
+  from,
+  to,
+  slack,
+  zoom,
+  onSag,
+}: {
+  from: Point
+  to: Point
+  slack: number
+  zoom: number
+  onSag: (dy: number) => void
+}) {
+  const drag = useBoardDrag({ zoom, onDrag: (delta) => onSag(delta.y) })
+  // The curve's lowest point is the middle of the rope, and the only part of it
+  // that means "tightness" to the eye.
+  const apex = pointOnYarn(from, to, 0.5, slack)
+
+  return (
+    <button
+      type="button"
+      data-testid="yarn-bead"
+      aria-label="Drag up or down to adjust how much the string sags"
+      className="yarn-bead tack-enter absolute rounded-full"
+      style={{
+        left: apex.x - BEAD_SIZE / 2,
+        top: apex.y - BEAD_SIZE / 2,
+        width: BEAD_SIZE,
+        height: BEAD_SIZE,
+        touchAction: 'none',
+      }}
+      {...drag}
+    />
+  )
+}
+
+/**
  * A post-it on the board.
  *
  * Its own component because it needs a drag hook, and hooks cannot live inside
@@ -1380,7 +1716,7 @@ function PostIt({
   onChange,
   onRemove,
 }: {
-  note: PostIt
+  note: NoteEntity
   zoom: number
   selected: boolean
   onDrag: (id: string, delta: Point) => void
@@ -1394,10 +1730,13 @@ function PostIt({
 
   return (
     <div
+      data-entity-id={note.id}
+      data-post-it-id={note.id}
+      data-board-entity="note"
       className={`post-it absolute rounded-sm p-2 ${selected ? 'is-selected' : ''}`}
       style={{
-        left: note.x,
-        top: note.y,
+        left: note.board.x,
+        top: note.board.y,
         width: POST_IT_WIDTH,
         background: note.color,
       }}
@@ -1411,7 +1750,7 @@ function PostIt({
         aria-label="Drag post-it"
       />
       <textarea
-        value={note.body}
+        value={note.bodyMd}
         onChange={(event) => onChange(note.id, event.target.value)}
         placeholder="Write something…"
         className="h-24 w-full resize-none bg-transparent text-[12px] leading-snug text-ink outline-none placeholder:text-ink-soft/40"

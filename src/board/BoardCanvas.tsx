@@ -84,10 +84,49 @@ export interface BoardCanvasProps {
    * button that pans, separated by which one is held.
    */
   onMarquee?: (rect: Rect | null) => void
+  /**
+   * A middle-drag that started on something rather than on bare board, reported
+   * as the element under the press plus the board-space delta to move it by.
+   *
+   * Middle-drag is the camera's gesture, and it stays the camera's gesture over
+   * empty cork — but pressing it on a thing and having the whole board slide
+   * away is never what was meant. The canvas reports the element rather than an
+   * id because it has no idea what its children are; the caller resolves it,
+   * exactly as it does for `onContextTarget`.
+   */
+  onEntityDrag?: (element: Element, delta: Point) => void
+  /**
+   * Where the pointer is over bare canvas, in viewport coordinates, and null
+   * when it leaves.
+   *
+   * Reported per move rather than as an enter/leave pair because the things a
+   * caller wants to know about — a yarn under the cursor — are not elements and
+   * so never get an enter event of their own. The caller hit-tests the point.
+   */
+  onHover?: (point: Point | null) => void
+  /**
+   * The cursor to use over empty board, when no pan or tool has a better claim.
+   *
+   * A plain string rather than a closed set: the canvas has no idea what is
+   * under the pointer, and enumerating the cursors it might be asked for would
+   * put the application's vocabulary in the canvas.
+   */
+  idleCursor?: string
 }
 
 /** Pointer travel, in pixels, above which a press is a drag rather than a click. */
 const DRAG_THRESHOLD = 5
+
+/**
+ * How far a click may land from where a drag ended and still count as that
+ * drag's trailing click rather than a new one.
+ *
+ * Browsers send a click after every press-release pair, drag or not, and they
+ * report it wherever the pointer finished. Matching on position is what lets
+ * the canvas swallow its own trailing click without also eating a real one a
+ * moment later somewhere else.
+ */
+const CLICK_SLOP = 4
 
 /**
  * Capture the pointer if the environment supports it.
@@ -140,9 +179,31 @@ export function BoardCanvas({
   onBackgroundClick,
   pinMode = false,
   onMarquee,
+  onEntityDrag,
+  onHover,
+  idleCursor = 'default',
 }: BoardCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const panRef = useRef<PanState | null>(null)
+
+  /**
+   * Set when a press became a rubber band, so the click that the browser fires
+   * afterwards is not mistaken for one.
+   *
+   * Without this, swiping a band across the board selected everything and then
+   * immediately deselected it: the trailing click reached the bare-board
+   * handler, which is where "a plain click on cork clears the selection" lives.
+   * The band looked like it did nothing at all.
+   */
+  const suppressClickRef = useRef<{ x: number; y: number } | null>(null)
+
+  /** A middle-press that landed on an entity rather than on bare board. */
+  const entityRef = useRef<{
+    pointerId: number
+    lastX: number
+    lastY: number
+    element: Element
+  } | null>(null)
   const hasFittedRef = useRef(false)
   const [viewport, setViewport] = useState<Viewport>({ width: 0, height: 0 })
 
@@ -181,6 +242,12 @@ export function BoardCanvas({
 
   const markInteractingRef = useRef(markInteracting)
   markInteractingRef.current = markInteracting
+
+  const onEntityDragRef = useRef(onEntityDrag)
+  onEntityDragRef.current = onEntityDrag
+
+  const onHoverRef = useRef(onHover)
+  onHoverRef.current = onHover
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -268,6 +335,28 @@ export function BoardCanvas({
       if (event.button !== 1 && event.button !== 2) return
 
       event.preventDefault()
+
+      // Middle-drag on an entity moves that entity; middle-drag on bare board
+      // still pans. Checked before the pan starts so the two never both run —
+      // an entity that slid away while the camera also moved would be
+      // impossible to place. Right-drag is left alone: on a pin it is the
+      // gesture that opens the editor.
+      const entity =
+        event.button === 1 && onEntityDrag
+          ? ((event.target as Element | null)?.closest?.('[data-board-entity]') ?? null)
+          : null
+
+      if (entity) {
+        entityRef.current = {
+          pointerId: event.pointerId,
+          lastX: event.clientX,
+          lastY: event.clientY,
+          element: entity,
+        }
+        capturePointer(event.currentTarget, event.pointerId)
+        return
+      }
+
       panRef.current = {
         pointerId: event.pointerId,
         lastX: event.clientX,
@@ -279,7 +368,7 @@ export function BoardCanvas({
 
       capturePointer(event.currentTarget, event.pointerId)
     },
-    [onMarquee],
+    [onEntityDrag, onMarquee],
   )
 
   const handlePointerMove = useCallback(
@@ -296,17 +385,40 @@ export function BoardCanvas({
         return
       }
 
+      // Nothing is being dragged, so this is a look rather than a move.
+      if (!entityRef.current && !panRef.current && !marqueeRef.current && onHoverRef.current) {
+        const bounds = event.currentTarget.getBoundingClientRect()
+        onHoverRef.current({
+          x: event.clientX - bounds.left,
+          y: event.clientY - bounds.top,
+        })
+      }
+
+      const entity = entityRef.current
+      if (entity && entity.pointerId === event.pointerId) {
+        const dx = event.clientX - entity.lastX
+        const dy = event.clientY - entity.lastY
+        entity.lastX = event.clientX
+        entity.lastY = event.clientY
+
+        // Board space, so the thing under the cursor keeps up with it whatever
+        // the zoom — the pointer deltas are screen px.
+        const zoom = cameraRef.current.zoom || 1
+        onEntityDragRef.current?.(entity.element, { x: dx / zoom, y: dy / zoom })
+        return
+      }
+
       const pan = panRef.current
       if (!pan || pan.pointerId !== event.pointerId) return
 
-    const dx = event.clientX - pan.lastX
-    const dy = event.clientY - pan.lastY
+      const dx = event.clientX - pan.lastX
+      const dy = event.clientY - pan.lastY
 
-    // Accumulate absolute travel, so a slow drag still counts as a drag even if
-    // no single step exceeded the threshold.
-    pan.travel += Math.abs(dx) + Math.abs(dy)
-    pan.lastX = event.clientX
-    pan.lastY = event.clientY
+      // Accumulate absolute travel, so a slow drag still counts as a drag even if
+      // no single step exceeded the threshold.
+      pan.travel += Math.abs(dx) + Math.abs(dy)
+      pan.lastX = event.clientX
+      pan.lastY = event.clientY
 
       markInteractingRef.current()
       changeRef.current(panBy(cameraRef.current, dx, dy))
@@ -317,10 +429,33 @@ export function BoardCanvas({
   const handlePointerUp = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (marqueeRef.current?.pointerId === event.pointerId) {
+        const band = marqueeRef.current
         marqueeRef.current = null
         setMarquee(null)
         releasePointer(event.currentTarget, event.pointerId)
         onMarquee?.(null)
+
+        // A press that travelled is a band, not a click — and the browser is
+        // about to send a click regardless. Swallow exactly that one. The band
+        // start is viewport-local, so bring the release point into the same
+        // frame before measuring.
+        const bounds = event.currentTarget.getBoundingClientRect()
+        const travel =
+          Math.abs(event.clientX - bounds.left - band.startX) +
+          Math.abs(event.clientY - bounds.top - band.startY)
+        if (travel >= DRAG_THRESHOLD) {
+          suppressClickRef.current = {
+            x: event.clientX - bounds.left,
+            y: event.clientY - bounds.top,
+          }
+        }
+        return
+      }
+
+      const entity = entityRef.current
+      if (entity && entity.pointerId === event.pointerId) {
+        entityRef.current = null
+        releasePointer(event.currentTarget, event.pointerId)
         return
       }
 
@@ -354,6 +489,22 @@ export function BoardCanvas({
    */
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      // The browser sends a click after a drag, landing where the drag ended.
+      // That one is not a click and must not reach the bare-board handler, or
+      // it clears the selection the band just made. A later click somewhere
+      // else is a genuine new gesture, so the position has to match.
+      const swallowed = suppressClickRef.current
+      if (swallowed) {
+        suppressClickRef.current = null
+        const box = event.currentTarget.getBoundingClientRect()
+        if (
+          Math.abs(event.clientX - box.left - swallowed.x) <= CLICK_SLOP &&
+          Math.abs(event.clientY - box.top - swallowed.y) <= CLICK_SLOP
+        ) {
+          return
+        }
+      }
+
       if (event.button !== 0 || event.target !== event.currentTarget) return
       const bounds = event.currentTarget.getBoundingClientRect()
       onBackgroundClick?.({
@@ -369,6 +520,9 @@ export function BoardCanvas({
     (event: React.PointerEvent<HTMLDivElement>) => {
       const pan = panRef.current
       if (pan && pan.pointerId === event.pointerId) panRef.current = null
+
+      const entity = entityRef.current
+      if (entity && entity.pointerId === event.pointerId) entityRef.current = null
 
       const band = marqueeRef.current
       if (band && band.pointerId === event.pointerId) {
@@ -388,12 +542,15 @@ export function BoardCanvas({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      // Leaving is a look ending, not a gesture ending — say so, or the cursor
+      // and any highlight keep pointing at something no longer under the mouse.
+      onPointerLeave={() => onHoverRef.current?.(null)}
       onClick={handleClick}
       // The browser menu would otherwise fire on every right-drag release.
       onContextMenu={(event) => event.preventDefault()}
       style={{
         touchAction: 'none',
-        cursor: panRef.current ? 'grabbing' : pinMode ? 'crosshair' : 'default',
+        cursor: panRef.current ? 'grabbing' : pinMode ? 'crosshair' : idleCursor,
       }}
       data-testid="board-canvas"
     >

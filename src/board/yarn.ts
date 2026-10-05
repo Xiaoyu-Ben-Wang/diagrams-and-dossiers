@@ -54,6 +54,35 @@ export function sagFor(gap: number, slack: number = DEFAULT_SLACK): number {
   return Math.min(sag, gap * MAX_SAG_RATIO)
 }
 
+/**
+ * The slack that droops `sag` px over `gap` — the inverse of `sagFor`.
+ *
+ * This is what lets a hand set the sag directly. `sagFor` grows as the square
+ * root of slack, so a drag that moved slack linearly would feel dead near taut
+ * and absurdly sensitive when loose; inverting instead means the string follows
+ * the pointer one-for-one. Slack is scale-free (a fraction of the gap), so the
+ * expression reduces to `8·(sag/gap)²/3` and behaves identically on a 40px
+ * string and a 900px one.
+ *
+ * Only the unclamped branch is inverted. Beyond `MAX_SAG_RATIO` the sag is
+ * pinned, so callers clamp the SAG first — `MAX_SLACK` is where that lands.
+ */
+export function slackForSag(gap: number, sag: number): number {
+  if (gap <= 0) return 0
+  const ratio = Math.max(0, sag) / gap
+  return (8 * ratio * ratio) / 3
+}
+
+/**
+ * The slack beyond which a string cannot droop any further.
+ *
+ * `sagFor` caps sag at `MAX_SAG_RATIO · gap`, and this is the slack that
+ * reaches that cap — the same value for every gap, which is the point of slack
+ * being a fraction. Dragging past it would otherwise keep raising slack while
+ * nothing moved, and would store a number that no longer described the string.
+ */
+export const MAX_SLACK = (8 * MAX_SAG_RATIO * MAX_SAG_RATIO) / 3
+
 /** The control point that makes a quadratic bezier hang like the rope would. */
 export function controlPoint(from: Point, to: Point, slack: number = DEFAULT_SLACK): Point {
   const gap = distance(from, to)
@@ -165,34 +194,14 @@ export function springAtRest(spring: Spring, target: number, epsilon = 0.05): bo
   return Math.abs(spring.value - target) < epsilon && Math.abs(spring.velocity) < epsilon
 }
 
-/** A yarn colour from the palette, with a stable pick for auto-assignment. */
-export const YARN_COLORS = [
-  'crimson',
-  'indigo',
-  'emerald',
-  'gold',
-  'violet',
-  'bone',
-] as const
-
-export type YarnColor = (typeof YARN_COLORS)[number]
-
-export const YARN_HEX: Record<YarnColor, string> = {
-  crimson: '#a3302b',
-  indigo: '#2e4a7d',
-  emerald: '#2f6b4f',
-  gold: '#b8912f',
-  violet: '#5b3a72',
-  bone: '#d8cfb8',
-}
-
-/** Deterministic colour for a connection, so reloading doesn't reshuffle them. */
-export function colorForPair(a: string, b: string): YarnColor {
-  const [first, second] = a < b ? [a, b] : [b, a]
-  let hash = 0
-  const key = `${first}:${second}`
-  for (let i = 0; i < key.length; i++) {
-    hash = (hash * 31 + key.charCodeAt(i)) | 0
-  }
-  return YARN_COLORS[Math.abs(hash) % YARN_COLORS.length]
-}
+/**
+ * Every string is the same red.
+ *
+ * This replaces a palette that picked a colour per connection. That made some
+ * strings vanish rather than merely look plain: 'bone' (#d8cfb8) over the
+ * parchment of a note card (#f7efdd) is a contrast ratio of about 1.2:1, and a
+ * string spends most of its length crossing exactly those cards. A single red
+ * holds up on both the cork and the paper, and a board of strings is easier to
+ * read when the colour carries no meaning to decode.
+ */
+export const YARN_COLOR = '#a3302b'

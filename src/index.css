@@ -158,6 +158,35 @@ body {
     0 0 12px rgb(140 47 30 / 0.55);
 }
 
+/* The bead that adjusts a selected string's sag: a brass ring threaded on the
+   yarn, so it reads as part of the same hardware as the tacks. */
+.yarn-bead {
+  cursor: ns-resize;
+  background: radial-gradient(circle at 34% 30%, #f4e2a1, var(--color-brass) 48%, #7a5f12 100%);
+  box-shadow:
+    0 2px 3px rgb(0 0 0 / 0.4),
+    0 0 0 1px rgb(0 0 0 / 0.28),
+    0 0 10px rgb(201 162 39 / 0.45);
+}
+
+/* Grows on hover and while held, so the target is obvious before it is grabbed.
+   transform rather than width, so the bead never shifts the point it marks. */
+.yarn-bead::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+}
+
+.yarn-bead:hover,
+.yarn-bead:focus-visible {
+  background: radial-gradient(circle at 34% 30%, #ffeec2, #d9a63a 48%, #7a5f12 100%);
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 0.45),
+    0 0 0 1px rgb(0 0 0 / 0.3),
+    0 0 14px rgb(201 162 39 / 0.7);
+}
+
 /* The chronology ribbon: a strip of adding-machine tape with punched holes
    along both edges. Two repeating radial gradients, no filters. */
 .tape {
@@ -294,28 +323,64 @@ body {
   font-weight: 600;
 }
 
-/* Wikilinks. Dotted rather than solid, so a link reads as a thread you could
-   pull rather than a conventional hyperlink dropped into the prose. */
-.article .wikilink {
-  color: #7a4a12;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
+/* ---------------------------------------------------------------------------
+   Affordances
+   ---------------------------------------------------------------------------
+   The interaction states below all existed in the DOM and drew nothing, because
+   none of these classes ever had a rule. A board where selection, the rubber
+   band and the grab strips are all invisible is one you cannot learn by looking
+   at it — you have to already know the gestures.
+   --------------------------------------------------------------------------- */
 
-.article .wikilink:hover {
-  background: rgb(201 162 39 / 0.2);
+/* The rubber band. Geometry was already being computed every frame; this is
+   the part that makes it a thing you can see. */
+.marquee {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  border: 1px solid var(--color-brass);
   border-radius: 2px;
+  background: rgb(201 162 39 / 0.14);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.15);
 }
 
-/* A link to an article that doesn't exist yet — "red link". Kept visible
-   rather than dropped, because a wiki that silently swallows your typo is one
-   where you never find out you made it. */
-.article .wikilink-missing {
-  color: var(--color-wax);
-  text-decoration-style: dashed;
+/* A grab strip. */
+.drag-bar {
+  cursor: grab;
+}
+
+.drag-bar:active {
+  cursor: grabbing;
+}
+
+/* On a post-it it is the only thing saying "this moves", so it gets a faint
+   dotted band that firms up under the pointer. The paper's is a labelled brass
+   tab already; dots on top of it would only muddy it. */
+.post-it .drag-bar {
+  background-image: radial-gradient(circle, currentColor 1px, transparent 1.2px);
+  background-size: 7px 7px;
+  background-repeat: repeat-x;
+  background-position: center;
+  opacity: 0.3;
+  transition: opacity 120ms ease;
+}
+
+.post-it .drag-bar:hover {
+  opacity: 0.7;
+}
+
+/* Selection. Declared after the tack's own status shadows so it wins on the
+   tie: both selectors are two classes, so source order decides. */
+.tack.is-selected {
+  box-shadow:
+    0 0 0 2px var(--color-brass),
+    0 2px 3px rgb(0 0 0 / 0.45),
+    0 0 14px rgb(201 162 39 / 0.8);
+}
+
+.post-it.is-selected {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 3px;
 }
 
 /* Repeatedly-animated entrance for a freshly placed pin. Transform and opacity

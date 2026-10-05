@@ -1,8 +1,7 @@
 # The Case Board
 
 A private, collaborative detective board for a D&D group. Pin notes and long-form markdown
-articles to a shared corkboard, connect them with colored yarn, and read the same content as a
-conventional wiki when you'd rather not use the board view.
+articles to a shared corkboard and connect them with red yarn.
 
 The whole thing is dressed as a fantasy detective's office: cork and parchment, brass tacks, wax
 seals, candlelight, and enchanted yarn that glows faintly. Pinning a note looks like pinning a
@@ -15,7 +14,7 @@ built: text anchoring, yarn, the camera, and the chronology ribbon.
 
 A demo board renders a real markdown article where you can pin any word, drag yarn between pins,
 scrub the campaign chronology, and watch pins find their way back when you edit the article
-around them. The same pins appear as margin markers in the wiki view.
+around them.
 
 Not yet built: accounts, persistence, realtime, and case files.
 See [`docs/architecture.md`](docs/architecture.md) for the full design.
@@ -25,11 +24,11 @@ See [`docs/architecture.md`](docs/architecture.md) for the full design.
 - **Articles** — long-form markdown, rendered as parchment pinned to the board
 - **Pins** — attach a note to *any position inside* an article; the pin finds its way back to the
   right words even after the article is edited
-- **Yarn** — draw colored strings between pins, with realistic sag and physics
+- **Yarn** — draw strings between pins, with realistic sag and physics; click one to select it and
+  drag its bead to tighten or loosen it
 - **Case files** — lasso items to move them together, or save a named, datable group
 - **Timeline** — scrub the campaign chronology and the board flies to that moment; press play for
   a "previously on…" recap
-- **Wiki view** — the same content as a readable wiki, with backlinks
 - **DM layer** — a separate link that reveals content players cannot see, enforced in the database
 
 ## Access
@@ -76,6 +75,8 @@ npm run typecheck
 | Right-click a pin | Write on it |
 | Left-click a word | Pin it |
 | Drag tack → tack | Run yarn |
+| Middle-drag a pin, note or the paper | Move that thing, rather than the board |
+| Click a string | Select it; drag its bead up or down to tighten or loosen it |
 
 **Try the thesis:** click a word in the article to pin it, then press *Insert a sentence above*.
 The pin moves with its words and stays brass-coloured. Press *Delete the pinned sentence* and the
@@ -88,8 +89,9 @@ more than 5px pans, one that doesn't opens the note.
 lag, then sags.
 
 **Try the chronology:** each pin you place lands a session later than the last. Scrub the tape, or
-press *Play recap* to walk the campaign a session at a time. Pins and yarn that the party wouldn't
-know about yet dim out.
+press *Play recap* to walk the campaign a session at a time. Pins the party wouldn't know about yet
+dim out. Yarn does not: a faded line on a chunky tack still reads, but a 2px one at that opacity is
+simply gone, and a board whose strings vanish is worse than one that shows a connection early.
 
 ### Where things live
 
@@ -100,13 +102,12 @@ know about yet dim out.
 | `src/anchors/resolve.ts` | The resolution ladder: exact → windowed → global → orphaned. |
 | `src/anchors/dom.ts` | The bridge to real DOM nodes, and the block-separator rule. |
 | `src/board/BoardCanvas.tsx` | The infinite canvas: wheel zoom, right/middle pan, context clicks. |
-| `src/board/yarn.ts` | Rope sag, bezier control points, springs, stable colours. |
+| `src/board/yarn.ts` | Rope sag, bezier control points, the slack↔sag inverse, springs. |
+| `src/board/yarn-style.ts` | Wool geometry: the strand fan, its noise field, and the geometry cache. |
 | `src/board/camera.ts` | The board/screen transform and fit-bounds framing. |
 | `src/board/PinEditor.tsx` | The note card behind a pin. |
 | `src/board/timeline.ts` | Ordering, scrubbing, and session clustering. |
 | `src/board/TimelineRibbon.tsx` | The tape strip. |
-| `src/wiki/layout.ts` | Pushing clustered margin markers apart so they stay reachable. |
-| `src/wiki/WikiView.tsx` | The reader — same article, same pins, different rendering. |
 | `src/theme/motes.ts` | Dust and candle flicker, as pure simulation. |
 | `src/App.tsx` | The demo board. |
 

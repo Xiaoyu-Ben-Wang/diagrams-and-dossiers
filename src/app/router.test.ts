@@ -4,7 +4,7 @@ import { normalizePath, parseRoute, routeToPath } from './router'
 
 describe('normalizePath', () => {
   it('collapses a trailing slash', () => {
-    expect(normalizePath('/wiki/')).toBe('/wiki')
+    expect(normalizePath('/notes/')).toBe('/notes')
   })
 
   it('keeps the root as a single slash', () => {
@@ -13,11 +13,11 @@ describe('normalizePath', () => {
   })
 
   it('collapses repeated trailing slashes', () => {
-    expect(normalizePath('/wiki///')).toBe('/wiki')
+    expect(normalizePath('/notes///')).toBe('/notes')
   })
 
   it('adds a missing leading slash', () => {
-    expect(normalizePath('wiki')).toBe('/wiki')
+    expect(normalizePath('notes')).toBe('/notes')
   })
 
   it('treats an empty path as the root', () => {
@@ -25,7 +25,7 @@ describe('normalizePath', () => {
   })
 
   it('leaves an ordinary path alone', () => {
-    expect(normalizePath('/wiki/molgar')).toBe('/wiki/molgar')
+    expect(normalizePath('/notes/molgar')).toBe('/notes/molgar')
   })
 })
 
@@ -34,31 +34,8 @@ describe('parseRoute', () => {
     expect(parseRoute('/')).toEqual({ name: 'board' })
   })
 
-  it('maps /wiki to the wiki with no slug', () => {
-    expect(parseRoute('/wiki')).toEqual({ name: 'wiki', slug: null })
-  })
-
-  it('treats a trailing slash as the same page', () => {
-    // /wiki and /wiki/ are the same address, and a deep link may arrive either way.
-    expect(parseRoute('/wiki/')).toEqual({ name: 'wiki', slug: null })
-  })
-
-  it('extracts a slug from /wiki/<slug>', () => {
-    expect(parseRoute('/wiki/molgar-the-pale')).toEqual({
-      name: 'wiki',
-      slug: 'molgar-the-pale',
-    })
-  })
-
-  it('decodes an encoded slug', () => {
-    expect(parseRoute('/wiki/Molgar%20the%20Pale')).toEqual({
-      name: 'wiki',
-      slug: 'Molgar the Pale',
-    })
-  })
-
-  it('falls back to no slug for /wiki/', () => {
-    expect(parseRoute('/wiki/')).toEqual({ name: 'wiki', slug: null })
+  it('treats a trailing slash on the root as the same page', () => {
+    expect(parseRoute('/')).toEqual({ name: 'board' })
   })
 
   it('reports an unknown path rather than silently showing the board', () => {
@@ -66,26 +43,21 @@ describe('parseRoute', () => {
     expect(parseRoute('/nonsense')).toEqual({ name: 'notFound', path: '/nonsense' })
   })
 
-  it('does not treat a wiki-ish prefix as the wiki', () => {
-    expect(parseRoute('/wikis')).toEqual({ name: 'notFound', path: '/wikis' })
+  it('does not treat a bare word as the board', () => {
+    expect(parseRoute('/board')).toEqual({ name: 'notFound', path: '/board' })
   })
 })
 
 describe('routeToPath', () => {
   it('round-trips every route', () => {
-    for (const path of ['/', '/wiki', '/wiki/molgar-the-pale']) {
+    for (const path of ['/']) {
       expect(routeToPath(parseRoute(path))).toBe(path)
     }
   })
 
-  it('encodes a slug containing spaces', () => {
-    expect(routeToPath({ name: 'wiki', slug: 'Molgar the Pale' })).toBe(
-      '/wiki/Molgar%20the%20Pale',
-    )
-  })
-
-  it('round-trips a slug through encoding and parsing', () => {
-    const route = { name: 'wiki', slug: 'The Black Coin' } as const
-    expect(parseRoute(routeToPath(route))).toEqual(route)
+  it('sends an unknown path back to itself, not to the board', () => {
+    // A URL the app does not serve must not be silently rewritten — the user
+    // should see the address they asked for.
+    expect(routeToPath({ name: 'notFound', path: '/nope' })).toBe('/nope')
   })
 })
