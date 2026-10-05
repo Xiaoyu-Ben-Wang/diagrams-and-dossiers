@@ -21,6 +21,7 @@
 
 import type { AnchorRect } from '../anchors/dom'
 import type { TextAnchor } from '../anchors/types'
+import type { EdgeStyle } from '../board/edges'
 import type { Rect } from '../board/camera'
 import type { Point } from '../board/yarn'
 import type { ArticleOptions } from './article-options'
@@ -148,6 +149,15 @@ export interface ImageEntity extends EntityBase {
   fit: ImageFit
   /** Degrees of swing about the top-centre pin, within ±`MAX_TILT_DEG`. */
   rotation: number
+  /**
+   * How the picture's border is damaged — see `board/edges.ts`.
+   *
+   * Per picture rather than a board-wide setting, because the point of the
+   * crop is that a photograph and a clipping did not arrive here the same way.
+   * The damage itself is seeded from the entity's own id, so it is stable
+   * across reloads and different for every picture without being stored.
+   */
+  edge: EdgeStyle
 }
 
 export type BoardEntity = PinEntity | NoteEntity | ArticleEntity | ImageEntity

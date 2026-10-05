@@ -19,6 +19,7 @@
 
 import { useCallback } from 'react'
 
+import { edgeClipPath, seedFromKey, type EdgeStyle } from './edges'
 import { clampTilt } from './pivot'
 import { useRotateDrag } from './useRotateDrag'
 import { useBoardDrag } from './useBoardDrag'
@@ -36,6 +37,8 @@ export interface ImageCardProps {
   /** Degrees of swing about the top-centre pin, within ±45. */
   rotation: number
   fit: 'cover' | 'contain'
+  /** How the border is damaged, from `board/edges.ts`. */
+  edge: EdgeStyle
   selected: boolean
   /** Screen px per board px. Deltas arrive scaled and must be divided out. */
   zoom: number
@@ -54,7 +57,6 @@ export interface ImageCardProps {
   /** Start a string at this picture's pin, as a tack does. */
   onStartYarn: (event: React.PointerEvent) => void
   onSelect: (id: string) => void
-  onRemove: (id: string) => void
 }
 
 /**
@@ -81,13 +83,17 @@ export function ImageCard({
   selected,
   zoom,
   toBoard,
+  edge,
   onMove,
   onRotate,
   onSelect,
-  onRemove,
   onStartYarn,
 }: ImageCardProps) {
   const pivot = { x: x + width / 2, y }
+
+  // Seeded from the picture's own id, so its damage is stable across reloads
+  // and two pictures of the same style are never identical copies.
+  const clipPath = edgeClipPath(edge, width, height, seedFromKey(id))
 
   const drag = useBoardDrag({
     zoom,
@@ -146,13 +152,21 @@ export function ImageCard({
       onPointerUp={drag.onPointerUp}
       onPointerCancel={drag.onPointerCancel}
     >
-      <img
-        src={src}
-        alt={alt ?? ''}
-        draggable={false}
-        className="pointer-events-none h-full w-full select-none"
-        style={{ objectFit: fit }}
-      />
+      {/* The picture and its damaged border.
+          The crop lives on this inner box rather than on the card, because a
+          clip on the card would take the pin and the handle with it — the two
+          things that must stay whole for the picture to be grabbable and
+          swingable. `inset` shadow rides the same silhouette, so a torn edge
+          reads as a torn edge rather than as a polygon cut out of a rectangle. */}
+      <div className="image-frame" style={{ clipPath }}>
+        <img
+          src={src}
+          alt={alt ?? ''}
+          draggable={false}
+          className="pointer-events-none h-full w-full select-none"
+          style={{ objectFit: fit }}
+        />
+      </div>
 
       {/* The tack holding it up, drawn where the registry says the anchor is —
           so a string tied to this picture visibly ends on its pin rather than
@@ -203,16 +217,6 @@ export function ImageCard({
                 strokeLinejoin="round"
               />
             </svg>
-          </button>
-
-          <button
-            type="button"
-            aria-label="Remove picture"
-            className="image-remove absolute -top-2 -right-2 h-5 w-5 rounded-full"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => onRemove(id)}
-          >
-            ×
           </button>
         </>
       ) : null}

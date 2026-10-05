@@ -433,17 +433,71 @@ body {
   pointer-events: none;
 }
 
-.image-remove {
-  border: 1px solid rgb(201 180 138 / 0.6);
-  background: rgb(46 31 20 / 0.85);
-  color: var(--color-board-ink);
-  font-size: 13px;
-  line-height: 1;
+/* The inset shadow rides the same silhouette as the crop, so a torn border
+   reads as a torn border rather than as a polygon cut out of a rectangle. */
+.image-frame {
+  width: 100%;
+  height: 100%;
+  box-shadow: inset 0 0 22px rgb(0 0 0 / 0.45);
+  background: rgb(0 0 0 / 0.25);
+}
+
+/* The bar of edge treatments on a selected picture. */
+.edge-picker {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid rgb(201 180 138 / 0.35);
+  background: rgb(20 13 8 / 0.92);
+  box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.7);
+  cursor: default;
+  /* Above the sheen and the yarn, so it is never the thing behind something. */
+  z-index: 30;
+}
+
+.edge-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 54px;
+  padding: 4px 2px 3px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-board-ink-soft);
   cursor: pointer;
 }
 
-.image-remove:hover {
-  background: var(--color-wax);
+.edge-swatch:hover {
+  background: rgb(201 180 138 / 0.12);
+}
+
+.edge-swatch.is-active {
+  border-color: var(--color-brass);
+  color: var(--color-board-ink);
+  background: rgb(201 180 138 / 0.18);
+}
+
+/* The swatch is parchment, so what it shows is the *crop* rather than the
+   picture — the colours of the thing being cropped would say nothing about
+   which edge this is. */
+.edge-swatch-face {
+  display: block;
+  background: var(--color-parchment-200);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+}
+
+.edge-swatch-label {
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.edge-swatch:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 1px;
 }
 
 /* Selection. Declared after the tack's own status shadows so it wins on the

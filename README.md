@@ -62,7 +62,7 @@ React 19 · TypeScript · Vite · Tailwind v4 · Supabase · `motion` · CodeMir
 ```bash
 npm install
 npm run dev        # the demo board at localhost:5173
-npm test           # 549 tests
+npm test           # 557 tests
 npm run typecheck
 ```
 
@@ -80,6 +80,8 @@ npm run typecheck
 | Drag a pin onto other words | Re-pin it to those words; onto the cork, and it is pulled out |
 | Drop or paste an image file | Pin the picture up where it lands |
 | Select a picture or the page, then drag the ↻ handle | Swing it up to 45° about its pin |
+| Click a picture | Open its border bar — clean, burnt, stamped, torn, deckled, scalloped, scorched, frayed, nibbled, chipped |
+| Right-click a picture, or select it and press Delete | Take it off the board |
 
 **Try the thesis:** click a word in the article to pin it, then press *Insert a sentence above*.
 The pin moves with its words and stays brass-coloured. Press *Delete the pinned sentence* and the

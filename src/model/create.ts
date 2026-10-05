@@ -14,6 +14,7 @@
  */
 
 import type { TextAnchor } from '../anchors/types'
+import type { EdgeStyle } from '../board/edges'
 import type { Point } from '../board/yarn'
 import { DEFAULT_ARTICLE_OPTIONS, type ArticleOptions } from './article-options'
 import { IMAGE_SIZE } from './kinds'
@@ -146,9 +147,9 @@ export function newImage(
   board: Point,
   src: string,
   size: { width: number; height: number },
-  seed: EntitySeed & { alt?: string; fit?: ImageFit } = {},
+  seed: EntitySeed & { alt?: string; fit?: ImageFit; edge?: EdgeStyle } = {},
 ): ImageEntity {
-  const { alt, fit, ...rest } = seed
+  const { alt, fit, edge, ...rest } = seed
   return {
     ...base(rest),
     kind: 'image',
@@ -159,5 +160,8 @@ export function newImage(
     alt,
     fit: fit ?? 'cover',
     rotation: 0,
+    // A picture arrives whole. The crop is something you do to it, so an
+    // untouched photograph is not already pretending to be a burnt one.
+    edge: edge ?? 'clean',
   }
 }

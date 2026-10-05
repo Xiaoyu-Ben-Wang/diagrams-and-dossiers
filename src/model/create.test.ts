@@ -57,6 +57,21 @@ describe('newImage', () => {
     expect(picture.rotation).toBe(0)
   })
 
+  it('arrives whole, with no crop', () => {
+    // A picture comes to the board as it was; the damage is something you do
+    // to it. Defaulting to a burnt edge would have every photograph arrive
+    // pretending to have survived a fire.
+    const picture = newImage({ x: 0, y: 0 }, 'data:,', { width: 10, height: 10 })
+
+    expect(picture.edge).toBe('clean')
+  })
+
+  it('takes an edge when it is given one', () => {
+    const picture = newImage({ x: 0, y: 0 }, 'data:,', { width: 10, height: 10 }, { edge: 'torn' })
+
+    expect(picture.edge).toBe('torn')
+  })
+
   it('gives each picture an id of its own', () => {
     const size = { width: 10, height: 10 }
     const a = newImage({ x: 0, y: 0 }, 'data:,', size)

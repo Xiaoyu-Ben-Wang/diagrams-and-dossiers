@@ -15,6 +15,8 @@ import { resolveAnchor } from './anchors/resolve'
 import { TopBar } from './app/TopBar'
 import { useRoute } from './app/router'
 import { BoardCanvas, type BoardContextTarget } from './board/BoardCanvas'
+import { EdgePicker } from './board/EdgePicker'
+import type { EdgeStyle } from './board/edges'
 import { ImageCard } from './board/ImageCard'
 import { decodeImageFile, firstImage } from './board/image-file'
 import { clampTilt, rotateAbout } from './board/pivot'
@@ -335,7 +337,7 @@ export function App() {
   const [camera, setCamera] = useState<Camera>(IDENTITY_CAMERA)
   const [editingPin, setEditingPin] = useState<{ id: string; x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<
-    (BoardContextTarget & { board: Point }) | null
+    (BoardContextTarget & { board: Point; entityId: string | null }) | null
   >(null)
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [paperRect, setPaperRect] = useState<Rect | null>(null)
@@ -725,6 +727,31 @@ export function App() {
   /** Select one thing and nothing else — what a click on a picture means. */
   const selectOnly = useCallback((id: string) => {
     setSelection(new Set([id]))
+  }, [])
+
+  /** Re-crop a picture's border. */
+  const setImageEdge = useCallback((id: string, edge: EdgeStyle) => {
+    setEntities((previous) =>
+      previous.map((entity) =>
+        entity.id === id && entity.kind === 'image'
+          ? { ...entity, edge, updatedAt: Date.now() }
+          : entity,
+      ),
+    )
+  }, [])
+
+  /** Take entities off the board, whatever they are. */
+  const removeEntities = useCallback((ids: readonly string[]) => {
+    if (ids.length === 0) return
+    const doomed = new Set(ids)
+    setEntities((previous) => previous.filter((entity) => !doomed.has(entity.id)))
+    // A string to something that is gone has nothing to attach to, and would
+    // sit in the list invisibly until it happened to resolve again.
+    setStrings((previous) =>
+      previous.filter((string) => !doomed.has(string.from) && !doomed.has(string.to)),
+    )
+    setSelection((previous) => new Set([...previous].filter((id) => !doomed.has(id))))
+    setHovered((previous) => (previous && doomed.has(previous.id) ? null : previous))
   }, [])
 
   /**
@@ -1182,10 +1209,20 @@ export function App() {
       ? { x: target.clientX - box.left, y: target.clientY - box.top }
       : { x: 0, y: 0 }
 
+    // What was right-clicked, if it was a thing rather than cork. The menu is
+    // built from this, which is why a picture gets an entry no other kind has.
+    const onEntity = element ? entityIdFromElement(element) : null
+
     setContextMenu({
       ...target,
       board: screenToBoard(cameraRef.current, viewportPoint),
+      entityId: onEntity,
     })
+
+    // Right-clicking a picture also selects it, so the border bar it is about
+    // to offer is already up and the thing the menu will act on is visible as
+    // the thing you pointed at.
+    if (onEntity) setSelection(new Set([onEntity]))
   }, [])
 
   const createPostIt = useCallback(
@@ -1494,13 +1531,13 @@ export function App() {
   }, [])
 
   /**
-   * Delete takes the selected string off the board; Escape lets go of it.
+   * Delete takes what is selected off the board; Escape lets go of it.
    *
-   * This is the first keyboard deletion in the app, so it is deliberate about
-   * where it may fire. Not while a field has focus — the article is selectable
-   * text, a post-it is a textarea and the pin editor is full of inputs, and
-   * Backspace in any of them is someone editing, not deleting. And not while a
-   * card is open, where Escape already means "close me".
+   * It is deliberate about where it may fire. Not while a field has focus — the
+   * article is selectable text, a post-it is a textarea and the pin editor is
+   * full of inputs, and Backspace in any of them is someone editing, not
+   * deleting. And not while a card is open, where Escape already means "close
+   * me", and where the thing selected is the thing the card is editing.
    */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -1516,9 +1553,19 @@ export function App() {
       if (editingPin || contextMenu || prefsOpen || movingPin) return
 
       if (event.key === 'Delete' || event.key === 'Backspace') {
-        if (!selectedString) return
-        event.preventDefault()
-        removeString(selectedString.id)
+        // A selected string goes first. It is the only thing on the board you
+        // select by clicking it rather than by enclosing it, so when both a
+        // string and an object are selected the string is what was last
+        // pointed at.
+        if (selectedString) {
+          event.preventDefault()
+          removeString(selectedString.id)
+          return
+        }
+        if (selection.size > 0) {
+          event.preventDefault()
+          removeEntities([...selection])
+        }
         return
       }
       if (event.key === 'Escape' && selection.size > 0) setSelection(new Set())
@@ -1526,11 +1573,32 @@ export function App() {
 
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [contextMenu, editingPin, movingPin, prefsOpen, removeString, selectedString, selection])
+  }, [
+    contextMenu,
+    editingPin,
+    movingPin,
+    prefsOpen,
+    removeEntities,
+    removeString,
+    selectedString,
+    selection,
+  ])
 
   const images = useMemo(
     () => entities.filter((entity): entity is ImageEntity => entity.kind === 'image'),
     [entities],
+  )
+
+  /**
+   * The one picture the border bar is for.
+   *
+   * Exactly one, not "any image in the selection": the bar points at a single
+   * object, and with several selected there is no one picture to hang it under
+   * and no one answer to show in it.
+   */
+  const selectedImage = useMemo(
+    () => (selection.size === 1 ? images.find((image) => selection.has(image.id)) ?? null : null),
+    [images, selection],
   )
 
   const anchored = pins.filter((pin) => pin.rect)
@@ -1539,8 +1607,27 @@ export function App() {
   const repaired = pins.filter((pin) => pin.status === 'repaired').length
   const activePin = editingPin ? byId.get(editingPin.id) : null
 
+  const contextEntity = contextMenu?.entityId
+    ? entities.find((entity) => entity.id === contextMenu.entityId) ?? null
+    : null
+
   const contextItems: ContextMenuEntry[] = contextMenu
     ? [
+        // Only for something that can actually be taken off the board. A
+        // picture is the only kind that offers it here: the others each have
+        // their own way to go, and a menu that can delete a pin holding a
+        // written note is a menu that loses writing.
+        ...(contextEntity?.kind === 'image'
+          ? [
+              {
+                id: 'remove-image',
+                label: 'Remove picture',
+                hint: 'Take it off the board',
+                onSelect: () => removeEntities([contextEntity.id]),
+              },
+              { id: 'sep-0', separator: true } as ContextMenuEntry,
+            ]
+          : []),
         {
           id: 'post-it',
           label: 'Create post-it',
@@ -1788,6 +1875,7 @@ export function App() {
                     height={picture.height}
                     rotation={picture.rotation}
                     fit={picture.fit}
+                    edge={picture.edge}
                     selected={selection.has(picture.id)}
                     zoom={camera.zoom}
                     toBoard={worldPoint}
@@ -1795,9 +1883,27 @@ export function App() {
                     onRotate={rotateEntity}
                     onSelect={selectOnly}
                     onStartYarn={(event) => beginString(event, picture.id, anchorPoints.get(picture.id) ?? null)}
-                    onRemove={removeEntity}
                   />
                 ))}
+
+                {/* The border bar follows the selection: it belongs to the one
+                    picture you are looking at, not to the board. */}
+                {selectedImage ? (
+                  <EdgePicker
+                    id={selectedImage.id}
+                    edge={selectedImage.edge}
+                    box={
+                      descriptorFor(selectedImage).bounds(selectedImage, entityContext) ?? {
+                        x: selectedImage.board.x,
+                        y: selectedImage.board.y,
+                        width: selectedImage.width,
+                        height: selectedImage.height,
+                      }
+                    }
+                    tilt={selectedImage.rotation}
+                    onPick={(style) => setImageEdge(selectedImage.id, style)}
+                  />
+                ) : null}
 
                 {postIts.map((note) => (
                   <PostIt

@@ -88,6 +88,7 @@ const image = (over: Partial<ImageEntity> = {}): ImageEntity => ({
   height: IMAGE_SIZE.height,
   fit: 'cover',
   rotation: 0,
+  edge: 'clean' as const,
   ...over,
 })
 
