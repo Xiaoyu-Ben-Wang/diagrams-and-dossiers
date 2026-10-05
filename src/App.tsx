@@ -13,8 +13,10 @@ import {
 } from './anchors/dom'
 import { resolveAnchor } from './anchors/resolve'
 import { TopBar } from './app/TopBar'
+import { LOCAL_VIEWER } from './access/permissions'
 import { useRoute } from './app/router'
 import { BoardCanvas, type BoardContextTarget } from './board/BoardCanvas'
+import { createBoardStore, useBoard, type BoardStore } from './board/store'
 import { EdgePicker } from './board/EdgePicker'
 import type { EdgeStyle } from './board/edges'
 import { ImageCard } from './board/ImageCard'
@@ -70,7 +72,6 @@ import {
   type EntityContext,
   type ImageEntity,
   type NoteEntity,
-  type StringLink,
 } from './model/types'
 import { PREFERENCES_PANEL_ID, PreferencesPanel } from './theme/PreferencesPanel'
 import { usePreferences } from './theme/preferences'
@@ -322,9 +323,27 @@ export function App() {
    * `model/kinds.ts`, so a caller loops over entities once instead of looping
    * over a collection per kind and remembering what each one can do.
    */
-  const [entities, setEntities] = useState<BoardEntity[]>([])
+  /**
+   * The board's data, and the seams every change to it passes through.
+   *
+   * `useState` arrays until now, written by a dozen call sites that each
+   * computed the next array themselves. That is a fine way to build a board and
+   * a hopeless way to add permissions or live editing to one: "may this person
+   * do this?" has to be asked in one place or it is asked in eleven and
+   * answered differently in three, and a peer needs to hear "this one pin
+   * moved" rather than being sent a whole board.
+   *
+   * Built once and held in a ref rather than created per render: a store is a
+   * thing with an identity — subscribers attach to it — and a new one each
+   * render would drop them.
+   */
+  const storeRef = useRef<BoardStore | null>(null)
+  if (!storeRef.current) {
+    storeRef.current = createBoardStore({ viewer: LOCAL_VIEWER })
+  }
+  const store = storeRef.current
+  const { entities, strings } = useBoard(store)
   const [pins, setPins] = useState<PinView[]>([])
-  const [strings, setStrings] = useState<StringLink[]>([])
 
   // Memoised, not filtered inline: these feed useCallback and effect dependency
   // lists, and a fresh array every render would re-run the anchor projection —
@@ -606,11 +625,10 @@ export function App() {
   /** Stick a pin straight into the board, at a point in board space. */
   const createFreePin = useCallback(
     (board: Point) => {
-      setEntities((previous) => [
-        ...previous,
+      store.addEntities((state) => [
         newFreePin(board, {
-          occurredAt: CAMPAIGN_EPOCH + previous.filter(isPin).length * SESSION_GAP_MS,
-          dateLabel: nextDateLabel(previous.filter(isPin).length),
+          occurredAt: CAMPAIGN_EPOCH + state.entities.filter(isPin).length * SESSION_GAP_MS,
+          dateLabel: nextDateLabel(state.entities.filter(isPin).length),
         }),
       ])
     },
@@ -648,11 +666,10 @@ export function App() {
           : null
 
         if (anchor?.quote) {
-          setEntities((previous) => [
-            ...previous,
+          store.addEntities((state) => [
             newAnchoredPin(ARTICLE_ID, anchor, {
-              occurredAt: CAMPAIGN_EPOCH + previous.filter(isPin).length * SESSION_GAP_MS,
-              dateLabel: nextDateLabel(previous.filter(isPin).length),
+              occurredAt: CAMPAIGN_EPOCH + state.entities.filter(isPin).length * SESSION_GAP_MS,
+              dateLabel: nextDateLabel(state.entities.filter(isPin).length),
             }),
           ])
           return
@@ -672,9 +689,12 @@ export function App() {
    * being re-anchored to different words. Those replace the entity rather than
    * shifting it, because the thing holding it is what changed.
    */
-  const replaceEntity = useCallback((next: BoardEntity) => {
-    setEntities((previous) => previous.map((entity) => (entity.id === next.id ? next : entity)))
-  }, [])
+  const replaceEntity = useCallback(
+    (next: BoardEntity) => {
+      store.updateEntities([next.id], () => next)
+    },
+    [store],
+  )
 
   /**
    * Pin a picture the user brought in.
@@ -705,14 +725,13 @@ export function App() {
       const at = worldPoint(clientX, clientY)
       const board = { x: at.x - footprint.width / 2, y: at.y - footprint.height / 2 }
 
-      setEntities((previous) => [
-        ...previous,
+      store.addEntities((state) => [
         newImage(board, decoded.src, footprint, {
           alt: decoded.name,
           // A picture with no description is a picture nothing can be said
           // about, and the name it arrived under is the only one there is.
           bodyMd: decoded.name,
-          dateLabel: nextDateLabel(previous.length),
+          dateLabel: nextDateLabel(state.entities.length),
         }),
       ])
     },
@@ -722,12 +741,8 @@ export function App() {
   /** Swing a sheet about its pin. Shared by images and, later, articles. */
   const rotateEntity = useCallback((id: string, degrees: number) => {
     const angle = clampTilt(degrees)
-    setEntities((previous) =>
-      previous.map((entity) => {
-        if (entity.id !== id) return entity
-        if (entity.kind === 'image') return { ...entity, rotation: angle, updatedAt: Date.now() }
-        return entity
-      }),
+    store.updateEntities([id], (entity) =>
+      entity.kind === 'image' ? { ...entity, rotation: angle, updatedAt: Date.now() } : entity,
     )
   }, [])
 
@@ -740,12 +755,10 @@ export function App() {
    * is still a pure function of what is stored on it.
    */
   const rerollEdge = useCallback((id: string) => {
-    setEntities((previous) =>
-      previous.map((entity) =>
-        entity.id === id && entity.kind === 'image'
-          ? { ...entity, edgeSeed: freshEdgeSeed(), updatedAt: Date.now() }
-          : entity,
-      ),
+    store.updateEntities([id], (entity) =>
+      entity.kind === 'image'
+        ? { ...entity, edgeSeed: freshEdgeSeed(), updatedAt: Date.now() }
+        : entity,
     )
   }, [])
 
@@ -758,12 +771,10 @@ export function App() {
    */
   const setImageEdge = useCallback(
     (id: string, edge: EdgeStyle) => {
-      setEntities((previous) =>
-        previous.map((entity) =>
-          entity.id === id && entity.kind === 'image'
-            ? { ...entity, edge, edgeSeed: freshEdgeSeed(), updatedAt: Date.now() }
-            : entity,
-        ),
+      store.updateEntities([id], (entity) =>
+        entity.kind === 'image'
+          ? { ...entity, edge, edgeSeed: freshEdgeSeed(), updatedAt: Date.now() }
+          : entity,
       )
     },
     [],
@@ -789,34 +800,30 @@ export function App() {
 
   /** Resize a picture, keeping the pin it hangs from where it is. */
   const resizeImage = useCallback((id: string, size: { width: number; height: number }) => {
-    setEntities((previous) =>
-      previous.map((entity) => {
-        if (entity.id !== id || entity.kind !== 'image') return entity
-        // Anchored at the pin at the top-centre, so a picture grows and shrinks
-        // from where it is pinned rather than from a corner that the eye is not
-        // watching.
-        const pivotX = entity.board.x + entity.width / 2
-        return {
-          ...entity,
-          width: size.width,
-          height: size.height,
-          board: { x: pivotX - size.width / 2, y: entity.board.y },
-          updatedAt: Date.now(),
-        }
-      }),
-    )
-  }, [])
+    store.updateEntities([id], (entity) => {
+      if (entity.kind !== 'image') return entity
+      // Anchored at the pin at the top-centre, so a picture grows and shrinks
+      // from where it is pinned rather than from a corner that the eye is not
+      // watching.
+      const pivotX = entity.board.x + entity.width / 2
+      return {
+        ...entity,
+        width: size.width,
+        height: size.height,
+        board: { x: pivotX - size.width / 2, y: entity.board.y },
+        updatedAt: Date.now(),
+      }
+    })
+  }, [store])
 
   /** Take entities off the board, whatever they are. */
   const removeEntities = useCallback((ids: readonly string[]) => {
     if (ids.length === 0) return
     const doomed = new Set(ids)
-    setEntities((previous) => previous.filter((entity) => !doomed.has(entity.id)))
-    // A string to something that is gone has nothing to attach to, and would
-    // sit in the list invisibly until it happened to resolve again.
-    setStrings((previous) =>
-      previous.filter((string) => !doomed.has(string.from) && !doomed.has(string.to)),
-    )
+    // The store takes the strings that were tied to them with them: one that is
+    // left behind has nothing to attach to and would sit in the list invisibly
+    // until it happened to resolve again.
+    store.removeEntities(ids)
     setSelection((previous) => new Set([...previous].filter((id) => !doomed.has(id))))
     setHovered((previous) => (previous && doomed.has(previous.id) ? null : previous))
   }, [])
@@ -1113,24 +1120,16 @@ export function App() {
       }
 
       if (nearest) {
-        const to = nearest.id
-        setStrings((previous) => {
-          const exists = previous.some(
-            (s) => (s.from === from && s.to === to) || (s.from === to && s.to === from),
-          )
-          if (exists) return previous
-          return [
-            ...previous,
-            {
-              id: crypto.randomUUID(),
-              from,
-              to,
-              slack: DEFAULT_SLACK,
-              color: YARN_COLOR,
-              style: 'solid' as const,
-              visibility: 'shared' as const,
-            },
-          ]
+        // The store refuses a second string between the same pair, which the
+        // gesture used to have to check for itself.
+        store.addString({
+          id: crypto.randomUUID(),
+          from,
+          to: nearest.id,
+          slack: DEFAULT_SLACK,
+          color: YARN_COLOR,
+          style: 'solid',
+          visibility: 'shared',
         })
       }
 
@@ -1139,7 +1138,7 @@ export function App() {
       dragFromRef.current = null
       setDragFrom(null)
     },
-    [worldPoint],
+    [store, worldPoint],
   )
 
   /**
@@ -1222,15 +1221,12 @@ export function App() {
 
   /** Move everything selected by a board-space delta. */
   const moveSelection = useCallback((delta: Point) => {
-    setEntities((previous) =>
-      previous.map((entity) => {
-        if (!selection.has(entity.id)) return entity
-        const descriptor = descriptorFor(entity)
-        // An anchored pin, if one were ever selected, stores the shift against
-        // its words rather than moving — the descriptor decides that, not us.
-        return descriptor.capabilities(entity).movable ? descriptor.move(entity, delta) : entity
-      }),
-    )
+    store.updateEntities([...selection], (entity) => {
+      const descriptor = descriptorFor(entity)
+      // An anchored pin, if one were ever selected, stores the shift against
+      // its words rather than moving — the descriptor decides that, not us.
+      return descriptor.capabilities(entity).movable ? descriptor.move(entity, delta) : entity
+    })
   }, [selection])
 
   /**
@@ -1294,11 +1290,10 @@ export function App() {
 
   const createPostIt = useCallback(
     (point: Point) => {
-      setEntities((previous) => [
-        ...previous,
+      store.addEntities((state) => [
         newNote(point, {
-          color: POST_IT_COLORS[previous.length % POST_IT_COLORS.length],
-          dateLabel: nextDateLabel(previous.length),
+          color: POST_IT_COLORS[state.entities.length % POST_IT_COLORS.length],
+          dateLabel: nextDateLabel(state.entities.length),
         }),
       ])
     },
@@ -1323,13 +1318,10 @@ export function App() {
    * it still belongs to its quote and will follow it through edits.
    */
   const moveOne = useCallback((id: string, delta: Point) => {
-    setEntities((previous) =>
-      previous.map((entity) => {
-        if (entity.id !== id) return entity
-        const descriptor = descriptorFor(entity)
-        return descriptor.capabilities(entity).movable ? descriptor.move(entity, delta) : entity
-      }),
-    )
+    store.updateEntities([id], (entity) => {
+      const descriptor = descriptorFor(entity)
+      return descriptor.capabilities(entity).movable ? descriptor.move(entity, delta) : entity
+    })
   }, [])
 
   /**
@@ -1399,26 +1391,26 @@ export function App() {
 
   /** Rewrite one entity's body. Shared by kinds — a body is a body. */
   const setEntityBody = useCallback((id: string, bodyMd: string) => {
-    setEntities((previous) =>
-      previous.map((entity) =>
-        entity.id === id ? { ...entity, bodyMd, updatedAt: Date.now() } : entity,
-      ),
-    )
+    store.updateEntities([id], (entity) => ({ ...entity, bodyMd, updatedAt: Date.now() }))
   }, [])
 
   /** Take an entity off the board, and every string that touched it with it. */
-  const removeEntity = useCallback((id: string) => {
-    setEntities((previous) => previous.filter((entity) => entity.id !== id))
-    setStrings((previous) => previous.filter((s) => s.from !== id && s.to !== id))
-    setEditingPin(null)
-  }, [])
+  const removeEntity = useCallback(
+    (id: string) => {
+      store.removeEntities([id])
+      setEditingPin(null)
+    },
+    [store],
+  )
 
   const clearBoard = useCallback(() => {
-    setEntities([])
-    setStrings([])
+    // Every id, rather than a "clear" the store would have to special-case: a
+    // board that is emptied by describing each thing that left it is a board
+    // that can be emptied by a peer too.
+    store.removeEntities(store.get().entities.map((entity) => entity.id))
     setEditingPin(null)
     setContextMenu(null)
-  }, [])
+  }, [store])
 
   const timeline = useMemo(
     () =>
@@ -1573,9 +1565,8 @@ export function App() {
    * described the string — and would only unwind on the way back down.
    */
   const dragStringSag = useCallback((id: string, dy: number) => {
-    setStrings((previous) =>
-      previous.map((string) => {
-        if (string.id !== id) return string
+    store.updateStrings([id], (string) => {
+      {
         const drawn = drawableStringsRef.current.find((item) => item.id === id)
         if (!drawn) return string
 
@@ -1588,14 +1579,17 @@ export function App() {
         // frame and evict the board's settled strings as it went.
         const slack = Math.round(Math.min(MAX_SLACK, slackForSag(gap, sag)) * SLACK_STEP) / SLACK_STEP
         return slack === string.slack ? string : { ...string, slack }
-      }),
-    )
-  }, [])
+      }
+    })
+  }, [store])
 
-  const removeString = useCallback((id: string) => {
-    setStrings((previous) => previous.filter((string) => string.id !== id))
-    setSelection((previous) => new Set([...previous].filter((selected) => selected !== id)))
-  }, [])
+  const removeString = useCallback(
+    (id: string) => {
+      store.removeStrings([id])
+      setSelection((previous) => new Set([...previous].filter((selected) => selected !== id)))
+    },
+    [store],
+  )
 
   /**
    * Delete takes what is selected off the board; Escape lets go of it.
