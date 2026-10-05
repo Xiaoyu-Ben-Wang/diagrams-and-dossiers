@@ -49,6 +49,7 @@ import {
 import { maxStrandDeviation, seedFromKey, yarnStrands } from './board/yarn-style'
 import { newAnchoredPin, newFreePin, newNote } from './model/create'
 import { descriptorFor, NOTE_SIZE } from './model/kinds'
+import { pinToBoard, pinToText, sameAnchor } from './model/pinning'
 import {
   isAnchoredPin,
   isPin,
@@ -89,6 +90,21 @@ const ARTICLE_TITLE = 'The Drowned Bell'
  * that has to survive a reload once persistence lands.
  */
 const ARTICLE_ID = 'the-drowned-bell'
+
+/**
+ * How far off its own word a dropped pin may land and still count as a nudge,
+ * in screen px.
+ *
+ * A caret clamps to the nearest text, so without this a tack shifted by more
+ * than the width of the gap after its word silently re-pins itself to the next
+ * one — about five pixels of leeway, which is less than the tack is wide.
+ *
+ * It is a compromise, and worth knowing where it bites: two short words with
+ * only a space between them both fall inside one tack's slop, so a pin cannot
+ * be re-pinned from one to the other in a single small drag. Dragging it
+ * further, or onto a longer word, still re-anchors.
+ */
+const NUDGE_SLOP_PX = 18
 
 const SNAP_RADIUS = 34
 /**
@@ -174,8 +190,49 @@ function caretRangeFromPoint(x: number, y: number): Range | null {
   return range
 }
 
+/**
+ * The text under a screen point, ignoring any pin that happens to be there.
+ *
+ * `caretRangeFromPoint` hit-tests the real DOM, and during a pin drag the pin
+ * is underneath the cursor — so the caret resolves inside the tack rather than
+ * in the sentence it is being dragged over, and every drop reads as "not on any
+ * text". The tacks are hidden for the duration of the measurement only; it is
+ * all synchronous inside one event handler, so nothing is ever painted in
+ * between and the trick is invisible.
+ *
+ * The inline style is cleared rather than restored to its old value, so the
+ * `pointer-events-auto` class that normally applies to a tack takes over again
+ * the moment this returns.
+ */
+function caretRangeThroughPins(x: number, y: number): Range | null {
+  const tacks = Array.from(document.querySelectorAll<HTMLElement>('[data-pin-id]'))
+  for (const tack of tacks) tack.style.pointerEvents = 'none'
+  try {
+    return caretRangeFromPoint(x, y)
+  } finally {
+    for (const tack of tacks) tack.style.pointerEvents = ''
+  }
+}
+
 function tackPoint(rect: AnchorRect): Point {
   return { x: rect.x + rect.width - 6 + 7, y: rect.y - 5 + 7 }
+}
+
+/**
+ * Whether a point lies within `slack` of a rect, on either axis.
+ *
+ * Used to decide that a pin dropped just off its word is still being adjusted
+ * rather than re-pinned. The slack is passed already divided by the zoom, so
+ * the forgiveness is a constant distance on screen rather than one that grows
+ * as the board is zoomed in.
+ */
+function withinSlop(point: Point, rect: AnchorRect, slack: number): boolean {
+  return (
+    point.x >= rect.x - slack &&
+    point.x <= rect.x + rect.width + slack &&
+    point.y >= rect.y - slack &&
+    point.y <= rect.y + rect.height + slack
+  )
 }
 
 /**
@@ -355,6 +412,13 @@ export function App() {
   dragFromRef.current = dragFrom
   const pinsRef = useRef(pins)
   pinsRef.current = pins
+  // The full list, for the handlers that need to look an entity up by id
+  // without taking a dependency on the array — a pointer handler rebuilt on
+  // every entity change would rebind mid-gesture.
+  const entitiesRef = useRef(entities)
+  entitiesRef.current = entities
+  const paperRectRef = useRef(paperRect)
+  paperRectRef.current = paperRect
   // Assigned where the strings are resolved, far below. Declared up here because
   // the pointer handlers that pick a string are defined before that, and a ref
   // is what lets them read the latest resolution without depending on it.
@@ -455,7 +519,14 @@ export function App() {
         }
 
         const range = flatRangeToDomRange(projection, result.start, result.end)
-        const rects = range ? rangeToContainerRects(range, element) : []
+        // Read through the ref, not the state: the rects come out in the
+        // article's own space once the scale is divided out, so they do not
+        // depend on which zoom was in force when they were measured — and
+        // taking `camera.zoom` as a dependency would re-resolve every anchor on
+        // every frame of a zoom.
+        const rects = range
+          ? rangeToContainerRects(range, element, cameraRef.current.zoom || 1)
+          : []
         const first = rects[0] ?? null
 
         if (result.status === 'exact') {
@@ -548,6 +619,99 @@ export function App() {
       createFreePin(worldPoint(clientX, clientY))
     },
     [createFreePin, nextDateLabel, worldPoint],
+  )
+
+  /**
+   * Swap an entity for another carrying the same id.
+   *
+   * For the changes that are not a move — a pin gaining an anchor, losing one,
+   * being re-anchored to different words. Those replace the entity rather than
+   * shifting it, because the thing holding it is what changed.
+   */
+  const replaceEntity = useCallback((next: BoardEntity) => {
+    setEntities((previous) => previous.map((entity) => (entity.id === next.id ? next : entity)))
+  }, [])
+
+  /**
+   * Where a dragged pin comes to rest.
+   *
+   * A drag is the only way to say "not there, *there*", so it has to be able to
+   * change what holds a pin and not merely shift it. Until this existed a pin
+   * was welded to the words it was first given: dragging it onto a different
+   * passage moved the tack and left it still claiming the old quote, and a pin
+   * carried in from the cork sat on the text without ever being stuck into it.
+   *
+   * The release point settles it:
+   *
+   *   near its own word    a nudge — the offset the drag applied is kept
+   *   over other words     re-anchor to them
+   *   off the page         pull the pin out and stick it in the cork
+   *
+   * The first case is the subtle one, and `NUDGE_SLOP_PX` is why it is not
+   * simply "different word, so re-anchor". A caret clamps: `caretRangeFromPoint`
+   * asked anywhere on the page returns the nearest text, so a tack shifted a
+   * few pixels to stop two of them overlapping resolves to whatever word it slid
+   * onto — and the pin silently changes *what it is about* because the hand
+   * moved a hair. Measured from the tack, a rightward nudge only had about five
+   * pixels of room before it crossed into the next word. So a drop near the
+   * word the pin already holds counts as adjusting that word, whatever the
+   * caret clamped to.
+   *
+   * There is no case for "on the page but not on any word": the clamp means
+   * there isn't one. A page with no text at all is the exception, and there the
+   * pin keeps its quote rather than being thrown onto the cork.
+   */
+  const handlePinDrop = useCallback(
+    (pinId: string, clientX: number, clientY: number) => {
+      const pin = entitiesRef.current.find((entity) => entity.id === pinId)
+      if (!pin || !isPin(pin)) return
+
+      const projection = projectionRef.current
+      const element = articleRef.current
+      const range = element ? caretRangeThroughPins(clientX, clientY) : null
+
+      if (projection && element && range && element.contains(range.startContainer)) {
+        const flatRange = domRangeToFlatRange(projection, range)
+        const anchor = flatRange
+          ? createAnchor(projection.flat.text, flatRange.start, flatRange.end)
+          : null
+
+        if (anchor?.quote) {
+          if (isAnchoredPin(pin)) {
+            // Already on these words: a nudge, and the drag stored the offset.
+            if (sameAnchor(pin.anchor, anchor)) return
+
+            // On other words, but still close enough to the pin's own to be the
+            // same adjustment — see the note above.
+            const box = element.getBoundingClientRect()
+            const zoom = cameraRef.current.zoom || 1
+            const local = { x: (clientX - box.left) / zoom, y: (clientY - box.top) / zoom }
+            const rect = pinsRef.current.find((view) => view.id === pinId)?.rect
+            if (rect && withinSlop(local, rect, NUDGE_SLOP_PX / zoom)) return
+          }
+
+          replaceEntity(pinToText(pin, ARTICLE_ID, anchor))
+          return
+        }
+      }
+
+      // Off the readable text. On the page the pin keeps the quote it holds —
+      // this is the page-with-no-words case, where the caret had nothing to
+      // clamp to — and off the page it is pulled out and stuck in the cork.
+      const board = worldPoint(clientX, clientY)
+      const paper = paperRectRef.current
+      const onPaper =
+        paper !== null &&
+        board.x >= paper.x &&
+        board.x <= paper.x + paper.width &&
+        board.y >= paper.y &&
+        board.y <= paper.y + paper.height
+
+      if (onPaper) return
+
+      replaceEntity(pinToBoard(pin, board))
+    },
+    [replaceEntity, worldPoint],
   )
 
   /**
@@ -1339,6 +1503,7 @@ export function App() {
                             zoom={camera.zoom}
                             onStartYarn={(event) => beginString(event, pin)}
                             onMove={moveOne}
+                            onDrop={handlePinDrop}
                             onHover={handlePinHover}
                           />
                         ) : null,
@@ -1363,6 +1528,7 @@ export function App() {
                       zoom={camera.zoom}
                       onStartYarn={(event) => beginString(event, pin)}
                       onMove={moveOne}
+                      onDrop={handlePinDrop}
                       onHover={handlePinHover}
                     />
                   ) : null,
@@ -1597,6 +1763,7 @@ function Tack({
   zoom,
   onStartYarn,
   onMove,
+  onDrop,
   onHover,
 }: {
   pin: PinView
@@ -1608,11 +1775,16 @@ function Tack({
   zoom: number
   onStartYarn: (event: React.PointerEvent) => void
   onMove: (id: string, delta: Point) => void
+  /** Only fires in move mode: where the pin was let go of. */
+  onDrop: (id: string, clientX: number, clientY: number) => void
   onHover: (pin: PinView, element: Element | null) => void
 }) {
   const drag = useBoardDrag({
     zoom,
     onDrag: (delta) => onMove(pin.id, delta),
+    // The drag handlers are bound only in move mode — outside it a press on a
+    // tack starts a string instead — so this can only fire while repositioning.
+    onEnd: (end) => onDrop(pin.id, end.clientX, end.clientY),
   })
 
   const described = pin.body.trim().length > 0

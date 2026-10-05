@@ -28,6 +28,15 @@ export interface BoardDragOptions {
   onDrag: (delta: Point) => void
   /** Called on release if the pointer never travelled far enough to be a drag. */
   onTap?: () => void
+  /**
+   * Called on release, once the drag is over, with where the pointer finished.
+   *
+   * Screen coordinates rather than a board delta, because what a drop usually
+   * needs is to ask what is *under* it — which is a question about the DOM, and
+   * the DOM does not know about board space. Runs before `onTap`, so a release
+   * that never travelled far enough to be a drag sees this too.
+   */
+  onEnd?: (end: { clientX: number; clientY: number; travelled: boolean }) => void
   /** Current camera zoom. Read through a ref, so a zoom mid-drag stays correct. */
   zoom: number
   /** Blocks the drag entirely — e.g. an object that is mid-edit. */
@@ -51,6 +60,7 @@ interface DragState {
 export function useBoardDrag({
   onDrag,
   onTap,
+  onEnd,
   zoom,
   disabled = false,
 }: BoardDragOptions): BoardDragHandlers {
@@ -63,6 +73,8 @@ export function useBoardDrag({
   dragRef.current = onDrag
   const tapRef = useRef(onTap)
   tapRef.current = onTap
+  const endRef = useRef(onEnd)
+  endRef.current = onEnd
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent) => {
@@ -116,7 +128,9 @@ export function useBoardDrag({
       // Already released.
     }
 
-    if (state.travel < DRAG_THRESHOLD) tapRef.current?.()
+    const travelled = state.travel >= DRAG_THRESHOLD
+    endRef.current?.({ clientX: event.clientX, clientY: event.clientY, travelled })
+    if (!travelled) tapRef.current?.()
   }, [])
 
   const onPointerCancel = useCallback((event: React.PointerEvent) => {

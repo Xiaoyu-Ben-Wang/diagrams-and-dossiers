@@ -200,11 +200,30 @@ export interface AnchorRect {
  * the caller needs to draw a highlight that follows the text rather than a
  * single box around everything in between.
  *
+ * `scale` is the transform between client space and the container's own, and it
+ * is required rather than defaulted because leaving it out is not a near miss —
+ * it is the bug this parameter exists to fix. The container sits inside the
+ * camera layer, so every client rect is the container-local one multiplied by
+ * the zoom. Subtracting the container's origin converts the *offset* but not the
+ * *size*: the result is still a delta in scaled pixels, and using it as a local
+ * coordinate scales it a second time. Pins therefore sat down and to the right
+ * of the words they were pinned to, by an amount that grew with the zoom — at
+ * 131% a highlight was 1.31× too wide and drifted up to 140px off its word.
+ * Nothing in the code looked wrong, and no test covered it, because jsdom has
+ * no layout to be wrong about.
+ *
+ * `scale` is a plain number so this file stays free of any notion of a camera:
+ * the caller owns the transform, this only applies it.
+ *
  * Must be called after `document.fonts.ready` — measuring before webfonts load
- * places every pin using fallback metrics, which is the kind of bug where pins
- * are subtly wrong and nothing in the code looks incorrect.
+ * places every pin using fallback metrics, which is the same class of bug: pins
+ * subtly wrong, and nothing in the code looking incorrect.
  */
-export function rangeToContainerRects(range: Range, container: Element): AnchorRect[] {
+export function rangeToContainerRects(
+  range: Range,
+  container: Element,
+  scale: number,
+): AnchorRect[] {
   // Environments without layout (jsdom, some embedded webviews) have no
   // `getClientRects`. Returning nothing lets callers degrade to "pin with no
   // position" instead of throwing mid-render.
@@ -212,12 +231,15 @@ export function rangeToContainerRects(range: Range, container: Element): AnchorR
     return []
   }
 
+  // A degenerate scale would put every rect at infinity; treating it as 1 at
+  // least fails visibly rather than silently.
+  const factor = scale > 0 ? 1 / scale : 1
   const origin = container.getBoundingClientRect()
   return Array.from(range.getClientRects()).map((rect) => ({
-    x: rect.left - origin.left,
-    y: rect.top - origin.top,
-    width: rect.width,
-    height: rect.height,
+    x: (rect.left - origin.left) * factor,
+    y: (rect.top - origin.top) * factor,
+    width: rect.width * factor,
+    height: rect.height * factor,
   }))
 }
 

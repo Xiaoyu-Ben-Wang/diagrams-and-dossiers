@@ -6,6 +6,7 @@ import {
   domRangeToFlatRange,
   flatRangeToDomRange,
   projectDom,
+  rangeToContainerRects,
   type DomProjection,
 } from './dom'
 import { resolveAnchor } from './resolve'
@@ -151,5 +152,104 @@ describe('range conversion', () => {
       expect(after.projection.flat.text.slice(0, result.start)).toContain('Molgar')
       expect(after.projection.flat.text.slice(0, result.start)).not.toContain('nodded')
     }
+  })
+})
+
+describe('rangeToContainerRects', () => {
+  /**
+   * A stand-in for a laid-out element. jsdom has no layout at all — every
+   * `getClientRects` returns empty and every `getBoundingClientRect` returns
+   * zeroes — so the measurement is supplied rather than performed, which is
+   * also what lets the scaled case be written down exactly.
+   */
+  function fakeRange(rects: { left: number; top: number; width: number; height: number }[]) {
+    return { getClientRects: () => rects } as unknown as Range
+  }
+
+  function fakeContainer(rect: { left: number; top: number; width: number; height: number }) {
+    return { getBoundingClientRect: () => rect } as unknown as Element
+  }
+
+  it('expresses a rect relative to the container', () => {
+    const range = fakeRange([{ left: 150, top: 220, width: 40, height: 20 }])
+    const container = fakeContainer({ left: 100, top: 200, width: 720, height: 900 })
+
+    expect(rangeToContainerRects(range, container, 1)).toEqual([
+      { x: 50, y: 20, width: 40, height: 20 },
+    ])
+  })
+
+  it('divides the zoom back out, so the result is in the container own pixels', () => {
+    // The board is one `scale(zoom)` on a single ancestor, so a word 50px into
+    // the article measures 65.5px into it on screen at 131%. Used unmodified as
+    // a local coordinate it was scaled a second time — which is how a highlight
+    // ended up 1.31x too wide and drifting further off its word the more the
+    // board was zoomed in.
+    const zoom = 1.31
+    const range = fakeRange([
+      { left: 100 + 50 * zoom, top: 200 + 20 * zoom, width: 40 * zoom, height: 20 * zoom },
+    ])
+    const container = fakeContainer({ left: 100, top: 200, width: 720 * zoom, height: 900 * zoom })
+
+    const [rect] = rangeToContainerRects(range, container, zoom)
+
+    expect(rect.x).toBeCloseTo(50, 6)
+    expect(rect.y).toBeCloseTo(20, 6)
+    expect(rect.width).toBeCloseTo(40, 6)
+    expect(rect.height).toBeCloseTo(20, 6)
+  })
+
+  it('is unaffected by which zoom the measurement was taken at', () => {
+    // The rects come out in the article's own space, so an anchor resolved at
+    // one zoom and re-resolved at another must land in the same place. Without
+    // the division this is the property that fails.
+    const rangeAt = (zoom: number) =>
+      fakeRange([{ left: 100 + 50 * zoom, top: 200 + 20 * zoom, width: 40 * zoom, height: 20 * zoom }])
+    const containerAt = (zoom: number) =>
+      fakeContainer({ left: 100, top: 200, width: 720 * zoom, height: 900 * zoom })
+
+    const at100 = rangeToContainerRects(rangeAt(1), containerAt(1), 1)
+    const at250 = rangeToContainerRects(rangeAt(2.5), containerAt(2.5), 2.5)
+
+    expect(at250).toEqual(at100)
+  })
+
+  it('returns one rect per line box, in order', () => {
+    const range = fakeRange([
+      { left: 100, top: 200, width: 700, height: 20 },
+      { left: 100, top: 224, width: 320, height: 20 },
+    ])
+    const container = fakeContainer({ left: 0, top: 0, width: 720, height: 900 })
+
+    expect(rangeToContainerRects(range, container, 1)).toHaveLength(2)
+  })
+
+  it('degrades to nothing where the environment cannot measure at all', () => {
+    // Some embedded webviews leave `getClientRects` off Range entirely, and a
+    // container without a bounding rect is possible in a detached tree. A
+    // caller must get "no position" — and a pin that renders without one —
+    // rather than a throw midway through a render pass.
+    const host = document.createElement('div')
+    host.innerHTML = '<article><p>Molgar paid the ferryman.</p></article>'
+    const container = host.firstElementChild as Element
+
+    const noRects = {
+      getClientRects: undefined,
+    } as unknown as Range
+    expect(rangeToContainerRects(noRects, container, 1)).toEqual([])
+
+    const noBox = {} as unknown as Element
+    const range = document.createRange()
+    range.selectNodeContents(host)
+    expect(rangeToContainerRects(range, noBox, 1)).toEqual([])
+  })
+
+  it('treats a degenerate scale as 1 rather than placing everything at infinity', () => {
+    const range = fakeRange([{ left: 150, top: 220, width: 40, height: 20 }])
+    const container = fakeContainer({ left: 100, top: 200, width: 720, height: 900 })
+
+    expect(rangeToContainerRects(range, container, 0)).toEqual([
+      { x: 50, y: 20, width: 40, height: 20 },
+    ])
   })
 })
