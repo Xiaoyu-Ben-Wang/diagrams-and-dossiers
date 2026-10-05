@@ -379,6 +379,73 @@ body {
   opacity: 0.7;
 }
 
+/* ---------------------------------------------------------------------------
+   A photograph pinned up
+   ---------------------------------------------------------------------------
+   The shadow is offset downward and the sheet is turned by a `transform` the
+   component supplies, so the light reads as coming from above whatever angle
+   the picture hangs at. */
+
+.image-card {
+  cursor: grab;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.35) inset,
+    0 10px 22px -8px rgb(0 0 0 / 0.6),
+    0 2px 5px rgb(0 0 0 / 0.4);
+}
+
+.image-card:active {
+  cursor: grabbing;
+}
+
+.image-card.is-selected {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 2px;
+}
+
+/* The handle that swings the picture, and the stem tying it to the pin. Both
+   ride inside the rotated sheet, so they stay at its head as it turns. */
+.image-rotate {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-brass);
+  cursor: grab;
+  touch-action: none;
+}
+
+.image-rotate:active {
+  cursor: grabbing;
+}
+
+.image-rotate:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 2px;
+  border-radius: 9999px;
+}
+
+.image-rotate-stem {
+  width: 2px;
+  background: var(--color-brass);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.image-remove {
+  border: 1px solid rgb(201 180 138 / 0.6);
+  background: rgb(46 31 20 / 0.85);
+  color: var(--color-board-ink);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.image-remove:hover {
+  background: var(--color-wax);
+}
+
 /* Selection. Declared after the tack's own status shadows so it wins on the
    tie: both selectors are two classes, so source order decides. */
 .tack.is-selected {

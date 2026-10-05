@@ -50,6 +50,17 @@ export interface BoardCanvasProps {
   /** Fired on a right-click that did not turn into a drag. */
   onContextTarget?: (target: BoardContextTarget) => void
   /**
+   * Files dropped onto the board.
+   *
+   * The drop is claimed on the board itself rather than on a wrapper so the
+   * whole surface is a target, and so a drop that lands on a pin or a post-it
+   * still reaches it — a child that swallows the event would make a small part
+   * of the board mysteriously refuse pictures.
+   */
+  onFileDrop?: (event: React.DragEvent<HTMLDivElement>) => void
+  /** Asked whether the drag under way is one the board will accept. */
+  onFileDragOver?: (event: React.DragEvent<HTMLDivElement>) => void
+  /**
    * Board-space rects to frame once, the first time they become available.
    * Used to open on the article rather than on empty cork. It fires once only —
    * re-framing whenever the content changed would yank the view out from under
@@ -174,6 +185,8 @@ export function BoardCanvas({
   children,
   className,
   onContextTarget,
+  onFileDrop,
+  onFileDragOver,
   fitTo,
   backdrop,
   onBackgroundClick,
@@ -546,6 +559,8 @@ export function BoardCanvas({
       // and any highlight keep pointing at something no longer under the mouse.
       onPointerLeave={() => onHoverRef.current?.(null)}
       onClick={handleClick}
+      onDrop={onFileDrop}
+      onDragOver={onFileDragOver}
       // The browser menu would otherwise fire on every right-drag release.
       onContextMenu={(event) => event.preventDefault()}
       style={{

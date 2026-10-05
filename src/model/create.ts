@@ -16,6 +16,7 @@
 import type { TextAnchor } from '../anchors/types'
 import type { Point } from '../board/yarn'
 import { DEFAULT_ARTICLE_OPTIONS, type ArticleOptions } from './article-options'
+import { IMAGE_SIZE } from './kinds'
 import type {
   AnchoredPin,
   ArticleEntity,
@@ -100,10 +101,51 @@ export function newArticle(
   return { ...base({ ...seed, bodyMd, title }), kind: 'article', board, options }
 }
 
-/** A picture pinned to the board, hanging straight until it is swung. */
+/** The longest edge a dropped image is allowed to occupy, in board px. */
+export const MAX_IMAGE_EDGE = 420
+
+/**
+ * Scale a real image's pixel dimensions down to something that fits a board.
+ *
+ * A photograph straight off a phone is several thousand pixels across; dropped
+ * at its own size it would be larger than the article. Neither enlarging nor
+ * distorting is right, so this only ever shrinks, and preserves the ratio.
+ */
+export function imageFootprint(
+  pixelWidth: number,
+  pixelHeight: number,
+): { width: number; height: number } {
+  const longest = Math.max(pixelWidth, pixelHeight)
+  // Both dimensions, not just the longest: a decoder that reports a negative
+  // width alongside a sane height passes a check on the maximum alone, and the
+  // result is a picture with a negative box — which every rect downstream then
+  // faithfully propagates.
+  const usable =
+    Number.isFinite(pixelWidth) &&
+    Number.isFinite(pixelHeight) &&
+    pixelWidth > 0 &&
+    pixelHeight > 0
+  if (!usable) {
+    return { width: IMAGE_SIZE.width, height: IMAGE_SIZE.height }
+  }
+  const scale = longest > MAX_IMAGE_EDGE ? MAX_IMAGE_EDGE / longest : 1
+  return {
+    width: Math.round(pixelWidth * scale),
+    height: Math.round(pixelHeight * scale),
+  }
+}
+
+/**
+ * A picture pinned to the board, hanging straight until it is swung.
+ *
+ * The footprint has to be supplied: it comes from decoding the file, which
+ * only the caller can do. Passing a default here would put a differently
+ * shaped picture inside every box on the board.
+ */
 export function newImage(
   board: Point,
   src: string,
+  size: { width: number; height: number },
   seed: EntitySeed & { alt?: string; fit?: ImageFit } = {},
 ): ImageEntity {
   const { alt, fit, ...rest } = seed
@@ -112,6 +154,8 @@ export function newImage(
     kind: 'image',
     board,
     src,
+    width: size.width,
+    height: size.height,
     alt,
     fit: fit ?? 'cover',
     rotation: 0,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { rotateAbout } from '../board/pivot'
 import {
   descriptorFor,
   descriptorOf,
@@ -83,6 +84,8 @@ const image = (over: Partial<ImageEntity> = {}): ImageEntity => ({
   kind: 'image',
   board: { x: 50, y: 60 },
   src: 'data:image/png;base64,AAAA',
+  width: IMAGE_SIZE.width,
+  height: IMAGE_SIZE.height,
   fit: 'cover',
   rotation: 0,
   ...over,
@@ -226,20 +229,30 @@ describe('bounds', () => {
     })
   })
 
-  it('grows the box of a tilting image, staying centred on the same point', () => {
+  it('grows the box of a tilting image', () => {
     const upright = descriptorFor(image()).bounds(image(), emptyContext)!
     const tilted = descriptorFor(image({ rotation: 45 })).bounds(image({ rotation: 45 }), emptyContext)!
 
     // A tilted photo escapes the band that visibly encloses it otherwise.
     expect(tilted.width).toBeGreaterThan(upright.width)
     expect(tilted.height).toBeGreaterThan(upright.height)
+  })
 
-    const centre = (r: { x: number; y: number; width: number; height: number }) => ({
-      x: r.x + r.width / 2,
-      y: r.y + r.height / 2,
-    })
-    expect(centre(tilted).x).toBeCloseTo(centre(upright).x, 6)
-    expect(centre(tilted).y).toBeCloseTo(centre(upright).y, 6)
+  it('swings an image about its pin, not about its middle', () => {
+    // The pin is at the top-centre, and it is the one point on the sheet that
+    // does not move when the sheet turns. Rotating about the middle instead
+    // would slide the photograph out from under its own tack — and would sweep
+    // a box the picture never occupies.
+    const pivot = { x: 50 + IMAGE_SIZE.width / 2, y: 60 }
+    const tilted = descriptorFor(image({ rotation: 45 })).bounds(image({ rotation: 45 }), emptyContext)!
+
+    expect(rotateAbout(pivot, pivot, 45)).toEqual(pivot)
+    // The swept box must hold the pivot: the pin stays on the sheet at every
+    // angle, so a band that misses the pin is a band that missed the sheet.
+    expect(tilted.x).toBeLessThanOrEqual(pivot.x)
+    expect(tilted.x + tilted.width).toBeGreaterThanOrEqual(pivot.x)
+    expect(tilted.y).toBeLessThanOrEqual(pivot.y)
+    expect(tilted.y + tilted.height).toBeGreaterThanOrEqual(pivot.y)
   })
 
   it('never emits a non-finite box', () => {

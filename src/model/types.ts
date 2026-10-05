@@ -134,7 +134,19 @@ export interface ImageEntity extends EntityBase {
   board: Point
   src: string
   alt?: string
+  /**
+   * The footprint on the board, in board px — not the file's pixel size.
+   *
+   * Measured from the decoded image when it is dropped and scaled to fit
+   * `MAX_IMAGE_EDGE`, then stored, so a 4000px photograph and a 40px icon are
+   * both things you can see at once and neither has to be re-measured to be
+   * hit-tested. `kinds.ts` reads it rather than a constant because the whole
+   * point of an image is that its shape is whatever was brought in.
+   */
+  width: number
+  height: number
   fit: ImageFit
+  /** Degrees of swing about the top-centre pin, within ±`MAX_TILT_DEG`. */
   rotation: number
 }
 

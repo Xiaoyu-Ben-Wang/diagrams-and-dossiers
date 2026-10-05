@@ -15,6 +15,9 @@ import { resolveAnchor } from './anchors/resolve'
 import { TopBar } from './app/TopBar'
 import { useRoute } from './app/router'
 import { BoardCanvas, type BoardContextTarget } from './board/BoardCanvas'
+import { ImageCard } from './board/ImageCard'
+import { decodeImageFile, firstImage } from './board/image-file'
+import { clampTilt } from './board/pivot'
 import { useBoardDrag } from './board/useBoardDrag'
 import { ContextMenu, type ContextMenuEntry } from './board/ContextMenu'
 import { GridLayer } from './board/GridLayer'
@@ -47,7 +50,7 @@ import {
   type Point,
 } from './board/yarn'
 import { maxStrandDeviation, seedFromKey, yarnStrands } from './board/yarn-style'
-import { newAnchoredPin, newFreePin, newNote } from './model/create'
+import { imageFootprint, newAnchoredPin, newFreePin, newImage, newNote } from './model/create'
 import { descriptorFor, NOTE_SIZE } from './model/kinds'
 import { pinToBoard, pinToText, sameAnchor } from './model/pinning'
 import {
@@ -55,6 +58,7 @@ import {
   isPin,
   type BoardEntity,
   type EntityContext,
+  type ImageEntity,
   type NoteEntity,
   type StringLink,
 } from './model/types'
@@ -633,6 +637,66 @@ export function App() {
   }, [])
 
   /**
+   * Pin a picture the user brought in.
+   *
+   * Async because a file has to be decoded before it can be measured, and an
+   * image entity's footprint is its own proportions — there is nothing to
+   * create until the browser has read the file. The drop point is captured
+   * first, because by the time the bytes are through there is no longer a
+   * pointer to ask.
+   *
+   * The sheet is centred on where it was dropped rather than hung from its
+   * top-left corner there: a picture appears under the cursor that brought it,
+   * which is what makes dropping feel like placing rather than like throwing.
+   */
+  const addImageAt = useCallback(
+    async (file: File, clientX: number, clientY: number) => {
+      let decoded
+      try {
+        decoded = await decodeImageFile(file)
+      } catch {
+        // The board has nowhere to put a message yet, and a picture that will
+        // not decode is not worth a dialog. Doing nothing is the honest
+        // outcome — the drop simply does not take.
+        return
+      }
+
+      const footprint = imageFootprint(decoded.width, decoded.height)
+      const at = worldPoint(clientX, clientY)
+      const board = { x: at.x - footprint.width / 2, y: at.y - footprint.height / 2 }
+
+      setEntities((previous) => [
+        ...previous,
+        newImage(board, decoded.src, footprint, {
+          alt: decoded.name,
+          // A picture with no description is a picture nothing can be said
+          // about, and the name it arrived under is the only one there is.
+          bodyMd: decoded.name,
+          dateLabel: nextDateLabel(previous.length),
+        }),
+      ])
+    },
+    [nextDateLabel, worldPoint],
+  )
+
+  /** Swing a sheet about its pin. Shared by images and, later, articles. */
+  const rotateEntity = useCallback((id: string, degrees: number) => {
+    const angle = clampTilt(degrees)
+    setEntities((previous) =>
+      previous.map((entity) => {
+        if (entity.id !== id) return entity
+        if (entity.kind === 'image') return { ...entity, rotation: angle, updatedAt: Date.now() }
+        return entity
+      }),
+    )
+  }, [])
+
+  /** Select one thing and nothing else — what a click on a picture means. */
+  const selectOnly = useCallback((id: string) => {
+    setSelection(new Set([id]))
+  }, [])
+
+  /**
    * Where a dragged pin comes to rest.
    *
    * A drag is the only way to say "not there, *there*", so it has to be able to
@@ -794,6 +858,66 @@ export function App() {
     [pinAt, pinMode, stringAt, worldPoint],
   )
 
+  /**
+   * Take a picture from a drop or a paste.
+   *
+   * One handler for both because the two gestures differ only in where the
+   * picture lands: a drop knows the point it happened at, and a paste has none
+   * — a paste fires on the document with no position at all — so it goes to
+   * the middle of whatever the camera is looking at.
+   *
+   * `preventDefault` on the drag-over is load-bearing and not a formality:
+   * without it the browser refuses the drop outright and opens the file in a
+   * new tab, which is exactly the behaviour that made this look like a feature
+   * that was broken rather than one that was missing.
+   */
+  const handleFileDrop = useCallback(
+    (event: React.DragEvent) => {
+      const file = firstImage(Array.from(event.dataTransfer?.files ?? []))
+      if (!file) return
+      event.preventDefault()
+      void addImageAt(file, event.clientX, event.clientY)
+    },
+    [addImageAt],
+  )
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    // Only claim the gesture for files, so dragging text or a link across the
+    // board is left to the browser.
+    const carriesFiles = Array.from(event.dataTransfer?.types ?? []).includes('Files')
+    if (carriesFiles) event.preventDefault()
+  }, [])
+
+  const handlePaste = useCallback(
+    (event: ClipboardEvent) => {
+      // Never steal a paste from a field: a post-it is a textarea and the pin
+      // editor is full of inputs, and pasting into those is not this.
+      //
+      // Guarded by `instanceof Element` rather than by a null check, because a
+      // paste with nothing focused is dispatched at the *document*, which is a
+      // Node and has no `closest` — so the tidy-looking version of this line
+      // throws on exactly the case it is meant to allow.
+      const target = event.target
+      if (target instanceof Element && target.closest('input, textarea, [contenteditable="true"]')) {
+        return
+      }
+
+      const file = firstImage(Array.from(event.clipboardData?.files ?? []))
+      if (!file) return
+
+      event.preventDefault()
+      const box = document.querySelector('[data-testid="board-canvas"]')?.getBoundingClientRect()
+      if (!box) return
+      void addImageAt(file, box.left + box.width / 2, box.top + box.height / 2)
+    },
+    [addImageAt],
+  )
+
+  useEffect(() => {
+    document.addEventListener('paste', handlePaste)
+    return () => document.removeEventListener('paste', handlePaste)
+  }, [handlePaste])
+
   const runClock = useCallback(() => {
     const origin = originRef.current
     const path = livePathRef.current
@@ -810,7 +934,7 @@ export function App() {
   }, [])
 
   const beginString = useCallback(
-    (event: React.PointerEvent, pin: PinView) => {
+    (event: React.PointerEvent, fromId: string, origin: Point | null) => {
       // Left button only. Stopping propagation on every button swallowed the
       // right-click before the canvas ever saw it, which is why right-clicking
       // a pin did nothing — the button that opens its editor was being eaten
@@ -823,13 +947,17 @@ export function App() {
       // Board space, matching what moveString computes. This was paper-local
       // while the target was board-space, so the live string was drawn from
       // near the board origin instead of from the tack.
-      const origin = pinPoint(pin, paperOriginRef.current)
+      //
+      // The origin is handed in rather than derived from the pin, so a string
+      // can be started from anything that has an anchor — a tack in a word, a
+      // tack in the cork, or the pin holding a picture up — without this
+      // needing to know which it was.
       if (!origin) return
 
       originRef.current = origin
       targetRef.current = origin
       springRef.current = { x: createSpring(origin.x, 220, 22), y: createSpring(origin.y, 220, 22) }
-      setDragFrom(pin.id)
+      setDragFrom(fromId)
       frameRef.current = requestAnimationFrame(runClock)
     },
     [runClock],
@@ -848,14 +976,14 @@ export function App() {
 
       const drop = worldPoint(clientX, clientY)
 
+      // Whatever the pointer lands on that a string can be tied to — a tack in
+      // a word, a tack in the cork, or the pin holding a picture up.
       let nearest: { id: string; distance: number } | null = null
-      for (const pin of pinsRef.current) {
-        if (pin.id === from) continue
-        const point = pinPoint(pin, paperOriginRef.current)
-        if (!point) continue
+      for (const [id, point] of anchorPointsRef.current) {
+        if (id === from) continue
         const distance = Math.hypot(point.x - drop.x, point.y - drop.y)
         if (distance <= SNAP_RADIUS && (!nearest || distance < nearest.distance)) {
-          nearest = { id: pin.id, distance }
+          nearest = { id, distance }
         }
       }
 
@@ -1203,13 +1331,36 @@ export function App() {
   const byId = useMemo(() => new Map(pins.map((pin) => [pin.id, pin])), [pins])
   const dimming = placed.length > 0
 
-  const drawableStrings = strings.flatMap((string) => {
-    const from = byId.get(string.from)
-    const to = byId.get(string.to)
-    if (!from || !to) return []
+  /**
+   * Where a string may be tied, for every entity that accepts one.
+   *
+   * Built from the registry rather than from the pin list, which is what lets
+   * yarn reach a picture's tack: a photograph is not a pin, so a snap that
+   * walked the pins could never find it, and the string simply refused to be
+   * tied. Every kind already answers `anchorPoint` and says whether it is
+   * `connectable`, so asking all of them costs one loop and gives the string
+   * layer no per-kind knowledge at all.
+   *
+   * An entity with no resolvable place — a pin whose quote is gone — is left
+   * out, so a string to something that no longer exists disappears rather than
+   * being drawn to the origin.
+   */
+  const anchorPoints = useMemo(() => {
+    const map = new Map<string, Point>()
+    for (const entity of entities) {
+      const descriptor = descriptorFor(entity)
+      if (!descriptor.capabilities(entity).connectable) continue
+      const point = descriptor.anchorPoint(entity, entityContext)
+      if (point) map.set(entity.id, point)
+    }
+    return map
+  }, [entities, entityContext])
+  const anchorPointsRef = useRef(anchorPoints)
+  anchorPointsRef.current = anchorPoints
 
-    const fromPoint = pinPoint(from, paperOrigin)
-    const toPoint = pinPoint(to, paperOrigin)
+  const drawableStrings = strings.flatMap((string) => {
+    const fromPoint = anchorPoints.get(string.from)
+    const toPoint = anchorPoints.get(string.to)
     if (!fromPoint || !toPoint) return []
 
     return [
@@ -1327,6 +1478,11 @@ export function App() {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [contextMenu, editingPin, movingPin, prefsOpen, removeString, selectedString, selection])
 
+  const images = useMemo(
+    () => entities.filter((entity): entity is ImageEntity => entity.kind === 'image'),
+    [entities],
+  )
+
   const anchored = pins.filter((pin) => pin.rect)
   const freePins = pins.filter((pin) => pin.board)
   const orphaned = pins.filter((pin) => pin.status === 'orphaned')
@@ -1420,6 +1576,8 @@ export function App() {
                 camera={camera}
                 onCameraChange={setCamera}
                 onContextTarget={handleContextTarget}
+                onFileDrop={handleFileDrop}
+                onFileDragOver={handleDragOver}
                 onBackgroundClick={handleBackgroundClick}
                 // Pin mode claims the left button for pinning, so the rubber
                 // band stands down rather than fighting it for the same drag.
@@ -1501,7 +1659,7 @@ export function App() {
                             dimmed={dimming && !activeIds.has(pin.id)}
                             moving={movingPin === pin.id}
                             zoom={camera.zoom}
-                            onStartYarn={(event) => beginString(event, pin)}
+                            onStartYarn={(event) => beginString(event, pin.id, pinPoint(pin, paperOriginRef.current))}
                             onMove={moveOne}
                             onDrop={handlePinDrop}
                             onHover={handlePinHover}
@@ -1526,13 +1684,36 @@ export function App() {
                       dimmed={dimming && !activeIds.has(pin.id)}
                       moving={movingPin === pin.id}
                       zoom={camera.zoom}
-                      onStartYarn={(event) => beginString(event, pin)}
+                      onStartYarn={(event) => beginString(event, pin.id, pinPoint(pin, paperOriginRef.current))}
                       onMove={moveOne}
                       onDrop={handlePinDrop}
                       onHover={handlePinHover}
                     />
                   ) : null,
                 )}
+
+                {images.map((picture) => (
+                  <ImageCard
+                    key={picture.id}
+                    id={picture.id}
+                    src={picture.src}
+                    alt={picture.alt}
+                    x={picture.board.x}
+                    y={picture.board.y}
+                    width={picture.width}
+                    height={picture.height}
+                    rotation={picture.rotation}
+                    fit={picture.fit}
+                    selected={selection.has(picture.id)}
+                    zoom={camera.zoom}
+                    toBoard={worldPoint}
+                    onMove={moveEntity}
+                    onRotate={rotateEntity}
+                    onSelect={selectOnly}
+                    onStartYarn={(event) => beginString(event, picture.id, anchorPoints.get(picture.id) ?? null)}
+                    onRemove={removeEntity}
+                  />
+                ))}
 
                 {postIts.map((note) => (
                   <PostIt

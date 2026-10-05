@@ -33,6 +33,7 @@
  */
 
 import type { AnchorRect } from '../anchors/dom'
+import { sweptBounds } from '../board/pivot'
 import type { Rect } from '../board/camera'
 import type { Point } from '../board/yarn'
 import {
@@ -232,30 +233,25 @@ const image: EntityDescriptor<BoardEntity & { kind: 'image' }> = {
     editable: true,
   }),
   anchorPoint: (entity) => ({
-    // Top-centre: the pin it hangs from, and the point it rotates about.
-    x: entity.board.x + IMAGE_SIZE.width / 2 + entity.nudge.x,
+    // The tack it hangs from, which is also the point it turns about.
+    x: entity.board.x + entity.width / 2 + entity.nudge.x,
     y: entity.board.y + entity.nudge.y,
   }),
   bounds: (entity) => {
     // Rotation grows the footprint, so the marquee uses the swept box rather
     // than the upright one — otherwise a tilted photo escapes the band that
     // visibly encloses it.
-    const upright = boxAt(entity.board, IMAGE_SIZE)
-    const radians = (Math.abs(entity.rotation) * Math.PI) / 180
-    const grown = {
-      width: IMAGE_SIZE.width * Math.cos(radians) + IMAGE_SIZE.height * Math.sin(radians),
-      height: IMAGE_SIZE.width * Math.sin(radians) + IMAGE_SIZE.height * Math.cos(radians),
-    }
-    const centre = {
-      x: upright.x + upright.width / 2,
-      y: upright.y + upright.height / 2,
-    }
-    return {
-      x: centre.x - grown.width / 2,
-      y: centre.y - grown.height / 2,
-      width: grown.width,
-      height: grown.height,
-    }
+    //
+    // About the top-centre, not the middle. Rotating the bounding box of the
+    // upright picture would sweep a box the picture never occupies and miss the
+    // part of the real sweep that hangs past the pivot.
+    const size = { width: entity.width, height: entity.height }
+    return sweptBounds(
+      entity.board,
+      size,
+      { x: entity.board.x + entity.width / 2, y: entity.board.y },
+      entity.rotation,
+    )
   },
   move: (entity, delta) => ({
     ...entity,
