@@ -19,6 +19,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { StickyNote } from 'lucide-react'
 
+import { DRAG_THRESHOLD } from "./useBoardDrag";
+
 export interface PostItPadProps {
   /**
    * Where the pointer let go, in viewport coordinates.
@@ -35,67 +37,85 @@ export interface PostItPadProps {
 const GHOST = 84
 
 export function PostItPad({ onDrop, disabled = false }: PostItPadProps) {
-  const [carrying, setCarrying] = useState<{ x: number; y: number } | null>(null)
-  const carryingRef = useRef(false)
+  const [carrying, setCarrying] = useState<{ x: number; y: number } | null>(null);
+  const carryingRef = useRef(false);
+  /**
+   * How far the pointer has moved since the press.
+   *
+   * A press that never travels is a click on the pad, not a note carried off
+   * it. Without this a stray click leaves a note *under* the pad — and worse,
+   * the pad swallows every click on that corner of the board, so the bare cork
+   * it covers can no longer be clicked at all.
+   */
+  const travelRef = useRef(0);
 
   const start = useCallback(
     (event: React.PointerEvent) => {
-      if (disabled || event.button !== 0) return
-      event.preventDefault()
-      event.stopPropagation()
-      carryingRef.current = true
-      setCarrying({ x: event.clientX, y: event.clientY })
+      if (disabled || event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      carryingRef.current = true;
+      travelRef.current = 0;
+      setCarrying({ x: event.clientX, y: event.clientY });
     },
     [disabled],
-  )
+  );
 
   useEffect(() => {
-    if (!carrying) return
+    if (!carrying) return;
 
     const move = (event: PointerEvent): void => {
-      if (!carryingRef.current) return
-      setCarrying({ x: event.clientX, y: event.clientY })
-    }
+      if (!carryingRef.current) return;
+      setCarrying((previous) => {
+        if (previous) {
+          travelRef.current += Math.abs(event.clientX - previous.x) + Math.abs(event.clientY - previous.y);
+        }
+        return { x: event.clientX, y: event.clientY };
+      });
+    };
     const drop = (event: PointerEvent): void => {
-      if (!carryingRef.current) return
-      carryingRef.current = false
-      setCarrying(null)
+      if (!carryingRef.current) return;
+      carryingRef.current = false;
+      const travelled = travelRef.current >= DRAG_THRESHOLD;
+      setCarrying(null);
+      // Never moved, so nothing was carried anywhere.
+      if (!travelled) return;
       // Only where there is a board underneath. Letting go over the footer is
       // letting go of nothing, and it should cost nothing.
-      const canvas = document.querySelector('[data-testid="board-canvas"]')
-      const box = canvas?.getBoundingClientRect()
-      if (!box) return
+      const canvas = document.querySelector('[data-testid="board-canvas"]');
+      const box = canvas?.getBoundingClientRect();
+      if (!box) return;
       if (
         event.clientX < box.left ||
         event.clientX > box.right ||
         event.clientY < box.top ||
         event.clientY > box.bottom
       ) {
-        return
+        return;
       }
-      onDrop(event.clientX, event.clientY)
-    }
+      onDrop(event.clientX, event.clientY);
+    };
     const cancel = (): void => {
-      carryingRef.current = false
-      setCarrying(null)
-    }
+      carryingRef.current = false;
+      setCarrying(null);
+    };
 
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', drop)
-    window.addEventListener('pointercancel', cancel)
-    window.addEventListener('blur', cancel)
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", drop);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("blur", cancel);
     return () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', drop)
-      window.removeEventListener('pointercancel', cancel)
-      window.removeEventListener('blur', cancel)
-    }
-  }, [carrying, onDrop])
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", drop);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("blur", cancel);
+    };
+  }, [carrying, onDrop]);
 
   return (
     <>
       <div
-        className={`post-it-pad ${disabled ? 'is-disabled' : ''}`}
+        className={`post-it-pad ${disabled ? "is-disabled" : ""}`}
         data-testid="post-it-pad"
         role="button"
         tabIndex={0}
@@ -105,16 +125,16 @@ export function PostItPad({ onDrop, disabled = false }: PostItPadProps) {
         onPointerDown={start}
         // The keyboard path, since a drag is not the only way to want one.
         onKeyDown={(event) => {
-          if (disabled) return
-          if (event.key !== 'Enter' && event.key !== ' ') return
-          event.preventDefault()
-          const canvas = document.querySelector('[data-testid="board-canvas"]')
-          const box = canvas?.getBoundingClientRect()
-          if (box) onDrop(box.left + box.width / 2, box.top + box.height / 2)
+          if (disabled) return;
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          const canvas = document.querySelector('[data-testid="board-canvas"]');
+          const box = canvas?.getBoundingClientRect();
+          if (box) onDrop(box.left + box.width / 2, box.top + box.height / 2);
         }}
       >
         <StickyNote size={18} strokeWidth={1.6} aria-hidden="true" />
-        <span className="post-it-pad-label">Post-its</span>
+        <span className="post-it-pad-label">Sticky Notes</span>
       </div>
 
       {/* The note under the pointer. Rendered outside the pad so it is not
@@ -128,5 +148,5 @@ export function PostItPad({ onDrop, disabled = false }: PostItPadProps) {
         />
       ) : null}
     </>
-  )
+  );
 }
