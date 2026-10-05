@@ -1,6 +1,7 @@
-# The Case Board
+# Dossiers & Diagrams
 
-A private, collaborative detective board for a D&D group. Pin notes and long-form markdown
+A private, collaborative detective board for a D&D group — *The Case Board*, which is what the
+thing itself is called on screen and in the code. Pin notes and long-form markdown
 articles to a shared corkboard and connect them with red yarn.
 
 The whole thing is dressed as a fantasy detective's office: cork and parchment, brass tacks, wax
