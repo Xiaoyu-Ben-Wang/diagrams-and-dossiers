@@ -1125,7 +1125,18 @@ export function App() {
     zoom: camera.zoom,
     onDrag: (delta) =>
       setPaperPos((previous) => ({ x: previous.x + delta.x, y: previous.y + delta.y })),
-    onTap: () => setDocumentSelected((previous) => !previous),
+    onTap: () => {
+      // A rolled-up page opens on the first click, because that is what the
+      // tab is for once there is nothing else to click. Only an open page
+      // toggles its selection — otherwise closing one would leave it shut with
+      // no way back that anyone would find.
+      if (paperCollapsed) {
+        setPaperCollapsed(false)
+        setDocumentSelected(true)
+        return
+      }
+      setDocumentSelected((previous) => !previous)
+    },
   })
 
   /**

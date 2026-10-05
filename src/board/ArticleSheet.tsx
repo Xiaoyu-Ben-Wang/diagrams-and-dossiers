@@ -116,6 +116,7 @@ export function ArticleSheet({
     tilt,
     toBoard,
     onRotate,
+    onReset: () => onRotate(0),
   })
 
   const resize = useResizeDrag({
@@ -136,11 +137,15 @@ export function ArticleSheet({
       ref={paperRef}
       data-testid="paper"
       data-board-entity="article"
-      className={`parchment absolute top-0 left-0 rounded-sm px-9 py-8 shadow-xl sm:px-12 sm:py-10 ${
-        documentSelected ? 'ring-2 ring-brass/70' : ''
-      }`}
+      className={`parchment absolute top-0 left-0 rounded-sm shadow-xl ${
+        collapsed ? '' : 'px-9 py-8 sm:px-12 sm:py-10'
+      } ${documentSelected ? 'ring-2 ring-brass/70' : ''}`}
       style={{
         width,
+        // Rolled up, the sheet is the strip the tab is stuck to and nothing
+        // else — an empty page the height of a page would read as a page whose
+        // text had failed to load.
+        height: collapsed ? 0 : undefined,
         transformOrigin: '50% 0',
         transform: `translate3d(${pos.x}px, ${pos.y}px, 0) rotate(${tilt}deg)`,
       }}
@@ -207,7 +212,6 @@ export function ArticleSheet({
         type="button"
         data-testid="paper-tab"
         {...tabDrag}
-        onDoubleClick={onToggleCollapsed}
         aria-pressed={documentSelected}
         className={`drag-bar absolute -top-7 left-0 rounded-t px-3 py-1 text-[11px] transition ${
           documentSelected

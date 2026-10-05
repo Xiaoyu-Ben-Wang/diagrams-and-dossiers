@@ -25,7 +25,24 @@ export interface RotateDragOptions {
   /** A viewport point in board space. */
   toBoard: (clientX: number, clientY: number) => Point
   onRotate: (degrees: number) => void
+  /**
+   * Called when the handle is double-clicked, instead of starting a drag.
+   *
+   * Two presses rather than the `dblclick` event, because this handle calls
+   * `preventDefault` on `pointerdown` to keep the press from selecting text —
+   * and that suppresses the compatibility mouse events, `dblclick` among them.
+   * The event never arrives, so it is counted instead.
+   */
+  onReset?: () => void
 }
+
+/**
+ * How long between two presses on a handle still counts as one gesture.
+ *
+ * Generous, because this is a deliberate action on a small target rather than
+ * a typist's double letter.
+ */
+const DOUBLE_PRESS_MS = 400
 
 export interface RotateDragHandlers {
   onPointerDown: (event: React.PointerEvent) => void
@@ -39,6 +56,7 @@ export function useRotateDrag({
   tilt,
   toBoard,
   onRotate,
+  onReset,
 }: RotateDragOptions): RotateDragHandlers {
   /**
    * Where the handle was grabbed, and the tilt then.
@@ -60,9 +78,27 @@ export function useRotateDrag({
   toBoardRef.current = toBoard
   const onRotateRef = useRef(onRotate)
   onRotateRef.current = onRotate
+  const onResetRef = useRef(onReset)
+  onResetRef.current = onReset
+  /** When the handle was last pressed, for spotting the second press. */
+  const lastPressRef = useRef(0)
 
   const onPointerDown = useCallback((event: React.PointerEvent) => {
     if (event.button !== 0) return
+
+    const now = event.timeStamp
+    const since = now - lastPressRef.current
+    lastPressRef.current = now
+    if (onResetRef.current && since < DOUBLE_PRESS_MS) {
+      // Cleared, so a third press starts a fresh drag rather than being read as
+      // another double.
+      lastPressRef.current = 0
+      event.stopPropagation()
+      event.preventDefault()
+      onResetRef.current()
+      return
+    }
+
     event.stopPropagation()
     event.preventDefault()
     try {

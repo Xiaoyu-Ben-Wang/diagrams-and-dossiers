@@ -184,6 +184,9 @@ export function ImageCard({
     tilt: rotation,
     toBoard,
     onRotate: (degrees) => onRotate(id, degrees),
+    // A picture hung straight is a picture, not a mistake to be corrected by
+    // dragging it back a degree at a time.
+    onReset: () => onRotate(id, 0),
   })
   // The size maths is this component's own — a picture keeps the proportions
   // it arrived with, driven along its own diagonal — while the pointer

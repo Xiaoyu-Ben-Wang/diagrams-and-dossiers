@@ -12,20 +12,6 @@ than deleting it silently — the next person will wonder.
 
 ---
 
-## In flight
-
-### Article resize and close — built, verifying
-A page can be dragged wider by its right edge and rolled up by its close button. The resize keeps
-the pin at the top-centre by taking half the change off `paperPos.x` (`resizePaper` in `App.tsx`);
-the close rolls the page up to its tab rather than deleting it, because the pins anchored into its
-text have nowhere else to be.
-
-`/tmp/yarn2/article-probe.js` covers it. Last run: 7/9, with the two failures traced to the probe's
-viewport being too narrow — opening the editor shifts the board right and pushed the buttons
-off-screen, where `centre()` clamped and silently missed. Re-run with a wider viewport.
-
----
-
 ## Queued
 
 ### 1. Descriptions on strings
@@ -65,15 +51,7 @@ The last big piece of the approved plan and the prerequisite for #2. Today the a
 - Then the `articles` table folds into `items` — the sequence is written at the foot of
   `supabase/migrations/0002_entity_columns.sql`, including the step that must not be automated.
 
-### 4. Double-click the rotate handle to flatten
-Asked for: *"when double clicking the 'rotater pin', reset it back to flat."*
-
-Both `ImageCard`'s rotate handle and the page's. Note that `useRotateDrag` calls
-`preventDefault()` on `pointerdown`, which suppresses the compatibility mouse events — `dblclick`
-may never arrive. Detecting it from two `pointerdown`s inside a few hundred milliseconds is the
-reliable route.
-
-### 5. Finish breaking up `App.tsx`
+### 4. Finish breaking up `App.tsx`
 2451 lines when this started, 1731 now. The status strip (the `Legend` row plus the counts) is the
 next obvious block, and the hooks are the larger prize — `useArticleProjection`, `useStringDrag`,
 `usePinDrop` are all still inline.
@@ -86,7 +64,7 @@ A survey of candidate dependencies was run; the report is summarised in `docs/ar
 §7b and the decisions below. **The headline was that most libraries would be a downgrade** — the
 home-made parts are the domain model, not wheel reinvention.
 
-### 6. Adopt `@floating-ui/react` for the tooltip and context menu
+### 5. Adopt `@floating-ui/react` for the tooltip and context menu
 The one clear win found. `PinTooltip.tsx` (292 lines) and `ContextMenu.tsx` (277 lines), plus 577
 lines of tests, are hand-rolled portal + measure-after-mount + clamp-to-viewport + reposition.
 `@floating-ui/react` 0.27.20 (2026-07-11, MIT, React 19 peer) owns that, and its `autoUpdate` is
@@ -94,7 +72,7 @@ exactly the fix for the stale-anchor-rect-under-zoom bug the tooltip's own comme
 fighting. Keep the trigger in `BoardCanvas` — the library should own *where a menu sits*, not
 *when it opens*.
 
-### 7. Add the missing fuzzy rung to `resolve.ts`
+### 6. Add the missing fuzzy rung to `resolve.ts`
 `docs/architecture.md` §2 claims tier 3 does bitap via `diff-match-patch`. **It does not** —
 `resolve.ts` is a plain `indexOf`. The gap is real: if the *quoted words themselves* are edited,
 every tier misses and the pin orphans.
@@ -105,10 +83,10 @@ with an edit-distance budget** → score candidates by `50·quoteSim + 20·prefi
 starting constants. Prefer hand-rolling the matcher over vendoring `hypothesis/client` (BSD-2, no
 npm package, and it anchors against a live DOM where this anchors against flat text).
 
-### 8. Fix three doc drifts
+### 7. Fix three doc drifts
 Found while surveying, all real:
 
-- §2 claims bitap that does not exist (see #7).
+- §2 claims bitap that does not exist (see #6).
 - §8 describes a `motion` library that is imported nowhere and is not a dependency. The section is
   an architecture for something unbuilt; either build it or rewrite the section.
 - §2 and `anchors/types.ts` frame the resolution ladder as the W3C model. It is not — the spec
@@ -116,25 +94,25 @@ Found while surveying, all real:
   without saying how. The ladder is a **Hypothesis client convention**, which is a stronger thing
   to be implementing than a spec, and the docs should say so.
 
-### 9. Build the minimap
+### 8. Build the minimap
 Named in §7b as the genuine thing lost by not using a graph library. Roughly 80 lines on top of
 `camera.ts`'s existing `unionRect` / `boardToScreen` / `isVisible`. **Build, do not buy** — no
 library supplies one without the coordinate model this board rejected.
 
-### 10. Undo/redo, as an inverse-op stack over `BoardChange`
+### 9. Undo/redo, as an inverse-op stack over `BoardChange`
 The change union already describes every mutation (`entity/upsert`, `entity/delete`,
 `string/upsert`, `string/delete`), and an inverse is the same shape. Roughly 80 lines, no
 dependency. `zundo` is stale and drags in zustand; `immer` patches are the alternative but
 `updateEntities` runs once per pointermove during a drag and the store is allocation-light on
 purpose — measure before adopting.
 
-### 11. Accessibility on the board
+### 10. Accessibility on the board
 A real gap. `react-aria` and friends supply *collection* patterns that assume things have an
 order; a free-form 2D transform has no pattern to borrow. The work is design, not a dependency:
 a roving-focus model over entities, arrow-key nudging, a keyboard connections view. `PinTooltip`
 already does the `role="tooltip"` / deterministic-id part well — follow it.
 
-### 12. Consider Yjs, later
+### 11. Consider Yjs, later
 The only library found that would subsume **both** the anchoring ladder and the `transport.ts`
 seam: anchored text lives in a `Y.Text`, relative positions survive edits by construction rather
 than by being re-found, and a deleted position resolves to `null` — which maps onto the orphaned
