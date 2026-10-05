@@ -18,7 +18,7 @@ import { entityIdFromElement, px, withinSlop } from './board/view'
 import { YarnBead } from './board/entities/YarnBead'
 import { Legend } from './board/Legend'
 import { StringLayer } from './board/StringLayer'
-import { PostItPad } from './board/PostItPad'
+import { BoardPalette } from './board/Palette'
 import { StringNote } from './board/StringNote'
 import type { DrawableString, PinView } from './board/view'
 import { TopBar } from './app/TopBar'
@@ -1637,22 +1637,22 @@ export function App() {
               fitTo={paperRect ? [paperRect] : undefined}
               backdrop={(viewport) => <GridLayer camera={camera} viewport={viewport} />}
               overlay={
-                // Only where making a post-it is something this viewer may do.
-                can(LOCAL_VIEWER, 'create') ? (
-                  <PostItPad
-                    onDrop={(clientX, clientY) => {
-                      // Centred on the drop, because that is what the note under
-                      // the pointer showed: it is drawn centred on the cursor,
-                      // and a note that landed with its corner there would
-                      // appear half a note away from where it was aimed.
-                      const at = worldPoint(clientX, clientY)
-                      createPostIt({
-                        x: at.x - NOTE_SIZE.width / 2,
-                        y: at.y - NOTE_SIZE.height / 2,
-                      })
-                    }}
-                  />
-                ) : null
+                <BoardPalette
+                  canCreate={can(LOCAL_VIEWER, 'create')}
+                  onDropNote={(clientX, clientY) => {
+                    // Centred on the drop, because that is what the note under
+                    // the pointer showed: a note that landed with its corner
+                    // there would appear half a note from where it was aimed.
+                    const at = worldPoint(clientX, clientY)
+                    createPostIt({
+                      x: at.x - NOTE_SIZE.width / 2,
+                      y: at.y - NOTE_SIZE.height / 2,
+                    })
+                  }}
+                  // A tack's own coordinate *is* its centre, so this one lands
+                  // where it was put without a correction.
+                  onDropPin={(clientX, clientY) => createFreePin(worldPoint(clientX, clientY))}
+                />
               }
             >
               <ArticleSheet

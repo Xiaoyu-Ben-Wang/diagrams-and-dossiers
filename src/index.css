@@ -553,22 +553,30 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   The stack of blank post-its
+   The supplies in the corner: post-its and loose tacks
    ---------------------------------------------------------------------------
-   Three sheets offset a little, so it reads as a pad rather than as a button.
-   The offsets are on the sheet behind rather than on the top one, which is
-   what makes the top one look like the one you would take. */
+   A pad is a small sheet of parchment with the object drawn on it and its name
+   under it. The sheet behind is offset a little, so it reads as a stack rather
+   than as a button — and the offset is on the sheet *behind*, which is what
+   makes the top one look like the one you would take. */
 
-.post-it-pad {
+.palette {
   position: absolute;
   left: 16px;
   /* Clear of the footer strip along the bottom of the board. */
   bottom: 54px;
   z-index: 30;
   display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.palette-pad {
+  position: relative;
+  display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   width: 62px;
   padding: 10px 4px 6px;
   border-radius: 3px;
@@ -577,6 +585,7 @@ body {
   color: var(--color-ink-soft);
   font-size: 9px;
   letter-spacing: 0.02em;
+  text-align: center;
   cursor: grab;
   touch-action: none;
   box-shadow:
@@ -585,39 +594,98 @@ body {
   transition: transform 120ms ease;
 }
 
-.post-it-pad:hover {
+/* The sheet underneath, showing at the edge. */
+.palette-pad::before {
+  content: '';
+  position: absolute;
+  inset: -3px -3px 3px 3px;
+  z-index: -1;
+  border-radius: 3px;
+  background: var(--color-parchment-300);
+  box-shadow: 0 2px 5px rgb(0 0 0 / 0.35);
+}
+
+.palette-pad:hover {
   transform: translateY(-2px);
 }
 
-.post-it-pad:active {
+.palette-pad:active {
   cursor: grabbing;
 }
 
-.post-it-pad:focus-visible {
+.palette-pad:focus-visible {
   outline: 2px solid var(--color-brass);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
-.post-it-pad.is-disabled {
+.palette-pad.is-disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.post-it-pad-label {
-  line-height: 1;
+.palette-pad-label {
+  line-height: 1.1;
 }
 
-/* The note under the pointer, centred on it — a note is dropped where its
-   middle was, so the thing under the hand is the thing being placed. */
-.post-it-ghost {
+.palette-pad-sheet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+}
+
+/* A tack, drawn the way the board draws one. */
+.palette-glyph-tack {
+  display: block;
+  width: 13px;
+  height: 13px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 32% 28%, #f4e2a1, var(--color-brass) 45%, #7a5f12 100%);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.45),
+    0 0 0 1px rgb(0 0 0 / 0.2);
+}
+
+/* A post-it, drawn the way the board draws one. */
+.palette-glyph-note {
+  display: block;
+  width: 22px;
+  height: 17px;
+  border-radius: 1px;
+  background: #e8d9a8;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.5) inset,
+    0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+/* What is under the pointer while carrying. Centred on it, because that is
+   where the thing will land. */
+.palette-ghost-note,
+.palette-ghost-tack {
   position: fixed;
   z-index: 60;
   pointer-events: none;
-  transform: translate(-50%, -50%) rotate(-3deg);
+  transform: translate(-50%, -50%);
+}
+
+.palette-ghost-note {
+  width: 84px;
+  height: 64px;
   border-radius: 2px;
   background: var(--color-parchment-200);
   box-shadow: 0 8px 18px -6px rgb(0 0 0 / 0.6);
   opacity: 0.9;
+  rotate: -3deg;
+}
+
+.palette-ghost-tack {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 32% 28%, #f4e2a1, var(--color-brass) 45%, #7a5f12 100%);
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 0.5),
+    0 0 0 1px rgb(0 0 0 / 0.25);
 }
 
 /* ---------------------------------------------------------------------------
