@@ -210,7 +210,7 @@ articles(id, board_id, title, slug, body_md,
          rotation,                       -- degrees about the pin, within +/-45
          version, created_by, created_at, updated_at)
 
-items(id, board_id, kind: note|article_ref|image,
+items(id, board_id, kind: pin|note|article_ref|image,
       title, body_md, color,
       visibility: shared|dm, reveal_at,
       board_x, board_y,               -- free placement
@@ -219,7 +219,9 @@ items(id, board_id, kind: note|article_ref|image,
       date_label, occurred_at, date_precision, date_inherit,
       z_index, version, created_by, created_at, updated_at,
       -- image only, and null for every other kind
-      src, width, height, rotation,   -- footprint in board px, not file px
+      src, width, height,             -- footprint in board px, not file px
+      rotation,                       -- degrees about the pin, within +/-45
+      edge, edge_seed,                -- border form, and what it generates from
       CHECK ((article_id IS NOT NULL AND anchor IS NOT NULL)
           OR (board_x IS NOT NULL AND board_y IS NOT NULL)))
 
@@ -241,6 +243,19 @@ held to the board by one pin at the top-centre and swing about it, within ±45°
 are not rotated at all. `width`/`height` on an image are the board footprint measured from the
 decoded file — never the file's own pixel dimensions, which for a photograph off a phone would be
 larger than the article it sits beside.
+
+**`edge` is generated, and `edge_seed` is what it generates from.** The geometry in
+`src/board/edges.ts` is deterministic on purpose — the same seed gives the same polygon in any
+process, which is what makes its cache sound and its output testable. Randomness therefore lives
+in the seed, which is stored, and re-rolled when a picture is picked up. A style the client does
+not recognise falls back to `clean` rather than throwing.
+
+> **This schema lags the client in one place, deliberately.** An article is still its own table
+> here, and `article_ref` still means a reference to one. The client has the same shape — a single
+> page held in component state, not an entity — so the two agree. Folding `articles` into `items`
+> belongs with the change that makes an article an entity on the board, and `0002_entity_columns.sql`
+> carries the sequence for it, including the step that must not be automated. Doing the fold first
+> would put the schema ahead of the client, which is the same drift in the other direction.
 
 Indexes on `items(board_id)`, `items(article_id)`, `items(occurred_at)` (timeline), and a GIN
 index on a `tsvector` for search.
