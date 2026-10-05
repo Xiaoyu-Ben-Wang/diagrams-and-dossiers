@@ -18,6 +18,7 @@ import { entityIdFromElement, px, withinSlop } from './board/view'
 import { YarnBead } from './board/entities/YarnBead'
 import { Legend } from './board/Legend'
 import { StringLayer } from './board/StringLayer'
+import { StringNote } from './board/StringNote'
 import type { DrawableString, PinView } from './board/view'
 import { TopBar } from './app/TopBar'
 import { LOCAL_VIEWER } from './access/permissions'
@@ -948,6 +949,9 @@ export function App() {
           slack: DEFAULT_SLACK,
           color: YARN_COLOR,
           style: 'solid',
+          // Halfway along, which is where a tag looks like it belongs and is
+          // the easiest place to grab.
+          labelAt: 0.5,
           visibility: 'shared',
         })
       }
@@ -1413,6 +1417,25 @@ export function App() {
     })
   }, [store])
 
+  /** Slide a string's note to a new place along the rope. */
+  const slideStringNote = useCallback(
+    (id: string, t: number) => {
+      store.updateStrings([id], (link) => ({ ...link, labelAt: t }))
+    },
+    [store],
+  )
+
+  /** Write on a string's note. An empty one takes the note off. */
+  const writeStringNote = useCallback(
+    (id: string, label: string) => {
+      store.updateStrings([id], (link) => {
+        const next = label || undefined
+        return next === link.label ? link : { ...link, label: next }
+      })
+    },
+    [store],
+  )
+
   const removeString = useCallback(
     (id: string) => {
       store.removeStrings([id])
@@ -1685,6 +1708,26 @@ export function App() {
                     running behind a pinned document reads as a mistake. It
                     stays pointer-events-none, so it never intercepts a click
                     meant for a pin or a post-it. */}
+              {/* A note on every string that has one. Rendered after the yarn
+                  so the card sits on top of the wool rather than under it, and
+                  outside the SVG because it is a card, not a path. */}
+              {drawableStrings.map((drawn) => {
+                const link = strings.find((candidate) => candidate.id === drawn.id)
+                if (!link) return null
+                return (
+                  <StringNote
+                    key={`note-${link.id}`}
+                    link={link}
+                    from={drawn.from}
+                    to={drawn.to}
+                    selected={selection.has(link.id)}
+                    toBoard={worldPoint}
+                    onSlide={(t) => slideStringNote(link.id, t)}
+                    onWrite={(text) => writeStringNote(link.id, text)}
+                  />
+                )
+              })}
+
               {selectedString ? (
                 <YarnBead
                   key={selectedString.id}

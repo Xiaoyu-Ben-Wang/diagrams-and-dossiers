@@ -19,6 +19,7 @@ const link = (from: string, to: string, id = `${from}-${to}`) => ({
   slack: DEFAULT_SLACK,
   color: YARN_COLOR,
   style: 'solid' as const,
+  labelAt: 0.5,
   visibility: 'shared' as const,
 })
 

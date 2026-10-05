@@ -11,6 +11,7 @@ const string = () => ({
   slack: DEFAULT_SLACK,
   color: YARN_COLOR,
   style: 'solid' as const,
+  labelAt: 0.5,
   visibility: 'shared' as const,
 })
 

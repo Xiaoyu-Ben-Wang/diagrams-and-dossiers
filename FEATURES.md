@@ -14,31 +14,15 @@ than deleting it silently — the next person will wonder.
 
 ## Queued
 
-### 1. Descriptions on strings
-Asked for: *"connecting strings are also able to have a description… render them almost looking
-like a sticky note pinned by a pin, or strung along the line of a string. Allow the user to slide
-it to any position along the length of the string, and it moves according when the string gets
-moved too."*
-
-`StringLink` already carries a `label?: string` (see `src/model/types.ts`) and the migration has
-the column — it is simply never rendered or edited. Work:
-
-- Add `labelAt: number` (0..1 along the curve) beside it.
-- Render, when `label` is non-empty, a small note-shaped chip at `pointOnYarn(from, to, labelAt,
-  slack)` — it follows automatically, because the endpoints are recomputed every render.
-- Drag it along the string to set `labelAt`; the nearest-point maths is already in
-  `distanceToYarn` / `pointOnYarn` in `src/board/yarn.ts`.
-- Editing the text should reuse the pin-editor pattern (`src/board/PinEditor.tsx`).
-
-### 2. A richer demo board
+### 1. A richer demo board
 Asked for: *"at least 2 articles, a few stickies, multiple yarns and pins, some with descriptions,
 some without."*
 
-**Blocked on #3** — there is one article and it is held in component state as a singleton, so a
+**Blocked on #2** — there is one article and it is held in component state as a singleton, so a
 second one cannot exist yet. Once articles are entities, seed them in `src/app/demo.ts`, which is
 where the demo content already lives and is written to be the first thing deleted.
 
-### 3. Articles as entities (plan Stage 3)
+### 2. Articles as entities (plan Stage 3)
 The last big piece of the approved plan and the prerequisite for #2. Today the article is
 `paperPos` / `paperTilt` / `paperWidth` / `source` in `App.tsx` with one `articleRef` and one
 `projectionRef`. Making it an `ArticleEntity` means:
@@ -51,7 +35,7 @@ The last big piece of the approved plan and the prerequisite for #2. Today the a
 - Then the `articles` table folds into `items` — the sequence is written at the foot of
   `supabase/migrations/0002_entity_columns.sql`, including the step that must not be automated.
 
-### 4. Finish breaking up `App.tsx`
+### 3. Finish breaking up `App.tsx`
 2451 lines when this started, 1731 now. The status strip (the `Legend` row plus the counts) is the
 next obvious block, and the hooks are the larger prize — `useArticleProjection`, `useStringDrag`,
 `usePinDrop` are all still inline.
@@ -64,7 +48,7 @@ A survey of candidate dependencies was run; the report is summarised in `docs/ar
 §7b and the decisions below. **The headline was that most libraries would be a downgrade** — the
 home-made parts are the domain model, not wheel reinvention.
 
-### 5. Adopt `@floating-ui/react` for the tooltip and context menu
+### 4. Adopt `@floating-ui/react` for the tooltip and context menu
 The one clear win found. `PinTooltip.tsx` (292 lines) and `ContextMenu.tsx` (277 lines), plus 577
 lines of tests, are hand-rolled portal + measure-after-mount + clamp-to-viewport + reposition.
 `@floating-ui/react` 0.27.20 (2026-07-11, MIT, React 19 peer) owns that, and its `autoUpdate` is
@@ -72,7 +56,7 @@ exactly the fix for the stale-anchor-rect-under-zoom bug the tooltip's own comme
 fighting. Keep the trigger in `BoardCanvas` — the library should own *where a menu sits*, not
 *when it opens*.
 
-### 6. Add the missing fuzzy rung to `resolve.ts`
+### 5. Add the missing fuzzy rung to `resolve.ts`
 `docs/architecture.md` §2 claims tier 3 does bitap via `diff-match-patch`. **It does not** —
 `resolve.ts` is a plain `indexOf`. The gap is real: if the *quoted words themselves* are edited,
 every tier misses and the pin orphans.
@@ -83,10 +67,10 @@ with an edit-distance budget** → score candidates by `50·quoteSim + 20·prefi
 starting constants. Prefer hand-rolling the matcher over vendoring `hypothesis/client` (BSD-2, no
 npm package, and it anchors against a live DOM where this anchors against flat text).
 
-### 7. Fix three doc drifts
+### 6. Fix three doc drifts
 Found while surveying, all real:
 
-- §2 claims bitap that does not exist (see #6).
+- §2 claims bitap that does not exist (see #5).
 - §8 describes a `motion` library that is imported nowhere and is not a dependency. The section is
   an architecture for something unbuilt; either build it or rewrite the section.
 - §2 and `anchors/types.ts` frame the resolution ladder as the W3C model. It is not — the spec
@@ -94,25 +78,25 @@ Found while surveying, all real:
   without saying how. The ladder is a **Hypothesis client convention**, which is a stronger thing
   to be implementing than a spec, and the docs should say so.
 
-### 8. Build the minimap
+### 7. Build the minimap
 Named in §7b as the genuine thing lost by not using a graph library. Roughly 80 lines on top of
 `camera.ts`'s existing `unionRect` / `boardToScreen` / `isVisible`. **Build, do not buy** — no
 library supplies one without the coordinate model this board rejected.
 
-### 9. Undo/redo, as an inverse-op stack over `BoardChange`
+### 8. Undo/redo, as an inverse-op stack over `BoardChange`
 The change union already describes every mutation (`entity/upsert`, `entity/delete`,
 `string/upsert`, `string/delete`), and an inverse is the same shape. Roughly 80 lines, no
 dependency. `zundo` is stale and drags in zustand; `immer` patches are the alternative but
 `updateEntities` runs once per pointermove during a drag and the store is allocation-light on
 purpose — measure before adopting.
 
-### 10. Accessibility on the board
+### 9. Accessibility on the board
 A real gap. `react-aria` and friends supply *collection* patterns that assume things have an
 order; a free-form 2D transform has no pattern to borrow. The work is design, not a dependency:
 a roving-focus model over entities, arrow-key nudging, a keyboard connections view. `PinTooltip`
 already does the `role="tooltip"` / deterministic-id part well — follow it.
 
-### 11. Consider Yjs, later
+### 10. Consider Yjs, later
 The only library found that would subsume **both** the anchoring ladder and the `transport.ts`
 seam: anchored text lives in a `Y.Text`, relative positions survive edits by construction rather
 than by being re-found, and a deleted position resolves to `null` — which maps onto the orphaned

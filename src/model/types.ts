@@ -205,7 +205,21 @@ export interface StringLink {
   slack: number
   color: string
   style: StringStyle
+  /**
+   * A description of what the string means, or empty for none.
+   *
+   * A string's meaning is the thing most easily lost on a board of them: two
+   * pins joined by red wool says nothing about *why*. The note hangs on the
+   * string the way a tag hangs on a line.
+   */
   label?: string
+  /**
+   * Where along the string the note hangs, 0 at the `from` end and 1 at `to`.
+   *
+   * A position along the rope rather than a point on the board, so the note
+   * follows when either end is dragged and cannot be left behind by one.
+   */
+  labelAt: number
   visibility: Visibility
 }
 
