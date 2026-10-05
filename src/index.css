@@ -158,33 +158,43 @@ body {
     0 0 12px rgb(140 47 30 / 0.55);
 }
 
-/* The bead that adjusts a selected string's sag: a brass ring threaded on the
-   yarn, so it reads as part of the same hardware as the tacks. */
+/* The handle that adjusts a selected string's sag. No chrome: it is a control,
+   and dressing it as board hardware made it read as another object to click.
+   The glyph carries the meaning; this is just the target around it. */
 .yarn-bead {
   cursor: ns-resize;
-  background: radial-gradient(circle at 34% 30%, #f4e2a1, var(--color-brass) 48%, #7a5f12 100%);
-  box-shadow:
-    0 2px 3px rgb(0 0 0 / 0.4),
-    0 0 0 1px rgb(0 0 0 / 0.28),
-    0 0 10px rgb(201 162 39 / 0.45);
+  background: none;
+  border: 0;
+  padding: 0;
 }
 
-/* Grows on hover and while held, so the target is obvious before it is grabbed.
-   transform rather than width, so the bead never shifts the point it marks. */
+/* The target is the whole box, plus a margin — the glyph is only 20px, and the
+   point of a handle is that it is easy to catch. */
 .yarn-bead::after {
   content: '';
   position: absolute;
-  inset: -6px;
-  border-radius: 9999px;
+  inset: -8px;
 }
 
-.yarn-bead:hover,
+.yarn-bead-glyph {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transition: transform 120ms ease;
+}
+
+/* Grows on hover and while held, so it is obvious it responds before it is
+   grabbed. transform rather than width, so the mark never leaves the point on
+   the curve that it is marking. */
+.yarn-bead:hover .yarn-bead-glyph,
+.yarn-bead:focus-visible .yarn-bead-glyph {
+  transform: scale(1.22);
+}
+
 .yarn-bead:focus-visible {
-  background: radial-gradient(circle at 34% 30%, #ffeec2, #d9a63a 48%, #7a5f12 100%);
-  box-shadow:
-    0 2px 4px rgb(0 0 0 / 0.45),
-    0 0 0 1px rgb(0 0 0 / 0.3),
-    0 0 14px rgb(201 162 39 / 0.7);
+  outline: 2px solid var(--color-brass);
+  outline-offset: 3px;
+  border-radius: 9999px;
 }
 
 /* The chronology ribbon: a strip of adding-machine tape with punched holes

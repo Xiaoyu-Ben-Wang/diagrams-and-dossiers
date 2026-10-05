@@ -106,8 +106,8 @@ const STRING_HIT_PX = 10
  * so it has to stay legible at any zoom. Divided by zoom where it is drawn.
  */
 const STRING_HALO_PX = 11
-/** The bead's footprint in board px, and so how big a target it is to grab. */
-const BEAD_SIZE = 20
+/** The sag handle's footprint in board px, and so how big a target it is to grab. */
+const HANDLE_SIZE = 20
 /**
  * Slack is rounded to this many steps per unit on every change.
  *
@@ -1656,8 +1656,13 @@ function Tack({
 }
 
 /**
- * The bead on a selected string: the handle you haul up and down to change how
+ * The handle on a selected string: the thing you haul up and down to change how
  * much the string sags.
+ *
+ * Drawn as a bare double-headed arrow rather than as a brass bead. The bead
+ * matched the tacks, which made it read as another object resting on the board
+ * — something you might click, not something you drag. An arrow is a control,
+ * and this is the one part of the board that is one.
  *
  * Its own component so the drag hook lives here, and so the gesture is bound to
  * one string by construction rather than through a ref of "which string is
@@ -1688,16 +1693,30 @@ function YarnBead({
       type="button"
       data-testid="yarn-bead"
       aria-label="Drag up or down to adjust how much the string sags"
-      className="yarn-bead tack-enter absolute rounded-full"
+      className="yarn-bead tack-enter absolute"
       style={{
-        left: apex.x - BEAD_SIZE / 2,
-        top: apex.y - BEAD_SIZE / 2,
-        width: BEAD_SIZE,
-        height: BEAD_SIZE,
+        left: apex.x - HANDLE_SIZE / 2,
+        top: apex.y - HANDLE_SIZE / 2,
+        width: HANDLE_SIZE,
+        height: HANDLE_SIZE,
         touchAction: 'none',
       }}
       {...drag}
-    />
+    >
+      {/* Stroked rather than filled, so it stays legible over the string it
+          sits on: the shaft crosses the yarn, and a solid glyph in the same red
+          would merge with it. */}
+      <svg viewBox="0 0 20 20" className="yarn-bead-glyph" aria-hidden="true">
+        <path
+          d="M 10 4.5 V 15.5 M 6.4 8.1 L 10 4.5 L 13.6 8.1 M 6.4 11.9 L 10 15.5 L 13.6 11.9"
+          fill="none"
+          stroke={YARN_COLOR}
+          strokeWidth={2.1}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
   )
 }
 
