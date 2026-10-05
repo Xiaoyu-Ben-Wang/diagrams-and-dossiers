@@ -14,21 +14,7 @@ than deleting it silently — the next person will wonder.
 
 ## Queued
 
-### 1. A palette pad to drag post-its from
-Asked for: *"For the post it, create a little post it at the bottom left corner that you drag from,
-that allows you to drag post it notes onto the board."*
-
-A small stack of paper pinned in the corner of the board; dragging off it drops a note where the
-drag ends. Should behave like the real thing — the dragged note follows the pointer and lands
-where it is let go — rather than like a button that spawns one at a fixed spot. `newNote` already
-takes a board point, and `worldPoint` converts a client point to one, so the work is the pad
-itself and the drag.
-
-Worth deciding: whether the pad is board furniture that pans away with the cork (consistent with
-everything else) or fixed chrome that stays put. The corner of the *board* is probably right, so
-it reads as a stack of paper left on the desk.
-
-### 2. Theme colour tokens with one vocabulary
+### 1. Theme colour tokens with one vocabulary
 Asked for: *"For the preference themes, build out a css color library that share the same variable
 names, i.e. primary, secondary, etc."*
 
@@ -51,15 +37,15 @@ Two things to be careful of, both learned the hard way already:
   surface), not about single colours. Whatever the tokens are, they should make the pairs
   checkable.
 
-### 3. A richer demo board
+### 2. A richer demo board
 Asked for: *"at least 2 articles, a few stickies, multiple yarns and pins, some with descriptions,
 some without."*
 
-**Blocked on #4** — there is one article and it is held in component state as a singleton, so a
+**Blocked on #3** — there is one article and it is held in component state as a singleton, so a
 second one cannot exist yet. Once articles are entities, seed them in `src/app/demo.ts`, which is
 where the demo content already lives and is written to be the first thing deleted.
 
-### 4. Articles as entities (plan Stage 3)
+### 3. Articles as entities (plan Stage 3)
 The last big piece of the approved plan and the prerequisite for #2. Today the article is
 `paperPos` / `paperTilt` / `paperWidth` / `source` in `App.tsx` with one `articleRef` and one
 `projectionRef`. Making it an `ArticleEntity` means:
@@ -72,7 +58,7 @@ The last big piece of the approved plan and the prerequisite for #2. Today the a
 - Then the `articles` table folds into `items` — the sequence is written at the foot of
   `supabase/migrations/0002_entity_columns.sql`, including the step that must not be automated.
 
-### 5. Finish breaking up `App.tsx`
+### 4. Finish breaking up `App.tsx`
 2451 lines when this started, 1731 now. The status strip (the `Legend` row plus the counts) is the
 next obvious block, and the hooks are the larger prize — `useArticleProjection`, `useStringDrag`,
 `usePinDrop` are all still inline.
@@ -85,7 +71,7 @@ A survey of candidate dependencies was run; the report is summarised in `docs/ar
 §7b and the decisions below. **The headline was that most libraries would be a downgrade** — the
 home-made parts are the domain model, not wheel reinvention.
 
-### 6. Adopt `@floating-ui/dom` for the tooltip and context menu
+### 5. Adopt `@floating-ui/dom` for the tooltip and context menu
 The one clear win found — and smaller than it first looked. `ContextMenu.tsx` and `PinTooltip.tsx`
 *already* do the hard parts: flip, a tail pointer, clamping, keyboard nav, focus restore on
 unmount, and they are tested (577 test lines between them). The genuine gap is narrower: neither
@@ -98,7 +84,7 @@ handling and the focus behaviour. `@floating-ui/react` (31 KB) is only worth it 
 the portal, which are not what is missing. Do **not** reach for Radix or Base UI for this: both
 take over focus and want a declarative trigger, which fits poorly with one menu per pin.
 
-### 7. Add the missing fuzzy rung to `resolve.ts`
+### 6. Add the missing fuzzy rung to `resolve.ts`
 `docs/architecture.md` §2 claims tier 3 does bitap via `diff-match-patch`. **It does not** —
 `resolve.ts` is a plain `indexOf`. The gap is real: if the *quoted words themselves* are edited,
 every tier misses and the pin orphans.
@@ -109,10 +95,10 @@ with an edit-distance budget** → score candidates by `50·quoteSim + 20·prefi
 starting constants. Prefer hand-rolling the matcher over vendoring `hypothesis/client` (BSD-2, no
 npm package, and it anchors against a live DOM where this anchors against flat text).
 
-### 8. Fix three doc drifts
+### 7. Fix three doc drifts
 Found while surveying, all real:
 
-- §2 claims bitap that does not exist (see #7).
+- §2 claims bitap that does not exist (see #6).
 - §8 describes a `motion` library that is imported nowhere and is not a dependency. The section is
   an architecture for something unbuilt; either build it or rewrite the section.
 - §2 and `anchors/types.ts` frame the resolution ladder as the W3C model. It is not — the spec
@@ -120,7 +106,7 @@ Found while surveying, all real:
   without saying how. The ladder is a **Hypothesis client convention**, which is a stronger thing
   to be implementing than a spec, and the docs should say so.
 
-### 9. Build the minimap — or take the `react-zoom-pan-pinch` spike
+### 8. Build the minimap — or take the `react-zoom-pan-pinch` spike
 §7b named four things genuinely lost by not using a graph library: **a minimap, viewport culling,
 keyboard navigation, and a selection model.** The first three are buildable: `camera.ts` already
 has `unionRect` / `boardToScreen` / `isVisible`, and `isVisible` is written *and tested* but never
@@ -139,20 +125,20 @@ that React 19.3 behaves (its peer range is `*` and its CI runs React 18).** Keep
 `Camera` type as the boundary so the store never learns about the library's own transform shape.
 If the spike fails, build the minimap by hand; it is about 80 lines.
 
-### 10. Undo/redo, as an inverse-op stack over `BoardChange`
+### 9. Undo/redo, as an inverse-op stack over `BoardChange`
 The change union already describes every mutation (`entity/upsert`, `entity/delete`,
 `string/upsert`, `string/delete`), and an inverse is the same shape. Roughly 80 lines, no
 dependency. `zundo` is stale and drags in zustand; `immer` patches are the alternative but
 `updateEntities` runs once per pointermove during a drag and the store is allocation-light on
 purpose — measure before adopting.
 
-### 11. Accessibility on the board
+### 10. Accessibility on the board
 A real gap. `react-aria` and friends supply *collection* patterns that assume things have an
 order; a free-form 2D transform has no pattern to borrow. The work is design, not a dependency:
 a roving-focus model over entities, arrow-key nudging, a keyboard connections view. `PinTooltip`
 already does the `role="tooltip"` / deterministic-id part well — follow it.
 
-### 12. Consider Yjs, later
+### 11. Consider Yjs, later
 The only library found that would subsume **both** the anchoring ladder and the `transport.ts`
 seam: anchored text lives in a `Y.Text`, relative positions survive edits by construction rather
 than by being re-found, and a deleted position resolves to `null` — which maps onto the orphaned

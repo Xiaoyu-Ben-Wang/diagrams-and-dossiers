@@ -68,6 +68,11 @@ export interface BoardCanvasProps {
    */
   fitTo?: Rect[]
   /**
+   * Rendered over everything, in *viewport* space — chrome that belongs to the
+   * board rather than to the cork, and so must not pan away with it.
+   */
+  overlay?: ReactNode
+  /**
    * Rendered behind the world, in *viewport* space, and handed the measured
    * viewport size.
    *
@@ -188,6 +193,7 @@ export function BoardCanvas({
   onFileDrop,
   onFileDragOver,
   fitTo,
+  overlay,
   backdrop,
   onBackgroundClick,
   pinMode = false,
@@ -601,6 +607,8 @@ export function BoardCanvas({
           }}
         />
       )}
+
+      {overlay}
 
       <ZoomReadout camera={camera} onCameraChange={onCameraChange} />
     </div>

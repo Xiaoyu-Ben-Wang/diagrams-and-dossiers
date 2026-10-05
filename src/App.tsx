@@ -18,10 +18,11 @@ import { entityIdFromElement, px, withinSlop } from './board/view'
 import { YarnBead } from './board/entities/YarnBead'
 import { Legend } from './board/Legend'
 import { StringLayer } from './board/StringLayer'
+import { PostItPad } from './board/PostItPad'
 import { StringNote } from './board/StringNote'
 import type { DrawableString, PinView } from './board/view'
 import { TopBar } from './app/TopBar'
-import { LOCAL_VIEWER } from './access/permissions'
+import { can, LOCAL_VIEWER } from './access/permissions'
 import { useRoute } from './app/router'
 import { BoardCanvas, type BoardContextTarget } from './board/BoardCanvas'
 import { createBoardStore, useBoard, type BoardStore } from './board/store'
@@ -71,7 +72,7 @@ import {
   newImage,
   newNote,
 } from './model/create'
-import { descriptorFor } from './model/kinds'
+import { descriptorFor, NOTE_SIZE } from './model/kinds'
 import { pinToBoard, pinToText, sameAnchor } from './model/pinning'
 import {
   isAnchoredPin,
@@ -1635,8 +1636,26 @@ export function App() {
               className="min-h-0 flex-1"
               fitTo={paperRect ? [paperRect] : undefined}
               backdrop={(viewport) => <GridLayer camera={camera} viewport={viewport} />}
+              overlay={
+                // Only where making a post-it is something this viewer may do.
+                can(LOCAL_VIEWER, 'create') ? (
+                  <PostItPad
+                    onDrop={(clientX, clientY) => {
+                      // Centred on the drop, because that is what the note under
+                      // the pointer showed: it is drawn centred on the cursor,
+                      // and a note that landed with its corner there would
+                      // appear half a note away from where it was aimed.
+                      const at = worldPoint(clientX, clientY)
+                      createPostIt({
+                        x: at.x - NOTE_SIZE.width / 2,
+                        y: at.y - NOTE_SIZE.height / 2,
+                      })
+                    }}
+                  />
+                ) : null
+              }
             >
-                            <ArticleSheet
+              <ArticleSheet
                 html={html}
                 pos={paperPos}
                 tilt={paperTilt}
