@@ -14,9 +14,7 @@ import { caretRangeFromPoint, caretRangeThroughPins } from './anchors/caret'
 import { resolveAnchor } from './anchors/resolve'
 import { ARTICLE_ID, ARTICLE_TITLE, CAMPAIGN_EPOCH, FIRST_SESSION, INITIAL_MARKDOWN, SESSION_GAP_MS } from './app/demo'
 import { NUDGE_SLOP_PX, PAPER_WIDTH, POST_IT_COLORS, SLACK_STEP, SNAP_RADIUS, STRING_HIT_PX } from './board/tuning'
-import { entityIdFromElement, pinPoint, px, withinSlop } from './board/view'
-import { Tack } from './board/entities/Tack'
-import { PostIt } from './board/entities/PostIt'
+import { entityIdFromElement, px, withinSlop } from './board/view'
 import { YarnBead } from './board/entities/YarnBead'
 import { Legend } from './board/Legend'
 import { StringLayer } from './board/StringLayer'
@@ -26,13 +24,12 @@ import { LOCAL_VIEWER } from './access/permissions'
 import { useRoute } from './app/router'
 import { BoardCanvas, type BoardContextTarget } from './board/BoardCanvas'
 import { createBoardStore, useBoard, type BoardStore } from './board/store'
-import { EdgePicker } from './board/EdgePicker'
 import type { EdgeStyle } from './board/edges'
-import { ImageCard } from './board/ImageCard'
 import { decodeImageFile, firstImage } from './board/image-file'
 import { clampTilt, rotateAbout } from './board/pivot'
 import { useBoardDrag } from './board/useBoardDrag'
 import { ArticleSheet } from './board/ArticleSheet'
+import { EntityLayer } from './board/EntityLayer'
 import { ContextMenu, type ContextMenuEntry } from './board/ContextMenu'
 import { GridLayer } from './board/GridLayer'
 import { PaperEditor } from './board/PaperEditor'
@@ -1581,83 +1578,32 @@ export function App() {
                 articleToBoard={articleToBoard}
               />
 
-              {/* Pins stuck into the cork rather than into text. Same object
-                    as an anchored pin, different location — which is why they
-                    share the note editor and the yarn. */}
-              {freePins.map((pin) =>
-                pin.board ? (
-                  <Tack
-                    key={`free-${pin.id}`}
-                    pin={pin}
-                    x={pin.board.x - 7 + pin.nudge.x}
-                    y={pin.board.y - 7 + pin.nudge.y}
-                    selected={selection.has(pin.id)}
-                    dimmed={dimming && !activeIds.has(pin.id)}
-                    moving={movingPin === pin.id}
-                    zoom={camera.zoom}
-                    onStartYarn={(event) => beginString(event, pin.id, pinPoint(pin, articleToBoard))}
-                    onMove={moveOne}
-                    onDrop={handlePinDrop}
-                    onHover={handlePinHover}
-                  />
-                ) : null,
-              )}
-
-              {images.map((picture) => (
-                <ImageCard
-                  key={picture.id}
-                  id={picture.id}
-                  src={picture.src}
-                  alt={picture.alt}
-                  x={picture.board.x}
-                  y={picture.board.y}
-                  width={picture.width}
-                  height={picture.height}
-                  rotation={picture.rotation}
-                  fit={picture.fit}
-                  edge={picture.edge}
-                  edgeSeed={picture.edgeSeed}
-                  selected={selection.has(picture.id)}
-                  zoom={camera.zoom}
-                  toBoard={worldPoint}
-                  onMove={moveEntity}
-                  onRotate={rotateEntity}
-                  onSelect={selectImage}
-                  onResize={resizeImage}
-                  onStartYarn={(event) => beginString(event, picture.id, anchorPoints.get(picture.id) ?? null)}
-                />
-              ))}
-
-              {/* The border bar follows the selection: it belongs to the one
-                    picture you are looking at, not to the board. */}
-              {selectedImage ? (
-                <EdgePicker
-                  seed={selectedImage.edgeSeed}
-                  edge={selectedImage.edge}
-                  box={
-                    descriptorFor(selectedImage).bounds(selectedImage, entityContext) ?? {
-                      x: selectedImage.board.x,
-                      y: selectedImage.board.y,
-                      width: selectedImage.width,
-                      height: selectedImage.height,
-                    }
-                  }
-                  tilt={selectedImage.rotation}
-                  onPick={(style) => setImageEdge(selectedImage.id, style)}
-                />
-              ) : null}
-
-              {postIts.map((note) => (
-                <PostIt
-                  key={note.id}
-                  note={note}
-                  zoom={camera.zoom}
-                  selected={selection.has(note.id)}
-                  onDrag={moveEntity}
-                  onChange={setEntityBody}
-                  onRemove={removeEntity}
-                />
-              ))}
+              <EntityLayer
+                freePins={freePins}
+                images={images}
+                postIts={postIts}
+                selectedImage={selectedImage}
+                selection={selection}
+                dimming={dimming}
+                activeIds={activeIds}
+                movingPin={movingPin}
+                zoom={camera.zoom}
+                context={entityContext}
+                articleToBoard={articleToBoard}
+                toBoard={worldPoint}
+                anchorOf={(id) => anchorPoints.get(id) ?? null}
+                onStartYarn={beginString}
+                onMoveOne={moveOne}
+                onMoveEntity={moveEntity}
+                onPinDrop={handlePinDrop}
+                onPinHover={handlePinHover}
+                onRotate={rotateEntity}
+                onResize={resizeImage}
+                onSelectImage={selectImage}
+                onSetEdge={setImageEdge}
+                onSetBody={setEntityBody}
+                onRemove={removeEntity}
+              />
               <StringLayer
                 strings={drawableStrings}
                 selected={selection}
