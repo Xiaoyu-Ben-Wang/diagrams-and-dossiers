@@ -565,7 +565,11 @@ body {
   left: 16px;
   /* Clear of the footer strip along the bottom of the board. */
   bottom: 54px;
-  z-index: 30;
+  /* Above everything on the cork, and below anything transient. The border bar
+     is wide enough to reach this corner when a picture is selected near the
+     bottom-left, and a menu standing over chrome is correct where chrome
+     standing over a menu is a swatch that cannot be clicked. */
+  z-index: 28;
   display: flex;
   align-items: flex-end;
   gap: 8px;
