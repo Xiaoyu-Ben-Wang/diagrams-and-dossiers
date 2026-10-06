@@ -26,7 +26,7 @@ const STYLE_LABELS: Readonly<Record<NoteStyle, string>> = {
   plain: "Plain",
   ruled: "Ruled",
   grid: "Grid",
-  crumpled: "Crumpled",
+  torn: "Torn",
   taped: "Taped",
 };
 

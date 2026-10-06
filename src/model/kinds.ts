@@ -67,17 +67,6 @@ function round2(value: number): number {
 }
 
 /**
- * Which crumple a note is folded with. The patterns themselves are turbulence
- * filters in `NoteDefs`; a note only names one, by its own id, so it is the same
- * crumple every time it is drawn and no two notes in a row are alike.
- */
-export const CRUMPLE_VARIANTS = 6;
-
-export function crumpleVariant(id: string): number {
-  return hash32(id, 21) % CRUMPLE_VARIANTS;
-}
-
-/**
  * Line height as a multiple of the font size, per face. `system` is Tailwind's
  * `leading-snug`, which the note's textarea is given inline; a handwriting face
  * needs more of it, or its ascenders meet the descenders of the line above.
@@ -252,8 +241,7 @@ const note: EntityDescriptor<BoardEntity & { kind: "note" }> = {
 const article: EntityDescriptor<BoardEntity & { kind: "article" }> = {
   kind: "article",
   capabilities: (entity) => ({
-    // Out of the rubber band: a page swept into a selection is dragged off, leaving its pins.
-    marqueeSelectable: false,
+    marqueeSelectable: true,
     movable: true,
     connectable: true,
     dated: true,

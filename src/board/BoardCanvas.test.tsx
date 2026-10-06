@@ -501,23 +501,3 @@ describe("right-click context", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 });
-
-describe("the crumple patterns", () => {
-  it("are defined inside the world layer, where the export clone picks them up", () => {
-    // The PNG export clones this subtree into an SVG `data:` URI, and a filter
-    // reference only resolves against a definition in the same document. Move the
-    // defs out of the world and every crumpled note silently exports as flat paper.
-    render(<Harness />);
-
-    const world = screen.getByTestId("board-world");
-    expect(world.querySelectorAll("filter").length).toBeGreaterThan(0);
-  });
-
-  it("are defined before anything that references them", () => {
-    // WebKit will not resolve a forward reference, so the defs come first.
-    render(<Harness />);
-
-    const world = screen.getByTestId("board-world");
-    expect(world.firstElementChild?.tagName.toLowerCase()).toBe("svg");
-  });
-});

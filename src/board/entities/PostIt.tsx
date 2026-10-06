@@ -5,14 +5,12 @@ import {
   NOTE_FONT_SCALE_MAX,
   NOTE_FONT_SCALE_MIN,
   NOTE_FONT_SIZE,
-  crumpleVariant,
   noteLineRatio,
   stepFontScale,
 } from "../../model/kinds";
 import type { CSSProperties } from "react";
 
 import type { NoteEntity } from "../../model/types";
-import { crumpleFilterId } from "../NoteDefs";
 import { useBoardDrag } from "../useBoardDrag";
 import { useResizeDrag } from "../useResizeDrag";
 import type { Point } from "../yarn";
@@ -60,17 +58,6 @@ export function PostIt({
 
   const lineHeight = NOTE_FONT_SIZE * note.fontScale * noteLineRatio(note.font);
 
-  // Crumpled paper carries its colour on the shaded layer rather than on the note
-  // itself, so the crease lighting has something opaque to multiply into, and the
-  // writing stays above it and crisp.
-  const crumpled = note.style === "crumpled";
-  const crumpleVars = crumpled
-    ? ({
-        "--note-paper": note.color,
-        "--crumple": `url(#${crumpleFilterId(crumpleVariant(note.id))})`,
-      } as CSSProperties)
-    : null;
-
   const resize = useResizeDrag({
     size: { width: note.width, height: note.height },
     toBoard,
@@ -111,12 +98,11 @@ export function PostIt({
           // an inline style outranks the stylesheet, so every paper style would be
           // wiped. See `[data-note-style]` in index.css. Crumpled leaves it unset —
           // its paper is the shaded `::before`, and the note itself is see-through.
-          backgroundColor: crumpled ? undefined : note.color,
+          backgroundColor: note.color,
           // The ruled and grid papers draw at the text's own pitch, which is the one
           // thing a constant cannot know.
           "--note-line": `${lineHeight}px`,
           "--note-line-start": `${TEXT_TOP}px`,
-          ...crumpleVars,
         } as CSSProperties
       }
     >

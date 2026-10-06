@@ -184,9 +184,9 @@ function oneOf<T extends string>(
   return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
-/** `dog-eared` became `crumpled`; a board written before that keeps its paper. */
+/** Both names this paper has had; a board written under either keeps it. */
 function noteStyle(value: unknown): NoteStyle {
-  if (value === "dog-eared") return "crumpled";
+  if (value === "dog-eared" || value === "crumpled") return "torn";
   return oneOf<NoteStyle>(value, NOTE_STYLES, "plain");
 }
 

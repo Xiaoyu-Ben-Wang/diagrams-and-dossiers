@@ -1,0 +1,11 @@
+#!/bin/sh
+# Format what is being committed, and only that. Prettier has no config in this
+# repo, so it reflows to its defaults — running it over the whole tree would
+# rewrite files nobody touched.
+set -e
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx|css|js|mjs|json|md)$' || true)
+[ -z "$staged" ] && exit 0
+
+echo "$staged" | xargs npx prettier --write >/dev/null
+echo "$staged" | xargs git add

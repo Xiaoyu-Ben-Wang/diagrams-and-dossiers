@@ -27,13 +27,7 @@ export const STRING_STYLES = ["solid", "dashed", "double"] as const;
 export type StringStyle = (typeof STRING_STYLES)[number];
 
 /** The paper a note is drawn on. Each is a CSS rule keyed on `data-note-style`. */
-export const NOTE_STYLES = [
-  "plain",
-  "ruled",
-  "grid",
-  "crumpled",
-  "taped",
-] as const;
+export const NOTE_STYLES = ["plain", "ruled", "grid", "torn", "taped"] as const;
 export type NoteStyle = (typeof NOTE_STYLES)[number];
 
 /**

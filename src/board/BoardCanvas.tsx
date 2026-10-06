@@ -17,7 +17,6 @@ import {
   type Rect,
   type Viewport,
 } from "./camera";
-import { NoteDefs } from "./NoteDefs";
 import { CLICK_SLOP, DRAG_THRESHOLD } from "./useBoardDrag";
 import type { Point } from "./yarn";
 
@@ -471,10 +470,6 @@ export function BoardCanvas({
           left: 0,
         }}
       >
-        {/* First, and inside the world: WebKit will not resolve a filter
-            referenced before its definition, and the export clone carries
-            whatever lives in this subtree. See `NoteDefs`. */}
-        <NoteDefs />
         {children}
       </div>
 

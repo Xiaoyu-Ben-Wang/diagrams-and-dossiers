@@ -12,14 +12,14 @@ conversation. Move an item out when it is done.
 
 ## Where things are
 
-| | |
-|---|---|
+|                        |                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------- |
 | `docs/architecture.md` | the design, and the reasoning behind it. §7b is why the canvas is home-made. |
-| `FEATURES.md` | what has been asked for and not done |
-| `src/model/` | the entity union, the kind registry, article options |
-| `src/anchors/` | text anchoring: the quote/position selectors and the resolution ladder |
-| `src/board/` | the canvas: camera, gestures, yarn, edges, and the entity components |
-| `supabase/migrations/` | the schema. Designed for, not yet wired. |
+| `FEATURES.md`          | what has been asked for and not done                                         |
+| `src/model/`           | the entity union, the kind registry, article options                         |
+| `src/anchors/`         | text anchoring: the quote/position selectors and the resolution ladder       |
+| `src/board/`           | the canvas: camera, gestures, yarn, edges, and the entity components         |
+| `supabase/migrations/` | the schema. Designed for, not yet wired.                                     |
 
 ## How this codebase wants to be worked on
 
@@ -36,7 +36,10 @@ conversation. Move an item out when it is done.
   when asked, or when deleting it would let somebody break something without noticing — a browser
   or jsdom quirk, a value pinned in another file, an ordering that matters. No history, no
   rationale, no restating the code, no rejected alternatives. When in doubt, leave it out.
-- **Commit messages are one sentence, maximum.** No body, no bullets, no multi-paragraph
-  explanation. The diff is the detail.
+- **Commit messages are one sentence, maximum, with no body.** No bullets, no paragraphs, no
+  explanation of what was rejected — not unless a body is asked for. The diff is the detail.
+- **Prettier runs from `.githooks/pre-commit`, and nowhere else.** Do not format after an edit:
+  it reflows whatever file you touched to defaults nobody asked for, and buries the real change.
+  `git config core.hooksPath .githooks` sets it up on a fresh clone.
 - **Do not add a dependency without a reason that survives being written down.** Four runtime
   dependencies; `FEATURES.md` records what was considered and rejected, and why.

@@ -279,17 +279,17 @@ describe("refusing a file", () => {
 
   it("carries the paper a note is written on", () => {
     const board = tinyBoard();
-    const creased = { ...board.entities[1], style: "crumpled" };
+    const creased = { ...board.entities[1], style: "torn" };
     const result = parseBoardFile(
       fileWith({ ...board, entities: [board.entities[0], creased] }),
     );
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.board.entities[1]).toMatchObject({ style: "crumpled" });
+    expect(result.board.entities[1]).toMatchObject({ style: "torn" });
   });
 
-  it("gives a dog-eared note the style that replaced it, rather than plain paper", () => {
+  it("gives a note written before the tear the paper that replaced it", () => {
     const board = tinyBoard();
     const older = { ...board.entities[1], style: "dog-eared" };
     const result = parseBoardFile(
@@ -298,7 +298,7 @@ describe("refusing a file", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.board.entities[1]).toMatchObject({ style: "crumpled" });
+    expect(result.board.entities[1]).toMatchObject({ style: "torn" });
   });
 
   it("gives a note plain paper when the file predates the style", () => {

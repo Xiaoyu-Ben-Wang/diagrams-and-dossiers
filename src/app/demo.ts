@@ -218,7 +218,7 @@ export function demoBoard(): BoardState {
   const tide = newNote(POINTS.tide, {
     ...dateAt(14),
     color: POST_IT_COLORS[0].color,
-    style: "crumpled",
+    style: "torn",
     bodyMd: "Low tide twice a day. The bell rings at one of them.",
   });
   const blankToo = newNote(POINTS.blankToo, {

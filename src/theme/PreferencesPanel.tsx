@@ -26,8 +26,7 @@ const PAPER_SWATCHES: Readonly<Record<NoteStyle, string>> = {
   ruled:
     "repeating-linear-gradient(to bottom, var(--color-parchment-200) 0 4px, color-mix(in srgb, var(--color-ink) 25%, transparent) 4px 5px)",
   grid: "repeating-linear-gradient(to bottom, var(--color-parchment-200) 0 4px, color-mix(in srgb, var(--color-ink) 18%, transparent) 4px 5px), repeating-linear-gradient(to right, var(--color-parchment-200) 0 4px, color-mix(in srgb, var(--color-ink) 18%, transparent) 4px 5px)",
-  crumpled:
-    "radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--color-ink) 10%, transparent) 0 22%, transparent 55%), linear-gradient(135deg, var(--color-parchment-300) 0%, var(--color-parchment-100) 55%, var(--color-parchment-200) 100%)",
+  torn: "linear-gradient(to bottom, color-mix(in srgb, var(--color-ink) 22%, transparent) 0 1px, var(--color-parchment-200) 1px 26%, var(--color-parchment-100) 26% 100%)",
   taped:
     "linear-gradient(to bottom, rgb(255 255 255 / 0.75) 0 28%, var(--color-parchment-200) 28% 100%)",
 };

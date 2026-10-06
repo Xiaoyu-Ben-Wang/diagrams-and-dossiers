@@ -224,28 +224,41 @@ body {
 
 /* Clamped against a percentage, so one rule serves both a 168px note and a 30px
    chip in the picker. */
-/* Crumpled paper: turbulence lit from one side, so the creases are shading rather
-   than drawn lines — which is the difference between a crumple and a few strokes
-   across the sheet. The pattern itself is a filter in `NoteDefs`; a note names one
-   by its own id, and the colour it is lit through comes from `--note-paper`,
-   because a filter needs something opaque to work on.
-
-   `isolation` so the shaded layer stays inside this note: without it the `z-index`
-   below would put the paper behind every other note in the world. */
-[data-note-style="crumpled"] {
-  isolation: isolate;
-  background-color: transparent;
-}
-
-[data-note-style="crumpled"]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background-color: var(--note-paper, #e8d9a8);
-  filter: var(--crumple, url(#note-crumple-0));
-  pointer-events: none;
+/* Paper torn off a pad: the top edge ragged, everything else straight. The depths
+   are in px rather than %, so the tear is the same size on a small note and a
+   large one — a percentage would make a tall note look chewed. */
+[data-note-style="torn"] {
+  clip-path: polygon(
+    0px 6px,
+    2% 2px,
+    5% 8px,
+    6% 3px,
+    11% 1px,
+    14% 7px,
+    18% 4px,
+    21% 2px,
+    25% 8px,
+    30% 3px,
+    33% 1px,
+    38% 6px,
+    41% 2px,
+    46% 8px,
+    52% 4px,
+    54% 1px,
+    58% 7px,
+    63% 3px,
+    67% 6px,
+    71% 2px,
+    76% 8px,
+    79% 3px,
+    84% 5px,
+    88% 1px,
+    92% 7px,
+    97% 2px,
+    100% 5px,
+    100% 100%,
+    0px 100%
+  );
 }
 
 [data-note-style="taped"]::before {

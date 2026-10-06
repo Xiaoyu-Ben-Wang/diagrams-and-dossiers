@@ -171,11 +171,9 @@ describe("capabilities", () => {
     }
   });
 
-  it("keeps a page out of the rubber band", () => {
+  it("lets the rubber band take a page, so a group can be dragged whole", () => {
     const page = article();
-    expect(descriptorFor(page).capabilities(page).marqueeSelectable).toBe(
-      false,
-    );
+    expect(descriptorFor(page).capabilities(page).marqueeSelectable).toBe(true);
   });
 
   it("lets an article forbid editing without forbidding moving", () => {
