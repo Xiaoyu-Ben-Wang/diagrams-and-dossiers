@@ -139,7 +139,7 @@ export function StringNote({
         )}
       </div>
 
-      <span aria-hidden="true" className="string-note-pin" />
+      <span aria-hidden="true" className="string-note-dot" />
     </div>
   )
 }

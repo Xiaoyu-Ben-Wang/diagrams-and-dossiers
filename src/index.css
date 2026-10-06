@@ -1005,6 +1005,20 @@ body {
   cursor: grab;
 }
 
+/* The tail, sized to the padding it hangs in, so its point lands on the bead
+   and the card reads as belonging to this string rather than floating over it. */
+.string-note-card::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 11px;
+  height: 8px;
+  margin-left: -5.5px;
+  background: var(--color-parchment-200);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
 .string-note-card:hover {
   transform: translateY(-1px);
   box-shadow:
@@ -1045,17 +1059,22 @@ body {
   font-style: italic;
 }
 
-.string-note-pin {
+/* The mark on the wool, and the card's tail pointing at it. A bead of the same
+   red the string is drawn in, rather than a second tack: a tack is what holds a
+   thing to the board, and this holds nothing. */
+.string-note-dot {
   position: absolute;
   left: 50%;
   bottom: 0;
-  width: 8px;
-  height: 8px;
-  margin-left: -4px;
-  margin-bottom: -4px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  margin-bottom: -4.5px;
   border-radius: 9999px;
-  background: radial-gradient(circle at 32% 28%, #f4e2a1, var(--color-brass) 45%, #7a5f12 100%);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+  background: radial-gradient(circle at 34% 30%, #d9564a, #a3302b 62%, #7d221e 100%);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.5),
+    0 0 0 1px rgb(0 0 0 / 0.18);
   pointer-events: none;
 }
 
