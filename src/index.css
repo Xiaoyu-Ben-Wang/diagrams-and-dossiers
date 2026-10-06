@@ -1,10 +1,50 @@
-@import 'tailwindcss';
+@import "tailwindcss";
+
+/* The hands a post-it can be written in. Ordered here by kind — typewriter, then
+   the smooth hands, then the scrawl — because that is the order the picker shows
+   them in, and one of these is waiting to be cut once the set is chosen between.
+   Licences and copyright lines are in `assets/fonts/`.
+
+   Latin subsets only: the board is English, and a full face is several times the
+   size. `swap`, not `block`, so a note is legible before its face arrives — these
+   are decorative, and a note that cannot be read is worse than one in the wrong
+   hand for a frame. */
+@font-face {
+  font-family: "Special Elite";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/special-elite.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Courier Prime";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/courier-prime.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Kalam";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/kalam.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Rock Salt";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/rock-salt.woff2") format("woff2");
+}
 
 @theme {
-  --color-cork-900: #2e1f14;
-  --color-cork-700: #4a3320;
-  --color-cork-500: #6b4a2f;
-  --color-cork-300: #8c6544;
+  /* Dark leather, which is what dark + cork paints: these must match
+     `SURFACE_RAMPS.cork.dark`, or the first visit repaints on load. */
+  --color-cork-900: #140d09;
+  --color-cork-700: #221610;
+  --color-cork-500: #33221a;
+  --color-cork-300: #4b3428;
 
   --color-parchment-100: #f7efdd;
   --color-parchment-200: #efe3c8;
@@ -43,7 +83,12 @@ body {
   background: var(--color-cork-900);
   /* Board ink, not the parchment ramp: a light theme flips that dark and body text would vanish. */
   color: var(--color-board-ink, var(--color-parchment-100));
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -52,9 +97,21 @@ body {
 .cork {
   background-color: var(--board-surface, var(--color-cork-500));
   background-image:
-    radial-gradient(circle at 17% 23%, rgb(0 0 0 / 0.18) 0 1.5px, transparent 2px),
-    radial-gradient(circle at 71% 61%, rgb(255 255 255 / 0.05) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 43% 87%, rgb(0 0 0 / 0.14) 0 1.2px, transparent 1.8px),
+    radial-gradient(
+      circle at 17% 23%,
+      rgb(0 0 0 / 0.18) 0 1.5px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at 71% 61%,
+      rgb(255 255 255 / 0.05) 0 1px,
+      transparent 1.5px
+    ),
+    radial-gradient(
+      circle at 43% 87%,
+      rgb(0 0 0 / 0.14) 0 1.2px,
+      transparent 1.8px
+    ),
     radial-gradient(ellipse at 50% 0%, rgb(255 196 110 / 0.09), transparent 70%);
   background-size:
     23px 23px,
@@ -69,27 +126,57 @@ body {
   background-image: none;
 }
 
-:root[data-theme='light'] .app-shell,
-:root[data-theme='light'] .cork {
+:root[data-theme="light"] .app-shell,
+:root[data-theme="light"] .cork {
   background-image:
-    radial-gradient(circle at 17% 23%, rgb(0 0 0 / 0.1) 0 1.5px, transparent 2px),
-    radial-gradient(circle at 71% 61%, rgb(255 255 255 / 0.14) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 43% 87%, rgb(0 0 0 / 0.08) 0 1.2px, transparent 1.8px);
+    radial-gradient(
+      circle at 17% 23%,
+      rgb(0 0 0 / 0.1) 0 1.5px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at 71% 61%,
+      rgb(255 255 255 / 0.14) 0 1px,
+      transparent 1.5px
+    ),
+    radial-gradient(
+      circle at 43% 87%,
+      rgb(0 0 0 / 0.08) 0 1.2px,
+      transparent 1.8px
+    );
 }
 
 .post-it {
   /* Fallback only: without it a note from a file that never carried a colour is transparent. */
-    background-color: var(--color-parchment-200);
+  background-color: var(--color-parchment-200);
   box-shadow:
     0 1px 0 rgb(255 255 255 / 0.5) inset,
     0 8px 18px -6px rgb(0 0 0 / 0.5);
 }
 
-.post-it:nth-child(3n) {
-  transform: rotate(-0.6deg);
+/* The hand a note is written in. Keyed on the attribute rather than on `.post-it`,
+   like the paper below, so a chip in the picker can wear the face it offers. The
+   note's textarea inherits this — Tailwind's preflight gives form controls
+   `font-family: inherit` — so the family is named once, here. */
+[data-note-font="system"] {
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
 }
-.post-it:nth-child(3n + 2) {
-  transform: rotate(0.8deg);
+[data-note-font="special-elite"] {
+  font-family: "Special Elite", "Courier New", monospace;
+}
+[data-note-font="courier-prime"] {
+  font-family: "Courier Prime", ui-monospace, "Courier New", monospace;
+}
+[data-note-font="kalam"] {
+  font-family: "Kalam", "Segoe Script", cursive;
+}
+[data-note-font="rock-salt"] {
+  font-family: "Rock Salt", "Segoe Script", cursive;
 }
 
 /* The paper a note is drawn on. Keyed on the attribute rather than on `.post-it`
@@ -99,53 +186,70 @@ body {
    `--note-line` is the writing's own line height and `--note-line-start` its
    first line, both set on the note by `PostIt` — a constant pitch would drift
    off the words as soon as the writing is resized. */
-[data-note-style='ruled'] {
+[data-note-style="ruled"] {
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
     transparent calc(var(--note-line, 16px) - 1px),
-    color-mix(in srgb, var(--color-ink) 18%, transparent) calc(var(--note-line, 16px) - 1px),
+    color-mix(in srgb, var(--color-ink) 18%, transparent)
+      calc(var(--note-line, 16px) - 1px),
     color-mix(in srgb, var(--color-ink) 18%, transparent) var(--note-line, 16px)
   );
   /* A rule under each line of writing rather than through the middle of one. */
   background-position: 0 var(--note-line-start, 0px);
 }
 
-[data-note-style='grid'] {
+[data-note-style="grid"] {
   background-image:
     repeating-linear-gradient(
       to bottom,
       transparent 0,
       transparent calc(var(--note-line, 16px) - 1px),
-      color-mix(in srgb, var(--color-ink) 13%, transparent) calc(var(--note-line, 16px) - 1px),
-      color-mix(in srgb, var(--color-ink) 13%, transparent) var(--note-line, 16px)
+      color-mix(in srgb, var(--color-ink) 13%, transparent)
+        calc(var(--note-line, 16px) - 1px),
+      color-mix(in srgb, var(--color-ink) 13%, transparent)
+        var(--note-line, 16px)
     ),
     repeating-linear-gradient(
       to right,
       transparent 0,
       transparent calc(var(--note-line, 16px) - 1px),
-      color-mix(in srgb, var(--color-ink) 13%, transparent) calc(var(--note-line, 16px) - 1px),
-      color-mix(in srgb, var(--color-ink) 13%, transparent) var(--note-line, 16px)
+      color-mix(in srgb, var(--color-ink) 13%, transparent)
+        calc(var(--note-line, 16px) - 1px),
+      color-mix(in srgb, var(--color-ink) 13%, transparent)
+        var(--note-line, 16px)
     );
   background-position: 0 var(--note-line-start, 0px);
 }
 
 /* Clamped against a percentage, so one rule serves both a 168px note and a 30px
    chip in the picker. */
-[data-note-style='dog-eared']::after {
-  content: '';
+/* Crumpled paper: turbulence lit from one side, so the creases are shading rather
+   than drawn lines — which is the difference between a crumple and a few strokes
+   across the sheet. The pattern itself is a filter in `NoteDefs`; a note names one
+   by its own id, and the colour it is lit through comes from `--note-paper`,
+   because a filter needs something opaque to work on.
+
+   `isolation` so the shaded layer stays inside this note: without it the `z-index`
+   below would put the paper behind every other note in the world. */
+[data-note-style="crumpled"] {
+  isolation: isolate;
+  background-color: transparent;
+}
+
+[data-note-style="crumpled"]::before {
+  content: "";
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: min(20px, 45%);
-  height: min(20px, 45%);
-  background: rgb(0 0 0 / 0.18);
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: var(--note-paper, #e8d9a8);
+  filter: var(--crumple, url(#note-crumple-0));
   pointer-events: none;
 }
 
-[data-note-style='taped']::before {
-  content: '';
+[data-note-style="taped"]::before {
+  content: "";
   position: absolute;
   top: max(-7px, -24%);
   left: 50%;
@@ -164,8 +268,16 @@ body {
   cursor: grab;
   background-color: var(--color-parchment-100);
   background-image:
-    radial-gradient(ellipse at 50% 0%, rgb(201 180 138 / 0.22), transparent 60%),
-    radial-gradient(ellipse at 50% 100%, rgb(201 180 138 / 0.3), transparent 55%);
+    radial-gradient(
+      ellipse at 50% 0%,
+      rgb(201 180 138 / 0.22),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 50% 100%,
+      rgb(201 180 138 / 0.3),
+      transparent 55%
+    );
   color: var(--color-ink);
   box-shadow:
     0 1px 0 rgb(255 255 255 / 0.5) inset,
@@ -173,7 +285,7 @@ body {
     0 2px 6px rgb(0 0 0 / 0.3);
 }
 
-.parchment[data-dragging='true'] {
+.parchment[data-dragging="true"] {
   cursor: grabbing;
 }
 
@@ -200,7 +312,7 @@ body {
 }
 
 .paper-fold::before {
-  content: '';
+  content: "";
   position: absolute;
   z-index: -1;
   top: -8px;
@@ -212,8 +324,41 @@ body {
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
 }
 
+/* The title printed across a folded folder. Absolute and one line, so it cannot
+   take part in the fold's height — that height is computed from the open sheet,
+   and a long title must not be able to change it. `--measure` is the same text at
+   the ceiling size, off-screen, which `FolderLabel` reads to size the real one. */
+.paper-fold-title {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  display: block;
+  padding: 0 18px;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+  font-family: "Special Elite", "Courier New", monospace;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* So the press that unfolds the page is never taken by the print. */
+  pointer-events: none;
+  user-select: none;
+}
+
+.paper-fold-title--measure {
+  right: auto;
+  width: max-content;
+  padding: 0;
+  visibility: hidden;
+}
+
 /* Folder-coloured sheet hides sub-pixel slivers at fractional zoom where parchment would show. */
-.parchment[data-collapsed='true'] {
+.parchment[data-collapsed="true"] {
   background-color: var(--color-folder);
 }
 
@@ -222,37 +367,44 @@ body {
   z-index: 1;
 }
 
-.parchment[data-collapsed='true'] .paper-disclosure,
-.parchment[data-collapsed='true'] .paper-tab {
+.parchment[data-collapsed="true"] .paper-tab-bar {
   top: -24px;
   height: 25px;
+  background-color: var(--color-folder);
+}
+
+.parchment[data-collapsed="true"] .paper-disclosure,
+.parchment[data-collapsed="true"] .paper-tab {
   background-color: var(--color-folder);
   color: var(--color-ink);
   box-shadow: 0 1px 0 rgb(0 0 0 / 0.16) inset;
 }
 
-.parchment[data-collapsed='true'] .paper-tab {
-  left: calc(2rem - 1px);
+.parchment[data-collapsed="true"] .paper-tab {
   display: flex;
   align-items: center;
   padding-top: 0;
   padding-bottom: 0;
 }
 
-.parchment[data-collapsed='true'] .paper-tab:hover,
-.parchment[data-collapsed='true'] .paper-disclosure:hover {
+.parchment[data-collapsed="true"] .paper-tab:hover,
+.parchment[data-collapsed="true"] .paper-disclosure:hover {
   background-color: #d8b877;
 }
 
 /* No `:hover`: `filter`/`opacity`/`transform` here makes a stacking context and the `z-index: -1` layer paints above the panel. */
-.parchment[data-dragging='true'],
-.parchment[data-dragging='true'] .article {
+.parchment[data-dragging="true"],
+.parchment[data-dragging="true"] .article {
   user-select: none;
 }
 
 .tack {
-  background:
-    radial-gradient(circle at 32% 28%, #f4e2a1, var(--color-brass) 45%, #7a5f12 100%);
+  background: radial-gradient(
+    circle at 32% 28%,
+    #f4e2a1,
+    var(--color-brass) 45%,
+    #7a5f12 100%
+  );
   box-shadow:
     0 2px 3px rgb(0 0 0 / 0.45),
     0 0 0 1px rgb(0 0 0 / 0.25),
@@ -268,16 +420,26 @@ body {
   filter: brightness(1.18);
 }
 
-.tack[data-status='repaired'] {
-  background: radial-gradient(circle at 32% 28%, #ffd9a0, #d98a2b 45%, #7a4a12 100%);
+.tack[data-status="repaired"] {
+  background: radial-gradient(
+    circle at 32% 28%,
+    #ffd9a0,
+    #d98a2b 45%,
+    #7a4a12 100%
+  );
   box-shadow:
     0 2px 3px rgb(0 0 0 / 0.45),
     0 0 0 1px rgb(0 0 0 / 0.25),
     0 0 12px rgb(217 138 43 / 0.5);
 }
 
-.tack[data-status='orphaned'] {
-  background: radial-gradient(circle at 32% 28%, #d98a7d, var(--color-wax) 45%, #4a1410 100%);
+.tack[data-status="orphaned"] {
+  background: radial-gradient(
+    circle at 32% 28%,
+    #d98a7d,
+    var(--color-wax) 45%,
+    #4a1410 100%
+  );
   box-shadow:
     0 2px 3px rgb(0 0 0 / 0.5),
     0 0 0 1px rgb(0 0 0 / 0.3),
@@ -298,12 +460,12 @@ body {
   color: var(--color-ink);
 }
 
-.paper-disclosure[data-selected='true'] {
+.paper-disclosure[data-selected="true"] {
   background: color-mix(in srgb, var(--color-brass) 80%, transparent);
   color: var(--color-cork-900);
 }
 
-.paper-disclosure[data-selected='true']:hover {
+.paper-disclosure[data-selected="true"]:hover {
   background: var(--color-brass);
 }
 
@@ -345,11 +507,18 @@ body {
   padding: 10px 9px 6px;
   background: var(--color-parchment-100);
   color: var(--color-ink);
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
   font-size: 10px;
   line-height: 1.35;
   text-align: left;
-  clip-path: polygon(7px 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%, 0 7px);
+  clip-path: polygon(
+    7px 0,
+    calc(100% - 7px) 0,
+    100% 7px,
+    100% 100%,
+    0 100%,
+    0 7px
+  );
   /* `drop-shadow`, not `box-shadow`: the clip-path cuts a box-shadow off at the corners. */
   filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.5));
 }
@@ -412,7 +581,7 @@ body {
 
 /* The box plus a small fringe; a bigger target would swallow the note's click. */
 .yarn-bead::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: -2px;
 }
@@ -439,8 +608,16 @@ body {
 .tape {
   background-color: var(--color-parchment-200);
   background-image:
-    radial-gradient(circle at 6px 2px, rgb(46 31 20 / 0.55) 0 2px, transparent 2.5px),
-    radial-gradient(circle at 6px calc(100% - 2px), rgb(46 31 20 / 0.55) 0 2px, transparent 2.5px);
+    radial-gradient(
+      circle at 6px 2px,
+      rgb(46 31 20 / 0.55) 0 2px,
+      transparent 2.5px
+    ),
+    radial-gradient(
+      circle at 6px calc(100% - 2px),
+      rgb(46 31 20 / 0.55) 0 2px,
+      transparent 2.5px
+    );
   background-size:
     13px 100%,
     13px 100%;
@@ -461,7 +638,7 @@ body {
   background: rgb(20 13 8 / 0.55);
   color: var(--color-parchment-200);
   border: 1px solid rgb(201 180 138 / 0.22);
-  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
   line-height: 1.6;
   tab-size: 2;
 }
@@ -473,7 +650,7 @@ body {
 }
 
 .article {
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
   line-height: 1.72;
   font-size: 1.0625rem;
 }
@@ -533,7 +710,11 @@ body {
 .article a.mention {
   color: inherit;
   text-decoration: underline dotted;
-  text-decoration-color: color-mix(in srgb, var(--color-brass) 85%, transparent);
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--color-brass) 85%,
+    transparent
+  );
   text-underline-offset: 2px;
   cursor: pointer;
 }
@@ -568,7 +749,7 @@ body {
   box-shadow: 0 10px 22px -10px rgb(0 0 0 / 0.6);
 }
 
-.mention-list[data-placed='true'] {
+.mention-list[data-placed="true"] {
   visibility: visible;
 }
 
@@ -588,7 +769,7 @@ body {
   background: color-mix(in srgb, var(--color-brass) 16%, transparent);
 }
 
-.mention-option[data-selected='true'] {
+.mention-option[data-selected="true"] {
   background: color-mix(in srgb, var(--color-brass) 26%, transparent);
 }
 
@@ -657,7 +838,11 @@ body {
 }
 
 .post-it .drag-bar {
-  background-image: radial-gradient(circle, currentColor 1px, transparent 1.2px);
+  background-image: radial-gradient(
+    circle,
+    currentColor 1px,
+    transparent 1.2px
+  );
   background-size: 7px 7px;
   background-repeat: repeat-x;
   background-position: center;
@@ -883,7 +1068,7 @@ body {
 }
 
 .palette-pad::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: -3px -3px 3px 3px;
   z-index: -1;
@@ -926,7 +1111,12 @@ body {
   width: 13px;
   height: 13px;
   border-radius: 9999px;
-  background: radial-gradient(circle at 32% 28%, #f4e2a1, var(--color-brass) 45%, #7a5f12 100%);
+  background: radial-gradient(
+    circle at 32% 28%,
+    #f4e2a1,
+    var(--color-brass) 45%,
+    #7a5f12 100%
+  );
   box-shadow:
     0 1px 2px rgb(0 0 0 / 0.45),
     0 0 0 1px rgb(0 0 0 / 0.2);
@@ -968,7 +1158,12 @@ body {
   width: 14px;
   height: 14px;
   border-radius: 9999px;
-  background: radial-gradient(circle at 32% 28%, #f4e2a1, var(--color-brass) 45%, #7a5f12 100%);
+  background: radial-gradient(
+    circle at 32% 28%,
+    #f4e2a1,
+    var(--color-brass) 45%,
+    #7a5f12 100%
+  );
   box-shadow:
     0 2px 4px rgb(0 0 0 / 0.5),
     0 0 0 1px rgb(0 0 0 / 0.25);
@@ -1010,7 +1205,7 @@ body {
 /* The tail, sized to the padding it hangs in, so its point lands on the bead
    and the card reads as belonging to this string rather than floating over it. */
 .string-note-card::after {
-  content: '';
+  content: "";
   position: absolute;
   left: 50%;
   /* 1px of it is behind the card: butted exactly against the bottom edge, the clip-path's
@@ -1078,7 +1273,12 @@ body {
   margin-left: -4.5px;
   margin-bottom: -4.5px;
   border-radius: 9999px;
-  background: radial-gradient(circle at 34% 30%, #d9564a, #a3302b 62%, #7d221e 100%);
+  background: radial-gradient(
+    circle at 34% 30%,
+    #d9564a,
+    #a3302b 62%,
+    #7d221e 100%
+  );
   box-shadow:
     0 1px 2px rgb(0 0 0 / 0.5),
     0 0 0 1px rgb(0 0 0 / 0.18);
@@ -1103,9 +1303,14 @@ body {
 .note-style-menu {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px;
-  border-radius: 6px;
+  /* The writing group makes this wide enough to run off a narrow window, so it
+     wraps rather than overflowing: `placeEdgePicker` clamps its position, not size. */
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: min(92vw, 620px);
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
   border: 1px solid rgb(201 180 138 / 0.35);
   background: rgb(20 13 8 / 0.92);
   box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.7);
@@ -1121,13 +1326,13 @@ body {
 .note-style-group {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 6px;
 }
 
 .note-style-split {
   align-self: stretch;
   width: 1px;
-  margin: 2px 3px;
+  margin: 2px 4px;
   background: rgb(201 180 138 / 0.3);
 }
 
@@ -1135,8 +1340,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 24px;
+  width: 48px;
+  height: 40px;
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--color-ink) 30%, transparent);
   border-radius: 2px;
@@ -1151,22 +1356,66 @@ body {
   transform: translateY(-1px);
 }
 
-.note-style-paper[data-selected='true'] {
+.note-style-paper[data-selected="true"] {
   box-shadow:
     0 0 0 1px rgb(20 13 8 / 0.92),
     0 0 0 2px var(--color-brass);
 }
 
+.note-style-fonts {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.note-style-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 30%, transparent);
+  border-radius: 2px;
+  background: none;
+  cursor: pointer;
+  transition:
+    transform 110ms ease,
+    box-shadow 110ms ease;
+}
+
+.note-style-face:hover {
+  transform: translateY(-1px);
+}
+
+.note-style-face[data-selected="true"] {
+  box-shadow:
+    0 0 0 1px rgb(20 13 8 / 0.92),
+    0 0 0 2px var(--color-brass);
+}
+
+/* On the note's own colour, so a face can be judged on the paper it will be read
+   from rather than on the menu's dark. */
+.note-style-face-glyph {
+  display: block;
+  padding: 1px 4px;
+  border-radius: 1px;
+  color: var(--color-ink);
+  font-size: 15px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 /* Relative so `[data-note-style]`'s fold and tape hang off the chip. The pitch
-   is its own: at the note's real line height a 17px chip shows a single rule,
-   which reads as a stripe rather than as ruled paper. */
+   is its own: at the note's real line height a chip this short shows a single
+   rule, which reads as a stripe rather than as ruled paper. */
 .note-style-chip {
-  --note-line: 5px;
+  --note-line: 6px;
   --note-line-start: 0px;
   position: relative;
   display: block;
-  width: 22px;
-  height: 17px;
+  width: 36px;
+  height: 28px;
   border-radius: 1px;
 }
 
@@ -1300,7 +1549,7 @@ body {
   outline: none;
   background: transparent;
   color: inherit;
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
   text-align: left;
 }
 
@@ -1364,7 +1613,7 @@ body {
   transform: scale(1.08);
 }
 
-.post-it-style[data-selected='true'] {
+.post-it-style[data-selected="true"] {
   box-shadow:
     0 0 0 1px var(--color-parchment-100),
     0 0 0 2px color-mix(in srgb, var(--color-ink) 55%, transparent);
@@ -1385,8 +1634,8 @@ body {
 
 /* The hairline is load-bearing: a pale swatch on a pale note is otherwise invisible. */
 .post-it-color {
-  width: 13px;
-  height: 13px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--color-ink) 30%, transparent);
   border-radius: 2px;
@@ -1400,7 +1649,7 @@ body {
   transform: scale(1.15);
 }
 
-.post-it-color[data-selected='true'] {
+.post-it-color[data-selected="true"] {
   box-shadow:
     0 0 0 1px var(--color-parchment-100),
     0 0 0 2px color-mix(in srgb, var(--color-ink) 55%, transparent);

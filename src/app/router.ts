@@ -1,8 +1,14 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 export type Route =
-  | { name: "board"; /** Null at `/`, which opens whichever board was last open. */ id: string | null }
+  | {
+      name: "board";
+      /** Null at `/`, which opens whichever board was last open. */ id:
+        string | null;
+    }
   | { name: "library" }
+  /** The sample board, rendered from the seed and belonging to no library. */
+  | { name: "demo" }
   | { name: "notFound"; path: string };
 
 /** pushState fires no popstate; this event is how the app hears its own navigation. */
@@ -13,6 +19,7 @@ export function parseRoute(pathname: string): Route {
 
   if (path === "/") return { name: "board", id: null };
   if (path === "/boards") return { name: "library" };
+  if (path === "/demo") return { name: "demo" };
 
   const board = /^\/b\/([^/]+)$/.exec(path);
   if (board) return { name: "board", id: decodeURIComponent(board[1]) };
@@ -48,6 +55,8 @@ export function routeToPath(route: Route): string {
       return route.id === null ? "/" : `/b/${encodeURIComponent(route.id)}`;
     case "library":
       return "/boards";
+    case "demo":
+      return "/demo";
     case "notFound":
       return route.path;
   }

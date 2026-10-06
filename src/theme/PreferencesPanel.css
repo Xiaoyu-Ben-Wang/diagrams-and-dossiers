@@ -10,7 +10,7 @@
 .prefs-panel {
   display: flex;
   flex-direction: column;
-  width: min(22rem, 100vw);
+  width: min(26rem, 100vw);
   height: 100%;
   overflow-y: auto;
   background: var(--color-parchment-100);
@@ -111,7 +111,8 @@
   align-items: center;
   gap: 0.6rem;
   padding: 0.5rem 0.6rem;
-  border: 1px solid color-mix(in srgb, var(--color-parchment-edge) 75%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--color-parchment-edge) 75%, transparent);
   border-radius: 3px;
   cursor: pointer;
   transition:
@@ -119,12 +120,12 @@
     background-color 120ms ease;
 }
 
-.prefs-option:hover:not([data-selected='true']) {
+.prefs-option:hover:not([data-selected="true"]) {
   border-color: color-mix(in srgb, var(--color-brass) 55%, transparent);
   background: color-mix(in srgb, var(--color-brass) 6%, transparent);
 }
 
-.prefs-option[data-selected='true'] {
+.prefs-option[data-selected="true"] {
   border-color: var(--color-brass);
   background: color-mix(in srgb, var(--color-brass) 13%, transparent);
 }
@@ -161,6 +162,16 @@
   font-size: 0.68rem;
   color: var(--color-ink-soft);
   opacity: 0.8;
+}
+
+/* The sample is the preview, so it gets the room: a face cannot be judged at the
+   size of a caption. `data-note-font` supplies the family. */
+.prefs-font-sample {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  color: var(--color-ink);
 }
 
 .prefs-actions {

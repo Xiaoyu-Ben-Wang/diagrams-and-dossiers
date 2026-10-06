@@ -47,13 +47,20 @@ describe("parseRoute", () => {
     expect(parseRoute("/boards")).toEqual({ name: "library" });
   });
 
+  it("maps the demo board, which belongs to no library", () => {
+    expect(parseRoute("/demo")).toEqual({ name: "demo" });
+  });
+
   it("will not take a board address with nothing in it", () => {
     expect(parseRoute("/b")).toEqual({ name: "notFound", path: "/b" });
     expect(parseRoute("/b/")).toEqual({ name: "notFound", path: "/b" });
   });
 
   it("will not take a deeper board address", () => {
-    expect(parseRoute("/b/abc/def")).toEqual({ name: "notFound", path: "/b/abc/def" });
+    expect(parseRoute("/b/abc/def")).toEqual({
+      name: "notFound",
+      path: "/b/abc/def",
+    });
   });
 
   it("reports an unknown path rather than silently showing the board", () => {
@@ -70,7 +77,7 @@ describe("parseRoute", () => {
 
 describe("routeToPath", () => {
   it("round-trips every route", () => {
-    for (const path of ["/", "/boards", "/b/abc123"]) {
+    for (const path of ["/", "/boards", "/demo", "/b/abc123"]) {
       expect(routeToPath(parseRoute(path))).toBe(path);
     }
   });

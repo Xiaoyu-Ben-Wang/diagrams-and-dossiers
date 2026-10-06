@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "favicon": "node scripts/generate-favicon.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint src",

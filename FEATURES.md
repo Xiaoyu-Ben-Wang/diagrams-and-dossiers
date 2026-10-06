@@ -18,25 +18,11 @@ Numbering continues from the archive rather than restarting, so an item number s
 thing across both files. The queue was cleared on 5 October 2026; earlier items are in
 `docs/feature-queue-archive-2026-10-05.md`.
 
-### 20. A markdown link in a page navigates the board away
-`marked` renders `[text](url)` as a real `<a href>`, and `handleArticleClick` never calls
-`preventDefault`. So clicking an ordinary link inside a page loads it in the same tab, and the
-board — unsaved, and not recoverable — is gone. Found while adding mentions, which is the same
-handler; left alone because it is a different bug with a different right answer (open in a new tab?
-intercept and confirm? a route?), and because it wants a decision rather than a patch.
-
-### 21. Nothing can be renamed, and mention links are keyed by name
-A mention stores the name as written, so renaming a page or a picture breaks every link to it —
-they keep their text and go quietly dead (`mention--missing`). There is no rename UI for any kind:
-the article tab is a button, `PaperEditor` shows the title without a field for it, and an image's
-`title` is set once from the filename at drop and never again.
-
-Two ways out, and they are not exclusive: let a title be edited (which needs the rename to update
-links, so links-by-name stops being enough), or keep an id alongside the name in the link syntax.
-Both are more than the rename control they look like.
-
-The **Explicitly rejected** list below was not cleared, and should not be: it is a record
-of decisions rather than of work, and its whole purpose is to stop them being re-litigated.
+Nothing is waiting. Items 20–23 were finished on 5 October 2026 and taken out; each
+commit carries the decision that went into it, including the alternatives it was chosen
+over. What was asked for while those were being built — the demo board on its own
+address, a saved camera, a stored lean on a post-it, a live preview of the note hands —
+went in with them rather than through this file.
 
 ---
 

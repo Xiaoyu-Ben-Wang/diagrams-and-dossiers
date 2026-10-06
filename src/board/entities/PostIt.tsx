@@ -1,43 +1,42 @@
-import { RotateCcw, X } from 'lucide-react'
+import { RotateCcw, X } from "lucide-react";
 
 import {
   NOTE_FONT_SCALE_DEFAULT,
   NOTE_FONT_SCALE_MAX,
   NOTE_FONT_SCALE_MIN,
   NOTE_FONT_SIZE,
+  crumpleVariant,
+  noteLineRatio,
   stepFontScale,
-} from '../../model/kinds'
-import type { CSSProperties } from 'react'
+} from "../../model/kinds";
+import type { CSSProperties } from "react";
 
-import type { NoteEntity } from '../../model/types'
-import { useBoardDrag } from '../useBoardDrag'
-import { useResizeDrag } from '../useResizeDrag'
-import type { Point } from '../yarn'
+import type { NoteEntity } from "../../model/types";
+import { crumpleFilterId } from "../NoteDefs";
+import { useBoardDrag } from "../useBoardDrag";
+import { useResizeDrag } from "../useResizeDrag";
+import type { Point } from "../yarn";
 
-const MIN_WIDTH = 96
-const MIN_HEIGHT = 80
-const MAX_EDGE = 900
+const MIN_WIDTH = 96;
+const MIN_HEIGHT = 80;
+const MAX_EDGE = 900;
 
 /** The note's padding plus the header row, above the first line of writing. */
-const TEXT_TOP = 8 + 12 + 4
-
-/** Tailwind's `leading-snug`. The textarea is given this line height inline, from
- *  the same product, so the paper's rules cannot drift from the writing. */
-const LINE_RATIO = 1.375
+const TEXT_TOP = 8 + 12 + 4;
 
 export interface PostItProps {
-  note: NoteEntity
-  zoom: number
-  selected: boolean
-  toBoard: (clientX: number, clientY: number) => Point
-  onSelect: (id: string) => void
-  onDrag: (id: string, delta: Point) => void
-  onChange: (id: string, body: string) => void
-  onResize: (id: string, size: { width: number; height: number }) => void
-  onSetFontScale: (id: string, scale: number) => void
-  onOpenStyleMenu: (id: string) => void
-  styleMenuOpen: boolean
-  onRemove: (id: string) => void
+  note: NoteEntity;
+  zoom: number;
+  selected: boolean;
+  toBoard: (clientX: number, clientY: number) => Point;
+  onSelect: (id: string) => void;
+  onDrag: (id: string, delta: Point) => void;
+  onChange: (id: string, body: string) => void;
+  onResize: (id: string, size: { width: number; height: number }) => void;
+  onSetFontScale: (id: string, scale: number) => void;
+  onOpenStyleMenu: (id: string) => void;
+  styleMenuOpen: boolean;
+  onRemove: (id: string) => void;
 }
 
 export function PostIt({
@@ -57,9 +56,20 @@ export function PostIt({
   const drag = useBoardDrag({
     zoom,
     onDrag: (delta) => onDrag(note.id, delta),
-  })
+  });
 
-  const lineHeight = NOTE_FONT_SIZE * note.fontScale * LINE_RATIO
+  const lineHeight = NOTE_FONT_SIZE * note.fontScale * noteLineRatio(note.font);
+
+  // Crumpled paper carries its colour on the shaded layer rather than on the note
+  // itself, so the crease lighting has something opaque to multiply into, and the
+  // writing stays above it and crisp.
+  const crumpled = note.style === "crumpled";
+  const crumpleVars = crumpled
+    ? ({
+        "--note-paper": note.color,
+        "--crumple": `url(#${crumpleFilterId(crumpleVariant(note.id))})`,
+      } as CSSProperties)
+    : null;
 
   const resize = useResizeDrag({
     size: { width: note.width, height: note.height },
@@ -70,10 +80,10 @@ export function PostIt({
       return {
         width: clamp(pointer.x - note.board.x, MIN_WIDTH, MAX_EDGE),
         height: clamp(pointer.y - note.board.y, MIN_HEIGHT, MAX_EDGE),
-      }
+      };
     },
     onResize: (size) => onResize(note.id, size),
-  })
+  });
 
   return (
     <div
@@ -81,26 +91,34 @@ export function PostIt({
       data-post-it-id={note.id}
       data-board-entity="note"
       data-note-style={note.style}
+      data-note-font={note.font}
       // Select on the press, not a tap: the resize corner is only drawn on a selected note, so
       // a tap that travelled could move it and never select it, never reaching the corner.
       onPointerDown={() => onSelect(note.id)}
       className={`post-it absolute flex flex-col rounded-sm p-2 ${
-        selected ? 'is-selected' : ''
+        selected ? "is-selected" : ""
       }`}
-      style={{
-        left: note.board.x,
-        top: note.board.y,
-        width: note.width,
-        height: note.height,
-        // Longhand, not `background`: the shorthand resets `background-image`, and
-        // an inline style outranks the stylesheet, so every paper style would be
-        // wiped. See `[data-note-style]` in index.css.
-        backgroundColor: note.color,
-        // The ruled and grid papers draw at the text's own pitch, which is the one
-        // thing a constant cannot know.
-        '--note-line': `${lineHeight}px`,
-        '--note-line-start': `${TEXT_TOP}px`,
-      } as CSSProperties}
+      style={
+        {
+          left: note.board.x,
+          top: note.board.y,
+          width: note.width,
+          height: note.height,
+          // The note's own lean. Stored on the entity, not taken from its place in
+          // the layer, so adding or removing a note does not re-tilt the others.
+          transform: `rotate(${note.tilt}deg)`,
+          // Longhand, not `background`: the shorthand resets `background-image`, and
+          // an inline style outranks the stylesheet, so every paper style would be
+          // wiped. See `[data-note-style]` in index.css. Crumpled leaves it unset —
+          // its paper is the shaded `::before`, and the note itself is see-through.
+          backgroundColor: crumpled ? undefined : note.color,
+          // The ruled and grid papers draw at the text's own pitch, which is the one
+          // thing a constant cannot know.
+          "--note-line": `${lineHeight}px`,
+          "--note-line-start": `${TEXT_TOP}px`,
+          ...crumpleVars,
+        } as CSSProperties
+      }
     >
       <div className="mb-1 flex h-3 shrink-0 items-center gap-1">
         <div
@@ -125,7 +143,10 @@ export function PostIt({
         onChange={(event) => onChange(note.id, event.target.value)}
         placeholder="Write something…"
         className="min-h-0 w-full flex-1 resize-none bg-transparent text-ink outline-none placeholder:text-ink-soft/40"
-        style={{ fontSize: NOTE_FONT_SIZE * note.fontScale, lineHeight: `${lineHeight}px` }}
+        style={{
+          fontSize: NOTE_FONT_SIZE * note.fontScale,
+          lineHeight: `${lineHeight}px`,
+        }}
         aria-label="Post-it note"
       />
 
@@ -153,46 +174,58 @@ export function PostIt({
           </button>
 
           <div className="post-it-fonts">
-          <button
-            type="button"
-            data-testid="post-it-font-down"
-            aria-label="Smaller writing"
-            title="Smaller writing"
-            className="post-it-font"
-            disabled={note.fontScale <= NOTE_FONT_SCALE_MIN}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => onSetFontScale(note.id, stepFontScale(note.fontScale, -1))}
-          >
-            <span className="post-it-font-a" style={{ fontSize: 9 }} aria-hidden="true">
-              A
-            </span>
-          </button>
-          <button
-            type="button"
-            data-testid="post-it-font-up"
-            aria-label="Larger writing"
-            title="Larger writing"
-            className="post-it-font"
-            disabled={note.fontScale >= NOTE_FONT_SCALE_MAX}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => onSetFontScale(note.id, stepFontScale(note.fontScale, 1))}
-          >
-            <span className="post-it-font-a" style={{ fontSize: 14 }} aria-hidden="true">
-              A
-            </span>
-          </button>
-          <button
-            type="button"
-            data-testid="post-it-font-reset"
-            aria-label="Reset writing size"
-            title="Back to the normal size"
-            className="post-it-font"
-            disabled={note.fontScale === NOTE_FONT_SCALE_DEFAULT}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => onSetFontScale(note.id, NOTE_FONT_SCALE_DEFAULT)}
-          >
-            <RotateCcw size={11} strokeWidth={2.4} aria-hidden="true" />
-          </button>
+            <button
+              type="button"
+              data-testid="post-it-font-down"
+              aria-label="Smaller writing"
+              title="Smaller writing"
+              className="post-it-font"
+              disabled={note.fontScale <= NOTE_FONT_SCALE_MIN}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() =>
+                onSetFontScale(note.id, stepFontScale(note.fontScale, -1))
+              }
+            >
+              <span
+                className="post-it-font-a"
+                style={{ fontSize: 9 }}
+                aria-hidden="true"
+              >
+                A
+              </span>
+            </button>
+            <button
+              type="button"
+              data-testid="post-it-font-up"
+              aria-label="Larger writing"
+              title="Larger writing"
+              className="post-it-font"
+              disabled={note.fontScale >= NOTE_FONT_SCALE_MAX}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() =>
+                onSetFontScale(note.id, stepFontScale(note.fontScale, 1))
+              }
+            >
+              <span
+                className="post-it-font-a"
+                style={{ fontSize: 14 }}
+                aria-hidden="true"
+              >
+                A
+              </span>
+            </button>
+            <button
+              type="button"
+              data-testid="post-it-font-reset"
+              aria-label="Reset writing size"
+              title="Back to the normal size"
+              className="post-it-font"
+              disabled={note.fontScale === NOTE_FONT_SCALE_DEFAULT}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => onSetFontScale(note.id, NOTE_FONT_SCALE_DEFAULT)}
+            >
+              <RotateCcw size={11} strokeWidth={2.4} aria-hidden="true" />
+            </button>
           </div>
         </div>
       ) : null}
@@ -218,10 +251,10 @@ export function PostIt({
         </button>
       ) : null}
     </div>
-  )
+  );
 }
 
 function clamp(value: number, low: number, high: number): number {
-  if (!Number.isFinite(value)) return low
-  return Math.max(low, Math.min(high, Math.round(value)))
+  if (!Number.isFinite(value)) return low;
+  return Math.max(low, Math.min(high, Math.round(value)));
 }
