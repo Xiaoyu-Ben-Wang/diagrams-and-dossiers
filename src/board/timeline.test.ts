@@ -12,7 +12,7 @@ import {
 } from './timeline'
 
 const DAY = 24 * 60 * 60 * 1000
-/** A fixed epoch so these tests don't depend on the machine's timezone. */
+/** Fixed epoch so these tests don't depend on the machine's timezone. */
 const T0 = Date.UTC(2026, 0, 1)
 
 const entry = (id: string, dayOffset: number | null, label?: string): TimelineEntry => ({
@@ -34,8 +34,6 @@ describe('buildTimeline', () => {
   })
 
   it('keeps a free-text label verbatim, for homebrew calendars', () => {
-    // The whole reason for the label/timestamp split: "3rd of Eleint" has to
-    // display exactly as written while still sorting by its real date.
     const timeline = buildTimeline([entry('a', 0, '3rd of Eleint, 1492 DR')])
     expect(timeline.placed[0].dateLabel).toBe('3rd of Eleint, 1492 DR')
   })
@@ -90,8 +88,6 @@ describe('positionOf', () => {
   })
 
   it('centres everything when there is no span to interpolate across', () => {
-    // A single dated entry, or several on the same day. Dividing by a zero span
-    // would be NaN, and NaN in a scrubber position is a blank ribbon.
     const single = buildTimeline([entry('a', 0)])
     expect(positionOf(single.start, single)).toBe(0.5)
 
@@ -122,7 +118,6 @@ describe('clusterTimeline', () => {
   })
 
   it('groups entries from one session together', () => {
-    // Game night: several events on consecutive days.
     const timeline = buildTimeline([entry('a', 0), entry('b', 1), entry('c', 2)])
     const clusters = clusterTimeline(timeline)
     expect(clusters).toHaveLength(1)
@@ -132,7 +127,6 @@ describe('clusterTimeline', () => {
   })
 
   it('splits on a gap longer than the threshold', () => {
-    // Two sessions a fortnight apart.
     const timeline = buildTimeline([entry('a', 0), entry('b', 1), entry('c', 20), entry('d', 21)])
     const clusters = clusterTimeline(timeline)
     expect(clusters).toHaveLength(2)
@@ -225,8 +219,6 @@ describe('ticksFor', () => {
     const ticks = ticksFor(timeline, clusters)
 
     expect(ticks).toHaveLength(2)
-    // Three entries on one day collapse to a single mark, so a busy session
-    // doesn't turn the ribbon into a solid bar.
     expect(ticks[0].cluster.size).toBe(3)
   })
 

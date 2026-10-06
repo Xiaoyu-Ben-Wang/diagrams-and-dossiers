@@ -19,7 +19,7 @@ afterEach(() => {
   resetPreferences()
 })
 
-/** The @theme block in index.css, the source of truth the dark default mirrors. */
+/** The @theme block in index.css, which the dark default must mirror. */
 function indexCssTokens(): Record<string, string> {
   const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
   const start = css.indexOf('@theme')
@@ -63,15 +63,12 @@ describe('applyPreferences in a document', () => {
     const tokens = indexCssTokens()
     const applied = preferenceVariables(DEFAULT_PREFERENCES)
 
-    // A first visit never opens the drawer, so dark+cork must be the tokens the
-    // board already had — any mismatch here is a visible flash of drift.
+    // A first visit never opens the drawer, so dark + cork must equal index.css exactly.
     for (const [property, value] of Object.entries(applied)) {
       const declared = tokens[property]
       if (declared === undefined) continue // board-ink* are new, consumed only via var() fallbacks
       expect(value.toLowerCase(), property).toBe(declared)
     }
-    // The new tokens reproduce what chrome already painted on a dark board:
-    // the paper ramp used as text.
     expect(applied['--color-board-ink']).toBe(tokens['--color-parchment-100'])
     expect(applied['--color-board-ink-soft']).toBe(tokens['--color-parchment-300'])
   })

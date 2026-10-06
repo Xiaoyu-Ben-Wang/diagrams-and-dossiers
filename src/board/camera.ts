@@ -1,28 +1,6 @@
-/**
- * The board camera.
- *
- * Three coordinate spaces, kept strictly separate:
- *
- *   board space   — the infinite canvas. Items and articles live here.
- *   screen space  — viewport pixels.
- *   paper space   — inside one rendered article, where text anchors resolve.
- *
- *     screen = (board − camera) × zoom
- *
- * Everything here is pure arithmetic over that one transform. That matters
- * because the timeline drives the camera directly: scrubbing the chronology
- * flies the viewport to a moment, and it must do so without touching any item's
- * stored position. Pins don't move when you scrub; the camera does.
- *
- * Zoom is applied as a single CSS transform on the board container, so text
- * metrics inside an article never change with zoom — which is what keeps text
- * anchors stable (see `projection.ts`).
- */
-
 import type { Point } from './yarn'
 
 export interface Camera {
-  /** Board-space coordinate rendered at the viewport's top-left. */
   x: number
   y: number
   zoom: number
@@ -66,12 +44,7 @@ export function screenToBoard(camera: Camera, point: Point): Point {
   }
 }
 
-/**
- * Total board-space rectangle covering every rect, or null for an empty list.
- *
- * Zero-size rects are included deliberately — an article placed on the board
- * before it has been measured is still a thing worth framing.
- */
+/** Zero-size rects are included: an unmeasured article is still worth framing. */
 export function unionRect(rects: Rect[]): Rect | null {
   if (rects.length === 0) return null
 
@@ -90,13 +63,7 @@ export function unionRect(rects: Rect[]): Rect | null {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
 }
 
-/**
- * A camera that frames every target with padding.
- *
- * This is what the timeline calls when you scrub: gather the items active at
- * that moment, frame them, animate the camera there. An empty list means "frame
- * nothing", so the camera is returned unchanged rather than flying to 0,0.
- */
+/** Returns null when there is nothing to frame. */
 export function fitBounds(
   targets: Rect[],
   viewport: Viewport,
@@ -108,8 +75,7 @@ export function fitBounds(
   const availableWidth = Math.max(1, viewport.width - padding * 2)
   const availableHeight = Math.max(1, viewport.height - padding * 2)
 
-  // A single point, or a zero-size rect, has no scale to fit — fall back to
-  // identity zoom so we centre it rather than dividing by zero.
+  // A single point, or a zero-size rect, has no scale to fit — identity zoom centres it rather than dividing by zero.
   const zoom =
     bounds.width <= 0 || bounds.height <= 0
       ? 1
@@ -127,18 +93,7 @@ export function fitBounds(
   }
 }
 
-/**
- * A camera that puts `rect` in the middle of the viewport, at a zoom you name.
- *
- * The difference from `fitBounds` is the whole point of it: this one does not
- * choose a scale. Following a mention to a page should not rescale the board —
- * the camera keeps the size it had, so the board does not lurch and you keep
- * your sense of where things are — whereas `fitBounds` picks a zoom that frames
- * the target, which for a post-it means filling the screen with one post-it.
- *
- * The two agree on the arithmetic, and the zoom is clamped here rather than
- * assumed to have been clamped upstream.
- */
+/** Centres `rect` without choosing a zoom, unlike `fitBounds`. */
 export function centreOn(rect: Rect, viewport: Viewport, zoom: number): Camera {
   const scale = clampZoom(zoom)
   return {
@@ -148,12 +103,7 @@ export function centreOn(rect: Rect, viewport: Viewport, zoom: number): Camera {
   }
 }
 
-/**
- * Zoom while keeping the board point under `screenPoint` pinned to the cursor.
- *
- * Without this, zooming drifts towards the viewport's origin and the thing you
- * were looking at slides away — the single most common way a canvas feels bad.
- */
+/** Keeps the board point under `screenPoint` pinned while zooming. */
 export function zoomAt(camera: Camera, screenPoint: Point, nextZoom: number): Camera {
   const zoom = clampZoom(nextZoom)
   const anchor = screenToBoard(camera, screenPoint)
@@ -164,7 +114,7 @@ export function zoomAt(camera: Camera, screenPoint: Point, nextZoom: number): Ca
   }
 }
 
-/** Pan by a screen-space delta (a drag), converted at the current zoom. */
+/** `dx`/`dy` are screen-space, converted at the current zoom. */
 export function panBy(camera: Camera, dx: number, dy: number): Camera {
   return {
     x: camera.x - dx / camera.zoom,
@@ -173,7 +123,6 @@ export function panBy(camera: Camera, dx: number, dy: number): Camera {
   }
 }
 
-/** How far apart two cameras are, for deciding whether a move is worth animating. */
 export function camerasDiffer(a: Camera, b: Camera, epsilon = 0.5): boolean {
   return (
     Math.abs(a.x - b.x) > epsilon ||
@@ -182,14 +131,6 @@ export function camerasDiffer(a: Camera, b: Camera, epsilon = 0.5): boolean {
   )
 }
 
-/**
- * Linear interpolation between cameras.
- *
- * Zoom is interpolated *geometrically* rather than linearly. Linear zoom looks
- * wrong on a long move: the first half covers most of the visual distance and
- * the tail crawls. Interpolating in log space makes the perceived rate constant,
- * which is what a camera move should feel like.
- */
 export function lerpCamera(from: Camera, to: Camera, t: number): Camera {
   const eased = t < 0 ? 0 : t > 1 ? 1 : t
   const zoom = from.zoom * Math.pow(to.zoom / from.zoom, eased)
@@ -200,19 +141,11 @@ export function lerpCamera(from: Camera, to: Camera, t: number): Camera {
   }
 }
 
-/** Smoothstep, for easing a camera move without pulling in an animation library. */
 export function easeInOut(t: number): number {
   const clamped = t < 0 ? 0 : t > 1 ? 1 : t
   return clamped * clamped * (3 - 2 * clamped)
 }
 
-/**
- * The rect spanned by two corners, in any order.
- *
- * Marquee selection produces corners in whatever order the pointer travelled,
- * so normalising here keeps "drag up and to the left" from producing a
- * negative-width rect that intersects nothing.
- */
 export function rectFromPoints(a: Point, b: Point): Rect {
   return {
     x: Math.min(a.x, b.x),
@@ -222,14 +155,7 @@ export function rectFromPoints(a: Point, b: Point): Rect {
   }
 }
 
-/**
- * Whether two rects overlap at all.
- *
- * Touching edges count as intersecting, and a zero-size rect — a pin, which has
- * no extent of its own — is inside a marquee when its point is. That is the
- * behaviour you want: dragging a box across a pin should pick it up even though
- * the pin has no area.
- */
+/** Touching edges count, so a zero-size rect (a pin) is inside when its point is. */
 export function rectsIntersect(a: Rect, b: Rect): boolean {
   return (
     a.x <= b.x + b.width &&
@@ -239,14 +165,7 @@ export function rectsIntersect(a: Rect, b: Rect): boolean {
   )
 }
 
-/**
- * Whether a board-space rect is worth rendering.
- *
- * Culling by AABB is what keeps a board with hundreds of pins smooth — and it
- * beats DOM virtualization here, because `content-visibility: auto` makes
- * `getBoundingClientRect()` return skipped-layout values, which would break the
- * anchor measurement this whole design rests on.
- */
+/** AABB culling, not DOM virtualization: `content-visibility: auto` breaks `getBoundingClientRect()` and with it anchor measurement. */
 export function isVisible(
   rect: Rect,
   camera: Camera,

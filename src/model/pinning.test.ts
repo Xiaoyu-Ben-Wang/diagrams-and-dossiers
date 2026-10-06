@@ -13,7 +13,7 @@ const anchor: TextAnchor = {
   endOffset: 31,
 }
 
-/** Every optional column `EntityBase` carries, so a drop shows up as a failure. */
+/** Every optional `EntityBase` column, so a dropped one shows up as a failure. */
 const FULL: Partial<EntityBase> = {
   title: 'A title',
   bodyMd: 'A body',
@@ -39,9 +39,6 @@ describe('pinToText', () => {
   })
 
   it('carries every shared column across', () => {
-    // The guard on `shared()`'s hand-written field list: a column added to
-    // EntityBase and forgotten there is dropped silently, and only a test that
-    // sets all of them can see it.
     const pin = { ...newFreePin({ x: 0, y: 0 }), ...FULL }
 
     const anchored = pinToText(pin, 'art-1', anchor)
@@ -52,8 +49,7 @@ describe('pinToText', () => {
   })
 
   it('drops the old board position rather than keeping both placements', () => {
-    // An entity with a board *and* an anchor is the state the schema's
-    // `CHECK (anchor XOR board)` forbids.
+    // A board and an anchor together is the state the schema's anchor-XOR-board CHECK forbids.
     const pin = newFreePin({ x: 10, y: 20 })
 
     const anchored = pinToText(pin, 'art-1', anchor)
@@ -96,8 +92,6 @@ describe('pinToBoard', () => {
   })
 
   it('drops the quote along with the anchor', () => {
-    // A pin in the cork is not holding any words; a surviving quote would have
-    // it describe a passage it is nowhere near.
     const pin = newAnchoredPin('art-1', anchor)
 
     const free = pinToBoard(pin, { x: 0, y: 0 })
@@ -127,8 +121,6 @@ describe('sameAnchor', () => {
   })
 
   it('is false for the same word in a different place', () => {
-    // "the" occurs all over the article; pinning a different "the" is a
-    // different place to pin, however identical the quote reads.
     const elsewhere = { ...anchor, quote: 'the', startOffset: 900, endOffset: 903 }
     const alsoThe = { ...anchor, quote: 'the', startOffset: 120, endOffset: 123 }
 

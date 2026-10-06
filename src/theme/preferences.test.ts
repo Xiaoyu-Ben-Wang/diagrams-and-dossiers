@@ -34,7 +34,6 @@ function memoryStorage(): Storage {
   }
 }
 
-/** Storage as a locked-down browser hands it over: every touch throws. */
 function hostileStorage(): Storage {
   const deny = (): never => {
     throw new Error('storage is blocked')
@@ -178,8 +177,6 @@ describe('preference store', () => {
   })
 
   it('persists what it accepted', () => {
-    // A surface that both still exists and differs from the default, so this
-    // proves persistence rather than coincidence.
     setPreferences({ surface: 'slate' })
     expect(loadPreferences().surface).toBe('slate')
   })
@@ -206,8 +203,6 @@ describe('preference store', () => {
 
 describe('applyPreferences', () => {
   it('is a no-op without a document', () => {
-    // The default test environment is node; this path is what keeps a shared
-    // preferences module importable from pure logic.
     expect(typeof document).toBe('undefined')
     expect(() => applyPreferences(DEFAULT_PREFERENCES)).not.toThrow()
   })

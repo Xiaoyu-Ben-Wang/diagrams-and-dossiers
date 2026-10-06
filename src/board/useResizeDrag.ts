@@ -1,24 +1,3 @@
-/**
- * Dragging the corner of a thing to change its size.
- *
- * The pointer plumbing is the same for every kind — capture, remember the size
- * you started from, compute from that on every move rather than accumulating —
- * and only the arithmetic differs. So this holds the plumbing and the caller
- * supplies `sizeAt`.
- *
- * **Computed from the start, never accumulated.** Each move recomputes the size
- * from where the drag began. Feeding the previous frame's size back in looks
- * equivalent and is not: the size is rounded to a whole number of board pixels
- * for storage, so a drag that accumulates loses up to half a pixel every frame,
- * and a slow drag over a second drifts visibly away from the cursor.
- *
- * **Measured in board space through a mapping the caller owns.** The thing
- * being resized may be rotated, and its own bounding box is then the
- * axis-aligned box around a turned shape — which has nothing to do with where
- * its corner is. That is the measurement that looks obvious and is quietly
- * wrong.
- */
-
 import { useCallback, useRef } from 'react'
 
 import type { Point } from './yarn'
@@ -29,14 +8,9 @@ export interface Size {
 }
 
 export interface ResizeDragOptions {
-  /** What the thing is now. Recorded at the press and computed from after. */
+  /** Recorded at the press and computed from after; never accumulated. */
   size: Size
-  /** A viewport point in board space. */
   toBoard: (clientX: number, clientY: number) => Point
-  /**
-   * The size this drag is asking for, given the pointer and the size the thing
-   * was when the drag began.
-   */
   sizeAt: (pointer: Point, start: Size) => Size
   onResize: (size: Size) => void
 }
@@ -67,8 +41,7 @@ export function useResizeDrag({
 
   const onPointerDown = useCallback((event: React.PointerEvent) => {
     if (event.button !== 0) return
-    // Both of these matter: the press must not also select whatever is behind
-    // the handle, and it must not start a drag on the thing being resized.
+    // Must not select what is behind the handle, nor start a drag on the resized thing.
     event.stopPropagation()
     event.preventDefault()
     try {
@@ -77,10 +50,7 @@ export function useResizeDrag({
       // Capture is a refinement; the drag still tracks while over the handle.
     }
 
-    // Taken from the caller rather than measured off the DOM. The thing being
-    // resized may be rotated, and `getBoundingClientRect` on a rotated element
-    // is the box around the turned shape — it would report a size the thing
-    // does not have, and the drag would start from a lie.
+    // From the caller, not the DOM: a rotated element's client rect is the box around the turned shape.
     startRef.current = { ...sizeRef.current }
   }, [])
 

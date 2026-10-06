@@ -35,9 +35,6 @@ describe('adding', () => {
   })
 
   it('reads the board inside the change, not before it', () => {
-    // A new pin's date label is the count of pins already placed, so the change
-    // has to see the board as it is *at that moment*. Two additions that each
-    // read a stale snapshot both think they are the first.
     const { store } = open()
 
     for (let i = 0; i < 3; i += 1) {
@@ -62,8 +59,6 @@ describe('adding', () => {
   })
 
   it('keeps the same state object when nothing was added', () => {
-    // `useSyncExternalStore` compares the snapshot by identity, so minting a
-    // new one for a no-op re-renders every subscriber for nothing.
     const { store } = open()
     const before = store.get()
 
@@ -77,7 +72,6 @@ describe('adding', () => {
 
     store.addString(link('a', 'b'))
     store.addString(link('a', 'b', 'another-id'))
-    // And the same pair the other way round is the same string drawn twice.
     store.addString(link('b', 'a', 'backwards'))
 
     expect(store.get().strings).toHaveLength(1)
@@ -87,8 +81,6 @@ describe('adding', () => {
 
 describe('removing', () => {
   it('takes an entity off and publishes a deletion, not a silence', () => {
-    // A peer that never hears about a deletion keeps showing the thing, and
-    // re-sending the whole board to fix that overwrites whatever else moved.
     const { store, sync } = open()
     const pin = newFreePin({ x: 0, y: 0 })
     store.addEntities([pin])
@@ -101,8 +93,7 @@ describe('removing', () => {
   })
 
   it('takes with it any string that was tied to it', () => {
-    // A string to something that is gone has nothing to attach to, and would
-    // be drawn to the board origin.
+    // A string to something gone would be drawn to the board origin.
     const { store, sync } = open()
     const a = newFreePin({ x: 0, y: 0 })
     const b = newFreePin({ x: 1, y: 1 })
@@ -132,9 +123,6 @@ describe('removing', () => {
 
 describe('replacing the board', () => {
   it('puts the new board in place of the old one in a single change', () => {
-    // One emit, not an empty board followed by a full one: the camera, the
-    // selection and every in-flight anchor resolve would otherwise be taken
-    // through a state that never should have existed.
     const { store } = open()
     store.addEntities([newFreePin({ x: 0, y: 0 })])
 
@@ -150,10 +138,6 @@ describe('replacing the board', () => {
   })
 
   it('publishes nothing, because there is no one-thing change for it', () => {
-    // The transport's rule is that a change names one thing, so that two people
-    // moving different pins cannot overwrite each other. A socket will need a
-    // real answer for "the board is now this"; inventing one here would be a
-    // guess the other end would apply wrongly.
     const { store, sync } = open()
 
     store.replaceAll({ entities: [newFreePin({ x: 0, y: 0 })], strings: [] })
@@ -197,7 +181,6 @@ describe('updating', () => {
   })
 
   it('treats the same object back as "nothing needed doing"', () => {
-    // A drag that moved nothing must not republish or re-render.
     const { store, sync } = open()
     const pin = newFreePin({ x: 0, y: 0 })
     store.addEntities([pin])
@@ -235,8 +218,6 @@ describe('updating', () => {
 
 describe('permissions', () => {
   it('lets a viewer read the board and change none of it', () => {
-    // The refusal is logged, which is the point — but not something to print
-    // over a passing suite.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const { store, sync } = open('viewer')
@@ -266,8 +247,6 @@ describe('permissions', () => {
   })
 
   it('drops an article whose own options forbid editing', () => {
-    // The role is a ceiling, not a grant: a sealed article is sealed for the
-    // owner who sealed it too.
     const { store } = open('owner')
     const sealed = {
       ...newArticle({ x: 0, y: 0 }, 'body', 'Title', {
@@ -283,8 +262,6 @@ describe('permissions', () => {
   })
 
   it('says so when the UI offers something the role refuses', () => {
-    // Logged rather than thrown: this means a button that should not be there,
-    // which is a bug to find, not a crash for the person looking at the board.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const { store } = open('viewer')
@@ -306,7 +283,7 @@ describe('changes from elsewhere', () => {
     store.applyRemote({ kind: 'entity/upsert', entity: pin })
 
     expect(store.get().entities).toEqual([pin])
-    // And does not send it back out: two clients echoing each other is a loop.
+    // Not sent back out: two clients echoing each other is a loop.
     expect(sync.published).toEqual([])
   })
 
@@ -344,9 +321,6 @@ describe('changes from elsewhere', () => {
   })
 
   it('applies a change from a role that could not have made it locally', () => {
-    // A viewer cannot write, but must still see what other people write. A
-    // client that re-litigates a permission it cannot evaluate drops other
-    // people's work.
     const { store } = open('viewer')
     const pin = newFreePin({ x: 0, y: 0 })
 

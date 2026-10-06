@@ -8,10 +8,8 @@ import type { Resolution } from './types'
 const WORD = 'ferryman'
 const WORD_LENGTH = WORD.length
 
-/** A Resolution that definitely has a range — i.e. everything but `orphaned`. */
 type ResolvedRange = Extract<Resolution, { start: number }>
 
-/** Narrow a Resolution to its range, failing loudly if the pin is orphaned. */
 function resolved(result: Resolution): ResolvedRange {
   if (result.status === 'orphaned') {
     throw new Error(`expected a resolved range but the pin was orphaned: ${result.reason}`)
@@ -19,7 +17,6 @@ function resolved(result: Resolution): ResolvedRange {
   return result
 }
 
-/** Anchor the single occurrence of "ferryman" in a flat text. */
 function anchorOnWord(text: string) {
   const index = text.indexOf(WORD)
   expect(index, `fixture does not contain "${WORD}"`).toBeGreaterThanOrEqual(0)
@@ -34,8 +31,6 @@ describe('snapToWord', () => {
   })
 
   it('expands a caret at a word boundary to the preceding word', () => {
-    // Caret in the space after "ferryman". Ambiguous, so we prefer the word
-    // before it, matching how double-click selection behaves.
     expect(snapToWord(text, 12)).toEqual({ start: 4, end: 12 })
   })
 
@@ -49,13 +44,10 @@ describe('snapToWord', () => {
   })
 
   it('steps over trailing punctuation to find the last word', () => {
-    // A caret after the sentence's final "." should still find "nodded".
     expect(snapToWord(text, text.length)).toEqual({ start: 13, end: 19 })
   })
 
   it('takes the word before a long whitespace run', () => {
-    // Caret in the gap between two words belongs to the earlier one, however
-    // wide the gap.
     expect(snapToWord('alpha        beta', 7)).toEqual({ start: 0, end: 5 })
     expect(snapToWord('alpha        beta', 12)).toEqual({ start: 0, end: 5 })
   })
@@ -93,8 +85,6 @@ describe('createAnchor', () => {
   })
 
   it('leaves an empty quote when no word precedes the caret', () => {
-    // Unanchorable. resolveAnchor reports this as orphaned, and the UI should
-    // ask the user to pick a spot on the text rather than pinning to nothing.
     const anchor = createAnchor('   hello', 1, 1)
     expect(anchor.quote).toBe('')
   })
@@ -134,19 +124,16 @@ describe('resolveAnchor', () => {
   })
 
   it('uses surrounding context to choose between repeated phrases', () => {
-    // The word appears twice; only the prefix and suffix say which one is meant.
     const original = 'The ferryman nodded. Later, the ferryman refused.'
     const before = buildFlatText([original])
     const anchor = anchorOnWord(before.text)
     expect(anchor.startOffset).toBe(4)
 
-    // Shift everything so both candidates are offset, then let context decide.
     const after = buildFlatText(['At dawn. ' + original])
     const result = resolved(resolveAnchor(after.text, anchor))
 
     expect(result.status).toBe('repaired')
     expect(after.text.slice(result.start, result.end)).toBe(WORD)
-    // It must be the FIRST occurrence — the one whose context matches.
     expect(after.text.slice(result.start - 4, result.start)).toBe('The ')
     expect(after.text.slice(result.end, result.end + 8)).toBe(' nodded.')
   })
@@ -156,9 +143,6 @@ describe('resolveAnchor', () => {
     const before = buildFlatText([original])
     const anchor = anchorOnWord(before.text)
 
-    // Prepend more than SEARCH_WINDOW (2000) characters, pushing the stored
-    // offset outside the windowed search. A unique quote with intact context
-    // should still be found.
     const padding = 'A very long preamble. '.repeat(200)
     expect(padding.length).toBeGreaterThan(2000)
 
@@ -174,8 +158,6 @@ describe('resolveAnchor', () => {
     const before = buildFlatText(['The ferryman nodded slowly at the stranger.'])
     const anchor = anchorOnWord(before.text)
 
-    // Same word, entirely different surroundings. The pin still resolves —
-    // there's only one candidate — but it should not claim certainty.
     const after = buildFlatText(['Completely rewritten prose about a ferryman, alas.'])
     const result = resolved(resolveAnchor(after.text, anchor))
 
@@ -188,11 +170,6 @@ describe('resolveAnchor', () => {
 })
 
 describe('the thesis: a pin survives edits to the article', () => {
-  /**
-   * Simulate how the DOM walker builds a flat text: text nodes in document
-   * order, with an explicit separator between block elements (see
-   * BLOCK_SEPARATOR — whitespace between blocks is not reliable in HTML).
-   */
   const article = (...nodes: string[]) => buildFlatText(nodes)
 
   const heading = `Session Twelve${BLOCK_SEPARATOR}`
@@ -217,8 +194,6 @@ describe('the thesis: a pin survives edits to the article', () => {
   })
 
   it('still lands on the right words after the phrase is wrapped in bold', () => {
-    // This is why offsets index text content rather than HTML: splitting one
-    // text node into three around an inline element must not move anything.
     const before = article('Molgar paid the ', WORD, ' in silver.')
     const anchor = anchorOnWord(before.text)
 
@@ -245,8 +220,6 @@ describe('the thesis: a pin survives edits to the article', () => {
   })
 
   it('survives edits that change whitespace but not the words', () => {
-    // Pretty-printed HTML differs between renderers. Normalization is what
-    // makes that difference invisible to anchors — offsets don't move at all.
     const before = article('Molgar paid the ferryman in silver.')
     const anchor = anchorOnWord(before.text)
 
@@ -258,9 +231,6 @@ describe('the thesis: a pin survives edits to the article', () => {
   })
 
   it('admits it is lost rather than landing on the wrong sentence', () => {
-    // The failure mode that matters most. A pin silently attached to the wrong
-    // words is worse than one that says it needs re-attaching, because nobody
-    // notices the silent one.
     const before = article('Molgar paid the ferryman in silver.')
     const anchor = anchorOnWord(before.text)
 

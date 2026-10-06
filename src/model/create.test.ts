@@ -9,8 +9,6 @@ describe('imageFootprint', () => {
   })
 
   it('shrinks a photograph to the longest edge, keeping its shape', () => {
-    // A picture straight off a phone is several thousand pixels across; at its
-    // own size it would be bigger than the article it sits beside.
     const landscape = imageFootprint(4032, 3024)
 
     expect(landscape.width).toBe(MAX_IMAGE_EDGE)
@@ -25,8 +23,6 @@ describe('imageFootprint', () => {
   })
 
   it('never enlarges, only shrinks', () => {
-    // Blowing a 40px icon up to fill the board would look like a mistake, and
-    // the picture would be no more readable for it.
     expect(imageFootprint(40, 30)).toEqual({ width: 40, height: 30 })
   })
 
@@ -38,8 +34,6 @@ describe('imageFootprint', () => {
   })
 
   it('falls back to a usable box when the picture has no size of its own', () => {
-    // An SVG with no intrinsic dimensions decodes to zeroes, and a zero-sized
-    // entity is one nothing can hit-test or frame.
     for (const [w, h] of [[0, 0], [Number.NaN, 10], [-5, 10]]) {
       expect(imageFootprint(w, h)).toEqual(IMAGE_SIZE)
     }
@@ -58,9 +52,6 @@ describe('newImage', () => {
   })
 
   it('arrives whole, with no crop', () => {
-    // A picture comes to the board as it was; the damage is something you do
-    // to it. Defaulting to a burnt edge would have every photograph arrive
-    // pretending to have survived a fire.
     const picture = newImage({ x: 0, y: 0 }, 'data:,', { width: 10, height: 10 })
 
     expect(picture.edge).toBe('clean')
@@ -73,8 +64,6 @@ describe('newImage', () => {
   })
 
   it('gives each picture a border seed of its own', () => {
-    // The crop is generated from this, so two pictures of the same style must
-    // not generate the same damage.
     const size = { width: 10, height: 10 }
     const seeds = new Set(
       Array.from({ length: 20 }, () => newImage({ x: 0, y: 0 }, 'data:,', size).edgeSeed),
@@ -96,9 +85,6 @@ describe('newImage', () => {
   })
 
   it('does not disturb the other kinds', () => {
-    // A note now carries a size of its own, because it can be dragged to fit
-    // what is written on it — but it is the *note's* default, not the picture's
-    // footprint leaking across from the image constructor.
     const note = newNote({ x: 0, y: 0 })
 
     expect(note.kind).toBe('note')

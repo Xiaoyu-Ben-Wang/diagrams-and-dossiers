@@ -90,13 +90,11 @@ describe('fitBounds', () => {
     const target = { x: 0, y: 0, width: 2000, height: 1000 }
     const camera = fitBounds([target], viewport, 50)!
 
-    // Both dimensions must fit inside the padded viewport.
     expect(target.width * camera.zoom).toBeLessThanOrEqual(viewport.width - 100 + 0.001)
     expect(target.height * camera.zoom).toBeLessThanOrEqual(viewport.height - 100 + 0.001)
   })
 
   it('fits the constraining dimension exactly', () => {
-    // A very wide target is limited by width, not height.
     const camera = fitBounds([{ x: 0, y: 0, width: 900, height: 100 }], viewport, 50)!
     expect(900 * camera.zoom).toBeCloseTo(viewport.width - 100, 6)
   })
@@ -135,8 +133,6 @@ describe('zoomAt', () => {
   const camera: Camera = { x: 0, y: 0, zoom: 1 }
 
   it('keeps the board point under the cursor fixed', () => {
-    // The single most common way a canvas feels bad is zoom drifting away from
-    // what you were looking at.
     const cursor = { x: 700, y: 300 }
     const before = screenToBoard(camera, cursor)
     const after = screenToBoard(zoomAt(camera, cursor, 2.4), cursor)
@@ -186,15 +182,11 @@ describe('lerpCamera', () => {
   })
 
   it('interpolates zoom geometrically, not linearly', () => {
-    // Linear zoom makes the first half of a move cover most of the visual
-    // distance and the tail crawl. At the midpoint the geometric mean should be
-    // 2, not the arithmetic mean of 2.5.
     const middle = lerpCamera(from, to, 0.5)
     expect(middle.zoom).toBeCloseTo(2, 6)
   })
 
   it('reaches the same visual rate throughout the move', () => {
-    // Equal steps in t should multiply zoom by equal factors.
     const a = lerpCamera(from, to, 0.25).zoom
     const b = lerpCamera(from, to, 0.5).zoom
     const c = lerpCamera(from, to, 0.75).zoom
@@ -243,7 +235,6 @@ describe('rectFromPoints', () => {
   })
 
   it('never produces a negative extent', () => {
-    // Dragging up and to the left is the case that would.
     const rect = rectFromPoints({ x: 100, y: 100 }, { x: 20, y: 30 })
     expect(rect.width).toBeGreaterThanOrEqual(0)
     expect(rect.height).toBeGreaterThanOrEqual(0)
@@ -284,7 +275,7 @@ describe('rectsIntersect', () => {
   })
 
   it('catches a zero-size rect whose point is inside', () => {
-    // A pin has no area; a marquee dragged across it must still pick it up.
+    // A pin has no area but must still be pickable by a marquee.
     expect(rectsIntersect(box, { x: 50, y: 50, width: 0, height: 0 })).toBe(true)
   })
 
@@ -321,13 +312,9 @@ describe('centring on something', () => {
   const viewport = { width: 1000, height: 600 }
 
   it('puts the rect in the middle without changing the zoom', () => {
-    // The difference from `fitBounds`, and the whole reason this exists: going
-    // to a page must not rescale the board under the person looking at it.
     const camera = centreOn({ x: 2000, y: 1000, width: 400, height: 200 }, viewport, 0.75)
 
     expect(camera.zoom).toBe(0.75)
-    // The rect's centre lands at the viewport's centre. Close to, not equal:
-    // 1000/(2*0.75) is not a number a float holds exactly.
     const onScreen = boardToScreen(camera, { x: 2200, y: 1100 })
     expect(onScreen.x).toBeCloseTo(500, 6)
     expect(onScreen.y).toBeCloseTo(300, 6)

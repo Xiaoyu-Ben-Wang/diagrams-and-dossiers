@@ -1,45 +1,10 @@
-/**
- * The pictures on the demo board, as data URIs.
- *
- * A picture is the one kind of entity the demo did not show at all, and a
- * picture needs a file. The board's pictures are things somebody brought to the
- * table — a sketch map, a rubbing, a torn leaf — and a seed board that opens
- * with three grey placeholders would be showing the `<img>` tag rather than the
- * thing the `.image` state is for: the torn border, the swing about the pin,
- * the fit.
- *
- * Inline SVG rather than files under `public/` for three reasons, in order of
- * how much they mattered:
- *
- *   - There is no network in the test suite or the probes, and a seed board
- *     that renders three broken images is worse than one with no pictures.
- *   - This module is seed data and gets deleted when boards arrive from a
- *     server (see `demo.ts`). A directory of binary art is a directory nobody
- *     remembers to delete.
- *   - SVG is text, so the artwork is reviewable in the diff like everything
- *     else here — and it scales to any board zoom without a second asset.
- *
- * These are deliberately drawings rather than photographs. The board is a
- * corkboard in a campaign room, and everything on it was made by hand; the
- * giveaway of a stock photograph would be the one thing on the board that no
- * character in it could have produced.
- *
- * The encoded form is what an `<img src>` takes. `encodeURIComponent` rather
- * than base64 because it leaves the markup readable in a debugger, and because
- * it is what makes the `#` in every colour a literal rather than a fragment.
- */
-
-/** Wrap SVG body markup as a data URI an `<img>` will load. */
+// Inline rather than files under public/: the test suite and probes have no network.
+// encodeURIComponent keeps the "#" in colours from ending the data URI as a fragment.
 function svgDataUri(width: number, height: number, body: string): string {
   const markup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">${body}</svg>`
   return `data:image/svg+xml,${encodeURIComponent(markup)}`
 }
 
-/**
- * The marsh map: three docks, a drowned road, and a cross where the bell came
- * up. Hatching for the marsh rather than a texture, because a hand-drawn map of
- * a place like this is mostly a record of what is water and what is not.
- */
 export const MARSH_MAP = svgDataUri(
   320,
   240,
@@ -66,15 +31,6 @@ export const MARSH_MAP = svgDataUri(
 `,
 )
 
-/**
- * The Black Coin, rubbed.
- *
- * A rubbing rather than a photograph of a coin, because that is what you can
- * actually make of a thing you are not allowed to take away: charcoal over
- * paper, which is why the device is pale on dark and the edges of the sheet are
- * smudged. The device is a bell over water — the same bell the board is about,
- * which is the whole reason this rubbing is on the board.
- */
 export const COIN_RUBBING = svgDataUri(
   220,
   220,
@@ -97,15 +53,6 @@ export const COIN_RUBBING = svgDataUri(
 `,
 )
 
-/**
- * A torn leaf of the ledger.
- *
- * Ruled lines rather than real words: at the size the board draws it the
- * difference between "handwriting" and "text too small to read" is a smudge
- * either way, and fake prose set in a real font reads as a mock-up rather than
- * as a document. One line is in a second hand — the same correction the ledger
- * itself is about.
- */
 export const TORN_LEAF = svgDataUri(
   300,
   200,

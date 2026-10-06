@@ -26,13 +26,10 @@ describe('sagFor', () => {
   })
 
   it('grows with the square root of slack, not linearly', () => {
-    // The sub-linear response is the whole point: a nearly-taut string stays
-    // nearly straight, then droops quickly as you pay out rope.
     const tight = sagFor(400, 0.05)
     const loose = sagFor(400, 0.2)
     const veryLoose = sagFor(400, 0.8)
 
-    // Quadrupling slack should roughly double sag, not quadruple it.
     expect(loose / tight).toBeGreaterThan(1.5)
     expect(loose / tight).toBeLessThan(2.5)
     expect(veryLoose / loose).toBeGreaterThan(1.5)
@@ -50,9 +47,7 @@ describe('sagFor', () => {
 })
 
 describe('slackForSag', () => {
-  // The pair has to be exact inverses, or a drag would drift away from the
-  // pointer: every step would re-derive slack from a sag it had already lost a
-  // little of, and the string would creep.
+  // Exact inverses, or a drag would creep as slack is re-derived each step.
   it('round-trips sagFor exactly', () => {
     for (const gap of [40, 200, 600, 900]) {
       for (const slack of [0, 0.02, 0.18, 0.4, 0.8]) {
@@ -72,9 +67,6 @@ describe('slackForSag', () => {
   })
 
   it('reaches MAX_SLACK exactly where the sag cap bites', () => {
-    // Past the cap the sag is pinned, so this is the last slack that means
-    // anything — beyond it the number would describe a droop the string does
-    // not have.
     expect(MAX_SLACK).toBeCloseTo(slackForSag(500, 500 * MAX_SAG_RATIO), 12)
     expect(sagFor(500, MAX_SLACK)).toBeCloseTo(500 * MAX_SAG_RATIO, 9)
     expect(sagFor(500, MAX_SLACK * 4)).toBeCloseTo(500 * MAX_SAG_RATIO, 9)
@@ -93,7 +85,7 @@ describe('controlPoint', () => {
   })
 
   it('hangs below even when the chord is not horizontal', () => {
-    // Sag is gravity, so it is always +y regardless of the string's direction.
+    // Sag is gravity: always +y regardless of the string's direction.
     const control = controlPoint({ x: 0, y: 0 }, { x: 100, y: -300 })
     const chordMidpoint = { x: 50, y: -150 }
     expect(control.y).toBeGreaterThan(chordMidpoint.y)
@@ -150,8 +142,6 @@ describe('distanceToYarn', () => {
   })
 
   it('lets a click near a string select it', () => {
-    // A few pixels off the curve should still be a hit — strings are thin and
-    // nobody clicks a 2px target accurately.
     const nearCurve = pointOnYarn(from, to, 0.5)
     const result = distanceToYarn(from, to, { x: nearCurve.x, y: nearCurve.y + 4 })
     expect(result.distance).toBeLessThan(8)
@@ -183,7 +173,6 @@ describe('anchorOnBox', () => {
 
   it('handles a diagonal target on whichever edge it exits', () => {
     const corner = anchorOnBox(box, { x: 1000, y: 1000 })
-    // Exits through the bottom-right corner region.
     expect(corner.x).toBeCloseTo(100, 6)
     expect(corner.y).toBeCloseTo(100, 6)
   })
@@ -221,8 +210,7 @@ describe('spring', () => {
   })
 
   it('does not explode when a frame is enormous', () => {
-    // A backgrounded tab can hand us a multi-second dt. Integrating that in one
-    // step would fling the value to infinity.
+    // A backgrounded tab can hand a multi-second dt; integrating it in one step flings to infinity.
     const spring = createSpring(0)
     stepSpring(spring, 100, 5)
     expect(Number.isFinite(spring.value)).toBe(true)

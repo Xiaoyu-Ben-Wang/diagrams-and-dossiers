@@ -1,17 +1,3 @@
-/**
- * The markdown formatting toolbar.
- *
- * Presentational: it reports which action was pressed and the parent applies it
- * to whatever text field has focus. Keeping the text manipulation out of here
- * (see `markdown/format.ts`) is what makes the interesting part — the toggling
- * and selection handling — testable without a DOM.
- *
- * Buttons are `onMouseDown`-prevented so pressing one does not steal focus from
- * the textarea. Without that the selection is gone by the time the action runs,
- * and every button silently acts on a collapsed caret instead of the words you
- * had highlighted.
- */
-
 import type { MarkdownAction } from '../markdown/format'
 
 export interface MarkdownToolbarProps {

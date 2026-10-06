@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ContextMenu, clampMenuPosition } from './ContextMenu'
 import type { ContextMenuEntry } from './ContextMenu'
 
-/** Pin, post-it, separator, then a disabled destructive action. */
 function fixture() {
   const pin = vi.fn()
   const note = vi.fn()
@@ -33,7 +32,7 @@ function highlighted(name: RegExp): string | null {
   return item(name).getAttribute('data-highlighted')
 }
 
-/** jsdom reports a zero-sized box for every element, so a size must be faked. */
+// jsdom reports a zero-sized box for every element, so a size must be faked.
 function rectOf(width: number, height: number): DOMRect {
   return {
     x: 0,
@@ -63,8 +62,6 @@ describe('ContextMenu', () => {
   })
 
   it('renders through a portal on document.body', () => {
-    // The board viewport clips, so an in-tree menu would be cut off at the
-    // edges — this is the fix, not a detail.
     openMenu(fixture().entries)
     expect(screen.getByRole('menu').parentElement).toBe(document.body)
   })
@@ -116,7 +113,6 @@ describe('dismissal', () => {
   })
 
   it('stays open through the pointerdown that precedes an item click', () => {
-    // Closing on the pointerdown half of a click would eat the click itself.
     const { entries, pin } = fixture()
     const { onClose } = openMenu(entries)
     const button = item(/add pin/i)
@@ -192,7 +188,6 @@ describe('keyboard navigation', () => {
     expect(clear).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
 
-    // End stops at the last *enabled* item; the disabled one is unreachable.
     fireEvent.keyDown(menu, { key: 'End' })
     expect(highlighted(/create post-it/i)).toBe('true')
     expect(highlighted(/clear board/i)).toBeNull()
@@ -231,9 +226,6 @@ describe('clamping', () => {
   })
 
   it('re-clamps when longer items arrive while it is open', () => {
-    // The mount-time measurement is made against the old, shorter box, so a
-    // caller swapping items mid-open must trigger a fresh clamp or the menu
-    // grows back past the corner it was pulled away from.
     const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rectOf(120, 60))
     const anchor = { x: window.innerWidth - 4, y: window.innerHeight - 4 }
     const short: ContextMenuEntry[] = [{ id: 'a', label: 'A', onSelect: () => {} }]

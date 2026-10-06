@@ -8,8 +8,6 @@ const viewer = (role: Role) => ({ role })
 
 describe('the role predicates', () => {
   it('mirrors is_member, is_editor and is_dm from the policies', () => {
-    // Read side by side with `supabase/migrations/0001_init.sql`. If these two
-    // tables stop matching, the client offers things the server refuses.
     const expected: Record<Role, { member: boolean; editor: boolean; dm: boolean }> = {
       viewer: { member: true, editor: false, dm: false },
       editor: { member: true, editor: true, dm: false },
@@ -57,16 +55,11 @@ describe('can', () => {
   })
 
   it('does not need an entity to answer about creating one', () => {
-    // There is nothing to ask about yet, and refusing an insert for want of a
-    // row the caller is about to insert would be a board you cannot add to.
     expect(can(viewer('editor'), 'create')).toBe(true)
     expect(can(viewer('viewer'), 'create')).toBe(false)
   })
 
   it('honours an entity that narrows its own reach', () => {
-    // An article whose options forbid editing is not editable even by the
-    // owner: the role is a ceiling, not a grant. This is the one place a kind
-    // gets a say, because it is the kind's own business.
     const locked = newArticle({ x: 0, y: 0 }, '', 'A page', {
       ...DEFAULT_ARTICLE_OPTIONS,
       editable: true,
@@ -75,7 +68,6 @@ describe('can', () => {
 
     const sealed = { ...locked, options: { ...locked.options, editable: false } }
     expect(can(viewer('owner'), 'edit', sealed)).toBe(false)
-    // But it may still be moved and deleted — the options govern editing.
     expect(can(viewer('owner'), 'move', sealed)).toBe(true)
     expect(can(viewer('owner'), 'delete', sealed)).toBe(true)
   })

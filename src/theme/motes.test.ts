@@ -46,8 +46,6 @@ describe('createMotes', () => {
   })
 
   it('is stable across calls with the same seed', () => {
-    // Math.random() here would make the field different on every reload, and
-    // impossible to test.
     const a = createMotes(12, bounds, 99)
     const b = createMotes(12, bounds, 99)
     expect(a).toEqual(b)
@@ -63,7 +61,6 @@ describe('createMotes', () => {
   })
 
   it('varies radius and opacity rather than making a uniform field', () => {
-    // Uniform specks read as snow. A spread of sizes reads as depth.
     const motes = createMotes(60, bounds, 5)
     const radii = new Set(motes.map((m) => m.radius.toFixed(3)))
     expect(radii.size).toBeGreaterThan(10)
@@ -75,8 +72,7 @@ describe('createMotes', () => {
   it('biases towards small motes', () => {
     const motes = createMotes(400, bounds, 11, { minRadius: 0, maxRadius: 4 })
     const mean = motes.reduce((sum, m) => sum + m.radius, 0) / motes.length
-    // Squaring the uniform sample puts the mean near a third of the range,
-    // not the midpoint.
+    // Squaring puts the mean near a third of the range, not the midpoint.
     expect(mean).toBeLessThan(2)
   })
 
@@ -113,8 +109,6 @@ describe('stepMotes', () => {
   })
 
   it('does not let the random walk accumulate into streaking', () => {
-    // Without damping, velocities grow without bound and the field turns into
-    // lines instead of specks.
     const motes = createMotes(30, bounds, 6)
     for (let i = 0; i < 3000; i++) stepMotes(motes, 1 / 60, bounds)
     for (const mote of motes) {
@@ -129,7 +123,7 @@ describe('stepMotes', () => {
     const before = motes.map((m) => ({ x: m.x, y: m.y }))
     stepMotes(motes, 12, bounds)
     motes.forEach((mote, i) => {
-      // Clamped to 1/20s of travel, so nothing crosses the whole board.
+      // Clamped to 1/20s of travel, so nothing crosses the board.
       expect(Math.abs(mote.x - before[i].x)).toBeLessThan(bounds.width)
       expect(Number.isFinite(mote.x)).toBe(true)
     })
@@ -189,7 +183,7 @@ describe('moteScreenPosition', () => {
   it('drifts against the camera, not with it', () => {
     const [mote] = createMotes(1, bounds, 1)
     const moved = moteScreenPosition(mote, { x: 100, y: 0, zoom: 1 }, bounds, 0.3)
-    // Parallax is a fraction of camera movement, and opposite in sign.
+    // Parallax is a fraction of camera movement, opposite in sign.
     expect(moved.x).toBeCloseTo(((mote.x - 30) % bounds.width + bounds.width) % bounds.width, 6)
   })
 
@@ -222,15 +216,11 @@ describe('candleFlicker', () => {
   })
 
   it('stays subtle', () => {
-    // A strong flicker is nauseating on a large screen; this is meant to be
-    // felt rather than noticed.
     const samples = Array.from({ length: 2000 }, (_, i) => candleFlicker(i * 0.05))
     expect(Math.max(...samples) - Math.min(...samples)).toBeLessThan(0.2)
   })
 
   it('does not repeat on any short period', () => {
-    // Three coprime periods summed. A single sine would read as a pulsing
-    // light, which is worse than no flicker at all.
     const start = Array.from({ length: 240 }, (_, i) => candleFlicker(i * 0.05))
     const later = Array.from({ length: 240 }, (_, i) => candleFlicker(i * 0.05 + 40))
     const identical = start.every((value, i) => Math.abs(value - later[i]) < 1e-9)
@@ -241,8 +231,6 @@ describe('candleFlicker', () => {
     let previous = candleFlicker(0)
     for (let t = 1 / 60; t < 30; t += 1 / 60) {
       const current = candleFlicker(t)
-      // No jumps between adjacent frames — a discontinuity reads as a glitch
-      // rather than as candlelight.
       expect(Math.abs(current - previous)).toBeLessThan(0.01)
       previous = current
     }

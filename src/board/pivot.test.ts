@@ -11,8 +11,6 @@ import {
 
 describe('rotateAbout', () => {
   it('leaves the pivot where it is', () => {
-    // The one point a pinned sheet cannot move, at any angle. Everything else
-    // about the rotation is arranged around this.
     const pivot = { x: 30, y: 40 }
 
     for (const degrees of [-45, -20, 0, 7, 45]) {
@@ -23,9 +21,7 @@ describe('rotateAbout', () => {
   })
 
   it('turns clockwise on screen for a positive angle', () => {
-    // Screen y runs downward, so "clockwise" means a point to the right of the
-    // pivot swings down. This is the convention CSS `rotate()` uses, and the
-    // renderer relies on the two agreeing.
+    // Screen y runs downward; this matches CSS `rotate()`, which the renderer relies on.
     const turned = rotateAbout({ x: 0, y: 0 }, { x: 10, y: 0 }, 90)
 
     expect(turned.x).toBeCloseTo(0, 9)
@@ -64,19 +60,12 @@ describe('sweptBounds', () => {
   })
 
   it('hangs the sheet below the pin once it is swung', () => {
-    // Rotating about the top edge means the swung sheet reaches further down
-    // than the upright one, and that extra reach is the whole reason the
-    // marquee cannot use the upright box.
     const at45 = sweptBounds(board, size, pivot, 45)
 
     expect(at45.y + at45.height).toBeGreaterThan(100)
   })
 
   it('reaches above the pin as well, because the far corner lifts', () => {
-    // A rigid turn about a point on the top edge is not a pivot about the
-    // sheet's lowest point: the corner on the far side of the pin rises by as
-    // much as the near side falls. The swept box has to allow for both, or a
-    // tilted sheet pokes out of the top of the band drawn around it.
     const at45 = sweptBounds(board, size, pivot, 45)
 
     expect(at45.y).toBeCloseTo(-100 * Math.SQRT1_2, 6)
@@ -99,7 +88,6 @@ describe('sweptBounds', () => {
     expect(left.y).toBeCloseTo(right.y, 6)
     expect(left.width).toBeCloseTo(right.width, 6)
     expect(left.height).toBeCloseTo(right.height, 6)
-    // Mirrored either side of the pin.
     expect(left.x + left.width - pivot.x).toBeCloseTo(pivot.x - right.x, 6)
   })
 })
@@ -121,8 +109,6 @@ describe('tiltAngle', () => {
   const pivot = { x: 0, y: 0 }
 
   it('reads a pointer above the pin as no tilt', () => {
-    // The sheet's head sits above its pivot, so a hand directly above it is
-    // asking for zero.
     expect(tiltAngle(pivot, { x: 0, y: -50 })).toBeCloseTo(0, 9)
   })
 
@@ -131,8 +117,7 @@ describe('tiltAngle', () => {
   })
 
   it('reads a pointer below as half a turn', () => {
-    // The sign convention in one assertion: without the negated `dy` this
-    // reads as zero, and the sheet turns away from the hand.
+    // Without the negated `dy` this reads as zero and the sheet turns away from the hand.
     expect(Math.abs(tiltAngle(pivot, { x: 0, y: 50 }))).toBeCloseTo(180, 9)
   })
 
@@ -149,8 +134,6 @@ describe('tiltTowards', () => {
   const pivot = { x: 0, y: 0 }
 
   it('turns by however much the hand turned, not to where the hand is', () => {
-    // Grabbed at the top of the sheet, moved to 20 degrees clockwise. The sheet
-    // was already at 10, so it should end at 30 — not snap to 20.
     const grabbed = tiltAngle(pivot, { x: 0, y: -50 })
 
     expect(tiltTowards(pivot, rotateAbout(pivot, { x: 0, y: -50 }, 20), grabbed, 10)).toBeCloseTo(30, 6)
@@ -171,9 +154,7 @@ describe('tiltTowards', () => {
   })
 
   it('takes the short way round the wrap, not the long one', () => {
-    // Just left of straight-up is +179; just right of it is -179. A hand moving
-    // across that line has moved two degrees, and must not read as a swing of
-    // 358 the other way — which would slam the sheet to its limit.
+    // A hand crossing the ±180 line has moved two degrees, not 358 the other way.
     const justLeft = { x: -1, y: -50 }
     const justRight = { x: 1, y: -50 }
     const grabbed = tiltAngle(pivot, justLeft)

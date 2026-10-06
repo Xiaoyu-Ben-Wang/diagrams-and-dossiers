@@ -103,7 +103,6 @@ const image = (over: Partial<ImageEntity> = {}): ImageEntity => ({
   ...over,
 })
 
-/** A context with nothing resolved, as before the first measurement lands. */
 const emptyContext: EntityContext = {
   articleToBoard: () => null,
   anchorRect: () => null,
@@ -112,8 +111,6 @@ const emptyContext: EntityContext = {
 
 describe('the registry covers every kind', () => {
   it('answers for each kind in the union', () => {
-    // The table is keyed by kind, so a new kind that is added to the union and
-    // forgotten here is a type error — this proves the wiring at runtime too.
     for (const kind of ENTITY_KINDS) {
       expect(descriptorOf(kind).kind).toBe(kind)
     }
@@ -139,16 +136,12 @@ describe('placement is carried by the shape', () => {
     expect(isPlaced(note())).toBe(true)
     expect(isPlaced(article())).toBe(true)
     expect(isPlaced(image())).toBe(true)
-    // The only kind that may not.
     expect(isPlaced(anchoredPin())).toBe(false)
   })
 })
 
 describe('capabilities', () => {
   it('lets a tack in the cork be rubber-banded but not one in a word', () => {
-    // A band dragged across the board has nothing of an in-text tack to
-    // enclose, but both are still repositionable — which is why these are two
-    // flags and not one.
     const cork = descriptorFor(freePin()).capabilities(freePin())
     const word = descriptorFor(anchoredPin()).capabilities(anchoredPin())
     expect(cork.marqueeSelectable).toBe(true)
@@ -158,9 +151,6 @@ describe('capabilities', () => {
   })
 
   it('marks the two sheets as rotatable and the flat things as not', () => {
-    // A picture and a page are the same object here: something hanging from a
-    // single pin, which turns about it. A note and a tack lie flat on the cork
-    // and have no angle to set.
     expect(descriptorFor(image()).capabilities(image()).rotatable).toBe(true)
     expect(descriptorFor(article()).capabilities(article()).rotatable).toBe(true)
     for (const entity of [freePin(), anchoredPin(), note()] as BoardEntity[]) {
@@ -169,9 +159,6 @@ describe('capabilities', () => {
   })
 
   it('keeps a page out of the rubber band', () => {
-    // The one capability a page does not share with the other placed kinds. A
-    // band across a page is how you gather the notes lying on it, and a page
-    // swept into that set would be dragged off with them.
     const page = article()
     expect(descriptorFor(page).capabilities(page).marqueeSelectable).toBe(false)
   })
@@ -191,9 +178,6 @@ describe('anchor points', () => {
   })
 
   it('resolves an anchored pin through the article, not from a position it lacks', () => {
-    // The article answers where a point in its own space ends up on the board,
-    // rather than handing back a corner for the caller to add to — which is
-    // what lets a tilted page put its tacks in the right place.
     const placed: { local: unknown }[] = []
     const context: EntityContext = {
       ...emptyContext,
@@ -212,8 +196,6 @@ describe('anchor points', () => {
   })
 
   it('gives an anchored pin no anchor at all until its quote resolves', () => {
-    // Nothing may tie a string to a pin whose words are gone; a null here is
-    // what keeps the yarn layer from drawing to the board origin instead.
     expect(descriptorFor(anchoredPin()).anchorPoint(anchoredPin(), emptyContext)).toBeNull()
   })
 
@@ -223,9 +205,6 @@ describe('anchor points', () => {
   })
 
   it('pins an image just inside its top edge, so the whole tack is on it', () => {
-    // Not on the edge: half a tack hanging in mid-air reads as hovering above
-    // the photograph rather than holding it, and a string tied there ends off
-    // the picture it is about.
     const at = descriptorFor(image()).anchorPoint(image(), emptyContext)
 
     expect(at).toEqual({ x: 50 + IMAGE_SIZE.width / 2, y: 60 + IMAGE_PIN_INSET })
@@ -233,31 +212,22 @@ describe('anchor points', () => {
   })
 
   it('turns the inset pin with the sheet, since it is inside the paper', () => {
-    // The top-centre corner is the one point a swing cannot move; the pin is
-    // below it now, so it travels — by exactly the arc the sheet's own rotation
-    // takes it through.
     const upright = descriptorFor(image()).anchorPoint(image(), emptyContext)
     const swung = image({ rotation: 90 })
     const tilted = descriptorFor(swung).anchorPoint(swung, emptyContext)
 
     expect(tilted).not.toEqual(upright)
-    // A quarter turn about the top-centre puts a pin 10px below the pivot the
-    // same 10px to one side of it.
     expect(tilted).not.toBeNull()
     expect(Math.round(tilted!.x - (50 + IMAGE_SIZE.width / 2))).toBe(-IMAGE_PIN_INSET)
     expect(Math.round(tilted!.y)).toBe(60)
   })
 
   it('meets a note along the middle of its top edge, where it is held', () => {
-    // Not the centre of the paper: a rope tied there crosses the writing and
-    // slides down the note when the note is stretched from its corner.
     const at = descriptorFor(note()).anchorPoint(note(), emptyContext)
     expect(at).toEqual({ x: 10 + NOTE_SIZE.width / 2, y: 20 })
   })
 
   it('keeps a string on the top edge when the note is resized', () => {
-    // The corner drag grows the note rightward and downward, so the point a
-    // string is tied to stays on the top edge while its x follows the width.
     const at = (width: number, height: number) => {
       const entity = note({ width, height })
       return descriptorFor(entity).anchorPoint(entity, emptyContext)
@@ -268,18 +238,10 @@ describe('anchor points', () => {
   })
 
   it('ties an article at the tab on its top edge', () => {
-    // The page's own width, not a measured one: a tab is where it is the moment
-    // the page exists, so yarn can be tied to a page before it has been laid
-    // out. Note the context is empty — nothing measured — and the answer is
-    // still a point.
     expect(descriptorFor(article()).anchorPoint(article(), emptyContext)).toEqual({ x: 360, y: 0 })
   })
 
   it('puts each page’s tab at its own width', () => {
-    // Two pages with different widths have their tabs in different places. An
-    // id-blind context that answered one size for every article put both in the
-    // same spot — and since a string ties to that point, two pages' yarn met in
-    // the middle of nowhere.
     const narrow = article({ id: 'narrow', options: { ...article().options, width: 480 } })
     const wide = article({ id: 'wide', options: { ...article().options, width: 960 } })
 
@@ -288,9 +250,6 @@ describe('anchor points', () => {
   })
 
   it('measures the page itself once it is asked for a box', () => {
-    // The footprint is a different question from the tab and does need the
-    // measurement: a page's height is whatever its text takes, so nothing can
-    // be hit-tested or framed until the browser has laid it out.
     const context: EntityContext = { ...emptyContext, articleSize: () => ({ width: 300, height: 400 }) }
     expect(descriptorFor(article()).bounds(article(), context)).toMatchObject({ width: 300, height: 400 })
     expect(descriptorFor(article()).bounds(article(), emptyContext)).toBeNull()
@@ -316,22 +275,15 @@ describe('bounds', () => {
     const upright = descriptorFor(image()).bounds(image(), emptyContext)!
     const tilted = descriptorFor(image({ rotation: 45 })).bounds(image({ rotation: 45 }), emptyContext)!
 
-    // A tilted photo escapes the band that visibly encloses it otherwise.
     expect(tilted.width).toBeGreaterThan(upright.width)
     expect(tilted.height).toBeGreaterThan(upright.height)
   })
 
   it('swings an image about its pin, not about its middle', () => {
-    // The pin is at the top-centre, and it is the one point on the sheet that
-    // does not move when the sheet turns. Rotating about the middle instead
-    // would slide the photograph out from under its own tack — and would sweep
-    // a box the picture never occupies.
     const pivot = { x: 50 + IMAGE_SIZE.width / 2, y: 60 }
     const tilted = descriptorFor(image({ rotation: 45 })).bounds(image({ rotation: 45 }), emptyContext)!
 
     expect(rotateAbout(pivot, pivot, 45)).toEqual(pivot)
-    // The swept box must hold the pivot: the pin stays on the sheet at every
-    // angle, so a band that misses the pin is a band that missed the sheet.
     expect(tilted.x).toBeLessThanOrEqual(pivot.x)
     expect(tilted.x + tilted.width).toBeGreaterThanOrEqual(pivot.x)
     expect(tilted.y).toBeLessThanOrEqual(pivot.y)
@@ -356,8 +308,6 @@ describe('move', () => {
   })
 
   it('stores the shift of an anchored pin as an offset, leaving the anchor alone', () => {
-    // The pin still belongs to its quote and must follow it through edits; only
-    // the displacement from those words is ours to keep.
     const pin = anchoredPin()
     const moved = descriptorFor(pin).move(pin, { x: 5, y: 7 })
     expect(moved).toMatchObject({ nudge: { x: 5, y: 7 } })
@@ -399,8 +349,7 @@ describe('move', () => {
 
 describe('the tack offset is stated once', () => {
   it('puts the tack centre half a tack in from the drawn corner', () => {
-    // The renderer draws a tack at rect + TACK_OFFSET; the anchor point is the
-    // centre of that. If these drift apart, strings stop meeting their tacks.
+    // The renderer draws a tack at rect + TACK_OFFSET; if these drift apart, strings miss their tacks.
     const rect = { x: 0, y: 0, width: 20, height: 10 }
     expect(tackPoint(rect)).toEqual({
       x: 20 + TACK_OFFSET_X + TACK_RADIUS,
@@ -421,9 +370,6 @@ describe('stepping a note’s type size', () => {
   })
 
   it('comes back to where it started, with no drift', () => {
-    // Worked out in whole steps from the floor, not by adding to the current
-    // value: repeated float addition is how a note nudged up and back down
-    // ends at 0.9999999 and stops matching the size it began at.
     let scale = NOTE_FONT_SCALE_DEFAULT
     for (let i = 0; i < 6; i++) scale = stepFontScale(scale, 1)
     for (let i = 0; i < 6; i++) scale = stepFontScale(scale, -1)

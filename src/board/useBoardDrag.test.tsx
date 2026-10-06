@@ -5,17 +5,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { CLICK_SLOP, DRAG_THRESHOLD, useBoardDrag } from './useBoardDrag'
 import type { Point } from './yarn'
 
-/**
- * The drag hook on its own.
- *
- * It is exercised through the board as well — a post-it being moved, a page
- * being swung — but those tests can only see the outcome, and the interesting
- * part here is the *shape* of the deltas: nothing at all until the press has
- * travelled far enough to be a drag, then the whole of it in one report. A
- * component test cannot tell those apart from a hook that reports every pixel
- * and happens to move the right object in the end.
- */
-
 interface HarnessProps {
   onDrag: (delta: Point) => void
   onDragStart?: () => void
@@ -30,7 +19,6 @@ function Harness({ onDrag, onDragStart, onTap, onEnd, zoom = 1, disabled }: Harn
   return <div data-testid="handle" {...drag} />
 }
 
-/** Press, move, release — the whole gesture, with the moves given as points. */
 function dragThrough(
   points: readonly [number, number][],
   props: Partial<HarnessProps> = {},
@@ -74,15 +62,6 @@ function dragThrough(
 
 describe('a press that does not travel', () => {
   it('moves nothing while the mouse twitches under the threshold', () => {
-    // The reason this matters: a page's body is also the thing you click to pin
-    // a note to it, and a click that shoved the page sideways by three pixels
-    // would be a page that never sits still.
-    //
-    // Under, note, is four pixels of travel *in total*, not in one move — the
-    // threshold is a budget, so this is the last twitch before it becomes a
-    // drag. That is deliberate: five pixels of shake is a shaky click, not a
-    // gesture, and the object is only nudged by the net movement at that point
-    // (a couple of pixels) rather than by the travel.
     const { deltas, starts } = dragThrough([
       [100, 100],
       [102, 100],
@@ -100,9 +79,6 @@ describe('a press that does not travel', () => {
 
 describe('a press that travels', () => {
   it('starts moving only once it is a drag, and covers the whole travel at once', () => {
-    // The five pixels below the threshold are not discarded — the object is
-    // reported the distance from where the press landed, so it arrives under
-    // the pointer rather than starting five pixels behind it.
     const { deltas, starts } = dragThrough([
       [100, 100],
       [102, 100],
@@ -148,8 +124,6 @@ describe('a press that travels', () => {
 
 describe('the threshold', () => {
   it('is a travel of its own, not a single big step', () => {
-    // Checked per frame, a slow drag that never exceeds it in one move would
-    // never start. Travel accumulates, so three small moves across it do.
     const step = Math.ceil(DRAG_THRESHOLD / 3)
     const { starts } = dragThrough([
       [0, 0],
@@ -162,8 +136,8 @@ describe('the threshold', () => {
   })
 
   it('is what a click is matched against afterwards', () => {
-    // Exported so the canvas and the sheet agree on what counts as the same
-    // spot; a drift between them is a swallowed click that should have landed.
+    // Shared so the canvas and the sheet agree on what counts as the same spot; a drift means a
+    // swallowed click that should have landed.
     expect(CLICK_SLOP).toBeLessThan(DRAG_THRESHOLD)
   })
 })

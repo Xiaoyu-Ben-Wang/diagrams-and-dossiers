@@ -1,7 +1,3 @@
-/**
- * One entry in the board's key: a colour, and what it means.
- */
-
 export function Legend({ colour, label }: { colour: string; label: string }) {
   return (
     <span className="flex items-center gap-1.5">

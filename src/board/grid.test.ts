@@ -19,15 +19,12 @@ import {
 
 const VIEWPORT = { width: 1280, height: 800 }
 
-/** The zoom range the board allows, sampled finely enough to cross every step. */
 const ZOOM_SWEEP = Array.from({ length: 461 }, (_, i) => 0.2 + (i * 2.3) / 460)
 
-/** Zoom values where the chosen step changes: the base step meets the band floor. */
 const STEP_BOUNDARIES = [-2, -1, 0, 1].map(
   (octave) => (MIN_SCREEN_SPACING / GRID_BASE_SPACING) * 2 ** octave,
 )
 
-/** A camera away from the origin, so a grid that only works at 0,0 fails. */
 function cameraAt(zoom: number): Camera {
   return { x: 137.5, y: -412.25, zoom }
 }
@@ -36,7 +33,6 @@ function stepExponent(spacing: number): number {
   return Math.log2(spacing / GRID_BASE_SPACING)
 }
 
-/** Screen coordinates of the dot at (column, row) of a frame's lattice. */
 function dotAt(frame: GridFrame, column: number, row: number): { x: number; y: number } {
   return {
     x: frame.offsetX + frame.tileSize / 2 + column * frame.tileSize,
@@ -44,7 +40,6 @@ function dotAt(frame: GridFrame, column: number, row: number): { x: number; y: n
   }
 }
 
-/** Whether a screen point sits exactly on a dot of a frame's lattice. */
 function onLattice(frame: GridFrame, point: { x: number; y: number }, epsilon = 1e-6): boolean {
   const column = (point.x - (frame.offsetX + frame.tileSize / 2)) / frame.tileSize
   const row = (point.y - (frame.offsetY + frame.tileSize / 2)) / frame.tileSize
@@ -53,7 +48,6 @@ function onLattice(frame: GridFrame, point: { x: number; y: number }, epsilon = 
   )
 }
 
-/** How far a background-position delta is from a whole-cell shift, in px. */
 function fromWholeCells(delta: number, tileSize: number): number {
   return Math.min(
     Math.abs(delta),
@@ -146,8 +140,6 @@ describe('gridFrame', () => {
   })
 
   it('keeps a dot under the same board point at every zoom', () => {
-    // Points on every possible step's lattice: all steps in the camera's range
-    // divide 192, so each of these must land on a dot at every zoom.
     const boardPoints = [
       { x: 0, y: 0 },
       { x: 192, y: 192 },
@@ -182,9 +174,7 @@ describe('gridFrame', () => {
   })
 
   it('moves the tile origin continuously between step changes', () => {
-    // Well inside one step's zoom range (5/6 … 5/3), so a jump here would be a
-    // phase break, not a step change. A real break would move dots by half a
-    // tile; the tolerance only has to absorb floating-point drift.
+    // 0.05 absorbs float drift; a real phase break would move dots by half a tile.
     let previous = gridFrame(cameraAt(0.9), VIEWPORT)
 
     for (let zoom = 0.90001; zoom <= 1.6; zoom += 1e-4) {

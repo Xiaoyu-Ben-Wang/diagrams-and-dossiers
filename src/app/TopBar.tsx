@@ -1,20 +1,9 @@
 import { Settings } from 'lucide-react'
 
-/**
- * The application chrome.
- *
- * The title, whatever controls the current page contributes, and preferences.
- * It held a nav when there were two pages to move between; with the board as the
- * only destination a single always-active tab was chrome with no function.
- */
-
 export interface TopBarProps {
   onOpenPreferences: () => void
-  /** Whether the preferences drawer is open, so the trigger can announce it. */
   preferencesOpen: boolean
-  /** Id of the drawer this button controls. */
   preferencesPanelId: string
-  /** Page-specific controls, rendered between the nav and the right-hand side. */
   children?: React.ReactNode
 }
 
@@ -37,9 +26,7 @@ export function TopBar({
         onClick={onOpenPreferences}
         className="ml-auto flex shrink-0 items-center gap-1.5 rounded border border-parchment-edge/25 px-2.5 py-1 text-xs text-board-ink-soft transition hover:border-brass hover:text-board-ink"
         aria-label="Open preferences"
-        // A drawer is a disclosure, so the trigger has to say whether it is
-        // open and which region it controls. aria-label alone tells a screen
-        // reader nothing about the state it just changed.
+        // A disclosure trigger must report its open state and controlled region.
         aria-expanded={preferencesOpen}
         aria-controls={preferencesPanelId}
       >

@@ -32,13 +32,10 @@ describe('parsing', () => {
   it('trims the name but keeps the run whole', () => {
     const [mention] = parseMentions('@[  Spaced  ]')
     expect(mention.name).toBe('Spaced')
-    // The run covers what was written, not what it trimmed to — the renderer
-    // replaces the whole of it.
     expect(mention.length).toBe('@[  Spaced  ]'.length)
   })
 
   it('leaves an address alone', () => {
-    // `molgar@[the pale]` is somebody's email, not a link.
     expect(parseMentions('write to molgar@[the pale] today')).toEqual([])
   })
 
@@ -60,9 +57,6 @@ describe('parsing', () => {
 
 describe('the href', () => {
   it('is a fragment, so a name can never become a scheme', () => {
-    // The name is author-written. Without this, a name of `javascript:…` would
-    // be executable by middle-click or keyboard, past a click handler that only
-    // guards the ordinary click.
     expect(mentionHref('javascript:alert(1)')).toBe('#mention:javascript%3Aalert(1)')
     expect(mentionHref('javascript:alert(1)').startsWith('#')).toBe(true)
   })
@@ -73,17 +67,12 @@ describe('linkifying', () => {
     const html = linkifyMentions('<p>See @[The Bell] there.</p>')
 
     expect(html).toContain('<a class="mention" href="#mention:The%20Bell" data-mention="The Bell">The Bell</a>')
-    // The syntax is gone, which is why this has to happen before the article is
-    // projected into flat text.
     expect(html).not.toContain('@[')
     expect(html).toContain('See ')
     expect(html).toContain(' there.')
   })
 
   it('produces the same markup whether or not the name resolves', () => {
-    // The load-bearing property. A difference here would have React replace the
-    // innerHTML — new text nodes — with no layout-signature change and no
-    // resize, leaving the anchor projection pointing at detached nodes.
     const once = linkifyMentions('<p>@[Anything At All]</p>')
     const twice = linkifyMentions('<p>@[Anything At All]</p>')
     expect(once).toBe(twice)
@@ -96,22 +85,13 @@ describe('linkifying', () => {
   })
 
   it('does not put an anchor inside an anchor', () => {
-    // Invalid markup, and a browser will unnest it in ways the projection does
-    // not expect.
     const html = linkifyMentions('<p><a href="http://x.test">@[Nested]</a></p>')
     expect(html.match(/<a /g)).toHaveLength(1)
   })
 
   it('never lets a name become markup', () => {
-    // The angle brackets arrive escaped, which is what the sanitiser would have
-    // left of them — so the name is that literal text, and it has to leave as
-    // text rather than becoming a tag.
     const html = linkifyMentions('<p>@[&lt;img src=x onerror=alert(1)&gt;]</p>')
 
-    // Asserted by parsing the result back rather than by looking for a
-    // substring: the raw angle bracket does appear, harmlessly, inside the
-    // attribute value the serializer quotes. What matters is that no element
-    // was created from it.
     const round = document.createElement('div')
     round.innerHTML = html
     expect(round.querySelector('img')).toBeNull()
@@ -132,8 +112,6 @@ describe('resolving', () => {
   })
 
   it('will not resolve a note, even one with the same title', () => {
-    // A mention names a page or a picture. A note that happens to share a title
-    // must not be able to hijack the link.
     const note = { ...newNote({ x: 0, y: 0 }), title: 'The Drowned Bell' }
     expect(resolveMention('The Drowned Bell', [note])).toBeNull()
   })
@@ -162,8 +140,6 @@ describe('marking the ones that name nothing', () => {
   })
 
   it('takes the class off again when the name turns up', () => {
-    // Which is what makes a mention to something not yet made become live the
-    // moment it is — without the page's markup having to change.
     const root = document.createElement('div')
     root.innerHTML = linkifyMentions('<p>@[Later]</p>')
     markMissingMentions(root, new Set())
@@ -175,8 +151,6 @@ describe('marking the ones that name nothing', () => {
   })
 
   it('toggles the class without replacing the text node', () => {
-    // The projection holds references to these nodes. Replacing one to restyle
-    // it is what would blank every anchored pin on the page.
     const root = document.createElement('div')
     root.innerHTML = linkifyMentions('<p>@[Later]</p>')
     const before = root.querySelector('a')!.firstChild

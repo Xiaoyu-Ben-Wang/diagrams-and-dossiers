@@ -6,7 +6,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { BoardCanvas } from './BoardCanvas'
 import type { Camera } from './camera'
 
-/** Wraps the canvas so camera changes actually land somewhere observable. */
 function Harness({
   onContextTarget,
   initial = { x: 0, y: 0, zoom: 1 },
@@ -35,11 +34,7 @@ function viewport(): HTMLElement {
   return screen.getByTestId('board-canvas')
 }
 
-/**
- * jsdom does not implement layout, so every element reports a zero-sized box.
- * The canvas reads that box to convert a wheel event into a cursor position —
- * give it something to work with.
- */
+// jsdom does not implement layout, so every element reports a zero-sized box.
 function stubBox(width = 800, height = 600): void {
   const element = viewport()
   element.getBoundingClientRect = () =>
@@ -99,8 +94,6 @@ describe('zoom', () => {
   })
 
   it('anchors the zoom at the cursor, not the corner', () => {
-    // Zooming towards the viewport origin makes the thing you were looking at
-    // slide away — the most common way a canvas feels bad.
     const onCamera = vi.fn()
     render(<Harness onCamera={onCamera} />)
     stubBox()
@@ -108,7 +101,6 @@ describe('zoom', () => {
     fireEvent.wheel(viewport(), { deltaY: -200, clientX: 700, clientY: 100 })
     const camera: Camera = onCamera.mock.calls[0][0]
 
-    // The board point under the cursor must be unchanged by the zoom.
     const before = { x: 700 / 1 + 0, y: 100 / 1 + 0 }
     const after = { x: 700 / camera.zoom + camera.x, y: 100 / camera.zoom + camera.y }
     expect(after.x).toBeCloseTo(before.x, 6)
@@ -128,9 +120,7 @@ describe('zoom', () => {
     render(<Harness />)
     stubBox()
 
-    // Dispatched directly rather than through fireEvent, so the event object
-    // can be inspected afterwards — `fireEvent` returns whether preventDefault
-    // was called but not the event itself.
+    // Dispatched directly so the event object can be inspected afterwards.
     const event = new WheelEvent('wheel', { deltaY: 100, cancelable: true, bubbles: true })
     act(() => {
       viewport().dispatchEvent(event)
@@ -149,7 +139,6 @@ describe('panning', () => {
     fireEvent.pointerMove(viewport(), { pointerId: 1, clientX: 140, clientY: 100 })
 
     expect(onCamera).toHaveBeenCalled()
-    // Dragging right moves the board left, as if dragging the paper.
     expect(onCamera.mock.calls[0][0].x).toBeLessThan(0)
   })
 
@@ -164,7 +153,6 @@ describe('panning', () => {
   })
 
   it('does not pan on a left-button drag', () => {
-    // Left is reserved for the board itself — pinning, selecting, yarn.
     const onCamera = vi.fn()
     render(<Harness onCamera={onCamera} />)
 
@@ -245,16 +233,11 @@ describe('middle-drag on an entity', () => {
     expect(onEntityDrag).toHaveBeenCalledTimes(1)
     const [element, delta] = onEntityDrag.mock.calls[0]
     expect(element.getAttribute('data-post-it-id')).toBe('n1')
-    // Board space, and at zoom 1 that is the pointer's own travel.
     expect(delta).toEqual({ x: 60, y: 30 })
-    // An entity that slid away while the camera also moved would be
-    // impossible to place, so only one of the two may run.
     expect(onCamera).not.toHaveBeenCalled()
   })
 
   it('scales the delta by the zoom, so the entity keeps up with the pointer', () => {
-    // At 2x, 100px of pointer travel is 50px of board — without this the thing
-    // under the cursor would run away from it as you zoomed in.
     const onEntityDrag = vi.fn()
     render(<EntityHarness onEntityDrag={onEntityDrag} zoom={2} />)
 
@@ -286,7 +269,6 @@ describe('middle-drag on an entity', () => {
   })
 
   it('leaves right-drag to the camera even over an entity', () => {
-    // Right is the context gesture on a tack, so it must not become a move.
     const onEntityDrag = vi.fn()
     const onCamera = vi.fn()
     render(<EntityHarness onEntityDrag={onEntityDrag} onCamera={onCamera} />)
@@ -333,8 +315,6 @@ describe('right-click context', () => {
   })
 
   it('does not report a right-drag as a context click', () => {
-    // Right-drag pans and right-click edits, and they share a button — the
-    // threshold is what keeps them apart.
     const onContextTarget = vi.fn()
     render(<Harness onContextTarget={onContextTarget} />)
 
@@ -346,7 +326,6 @@ describe('right-click context', () => {
   })
 
   it('accumulates travel across small steps', () => {
-    // A slow drag where no single step clears the threshold is still a drag.
     const onContextTarget = vi.fn()
     render(<Harness onContextTarget={onContextTarget} />)
 

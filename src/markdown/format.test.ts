@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import { applyMarkdownAction, detectLinePrefix, isWrapped, replaceRange } from './format'
 
-/** Select the whole document, the common case for a single-word fixture. */
 const all = (text: string) => [0, text.length] as const
 
 describe('applyMarkdownAction — wrapping', () => {
@@ -12,15 +11,11 @@ describe('applyMarkdownAction — wrapping', () => {
   })
 
   it('keeps the words selected after wrapping', () => {
-    // So you can immediately italicise them too, rather than re-selecting by
-    // hand for every nested style.
     const result = applyMarkdownAction('ferryman', ...all('ferryman'), 'bold')
     expect(result.text.slice(result.selectionStart, result.selectionEnd)).toBe('ferryman')
   })
 
   it('toggles bold off when the selection is already wrapped', () => {
-    // Without this the second press yields ****text****, which is worse than
-    // having no button at all.
     const result = applyMarkdownAction('**ferryman**', ...all('**ferryman**'), 'bold')
     expect(result.text).toBe('ferryman')
   })
@@ -39,8 +34,6 @@ describe('applyMarkdownAction — wrapping', () => {
   })
 
   it('handles a collapsed caret by inserting a placeholder and selecting it', () => {
-    // The next keystroke should replace the placeholder, not land between the
-    // markers.
     const result = applyMarkdownAction('a  b', 2, 2, 'bold')
     expect(result.text).toBe('a **bold text** b')
     expect(result.text.slice(result.selectionStart, result.selectionEnd)).toBe('bold text')
@@ -62,7 +55,6 @@ describe('applyMarkdownAction — links', () => {
   it('uses the selection as the label and selects the url', () => {
     const result = applyMarkdownAction('see Saltmarsh', 4, 13, 'link')
     expect(result.text).toBe('see [Saltmarsh](url)')
-    // The label is usually right already; the address is the part you fetch.
     expect(result.text.slice(result.selectionStart, result.selectionEnd)).toBe('url')
   })
 
@@ -111,8 +103,6 @@ describe('applyMarkdownAction — lines', () => {
   })
 
   it('completes a partially-prefixed block rather than stripping it', () => {
-    // Toggling off only when *all* lines are prefixed. Otherwise the lines that
-    // were already correct get un-listed instead of the others getting fixed.
     const text = '- one\ntwo\n- three'
     const result = applyMarkdownAction(text, 0, text.length, 'bullet')
     expect(result.text).toBe('- one\n- two\n- three')
@@ -143,8 +133,6 @@ describe('applyMarkdownAction — lines', () => {
   })
 
   it('recognizes any list marker when toggling', () => {
-    // Written by hand as "*" and toggled with the bullet button should still
-    // strip, not double up.
     const result = applyMarkdownAction('* one', ...all('* one'), 'bullet')
     expect(result.text).toBe('one')
   })
@@ -185,7 +173,6 @@ describe('detectLinePrefix', () => {
   })
 
   it('does not mistake a hyphenated word for a bullet', () => {
-    // The space after the marker is what separates a list from a hyphen.
     expect(detectLinePrefix('-well')).toBeNull()
   })
 })
@@ -214,7 +201,6 @@ describe('isWrapped', () => {
 
 describe('replacing a range', () => {
   it('puts the insertion where the range was and the caret after it', () => {
-    // What picking a name out of the mention list does to the `@query` run.
     const result = replaceRange('See @Bell about it', 4, 9, '@[The Drowned Bell]')
 
     expect(result.text).toBe('See @[The Drowned Bell] about it')
@@ -229,13 +215,10 @@ describe('replacing a range', () => {
   })
 
   it('clamps a range that runs off either end', () => {
-    // A selection from before an edit can outlive the text it referred to.
     expect(replaceRange('abc', -5, 99, 'Z').text).toBe('Z')
   })
 
   it('normalizes a backwards selection', () => {
-    // Between 1 and 4, exclusive of the character at 4 — the same range as
-    // (1, 4), whichever way round it arrives.
     expect(replaceRange('abcdef', 4, 1, '-').text).toBe('a-ef')
   })
 })

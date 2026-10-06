@@ -11,7 +11,6 @@ import {
 } from './dom'
 import { resolveAnchor } from './resolve'
 
-/** Render an article fragment into a detached container, as the reader would. */
 function render(html: string): { root: Element; projection: DomProjection } {
   const host = document.createElement('div')
   host.innerHTML = html
@@ -21,8 +20,6 @@ function render(html: string): { root: Element; projection: DomProjection } {
 
 describe('projectDom', () => {
   it('separates block elements with a space, not by gluing words together', () => {
-    // Pretty-printed HTML has whitespace text nodes between blocks; minified
-    // HTML does not. Both must produce the same flat text.
     const pretty = render('<article>\n  <p>quiet.</p>\n  <p>Molgar</p>\n</article>')
     const minified = render('<article><p>quiet.</p><p>Molgar</p></article>')
 
@@ -35,8 +32,6 @@ describe('projectDom', () => {
     const pretty = render('<article>\n  <p>quiet.</p>\n  <p>Molgar</p>\n</article>')
     const minified = render('<article><p>quiet.</p><p>Molgar</p></article>')
 
-    // Trailing whitespace differs only at the very end, where it cannot move
-    // an anchor; trim before comparing.
     expect(minified.projection.flat.text.trim()).toBe(
       pretty.projection.flat.text.trim(),
     )
@@ -111,8 +106,6 @@ describe('range conversion', () => {
   })
 
   it('round-trips through a range that spans a paragraph boundary', () => {
-    // "silver. The" crosses the block separator, so the end boundary lands on
-    // a synthetic segment and must be nudged to a real text node.
     const start = projection.flat.text.indexOf('silver.')
     const range = flatRangeToDomRange(projection, start, start + 'silver. The'.length)
 
@@ -123,8 +116,6 @@ describe('range conversion', () => {
   })
 
   it('resolves an anchor created from a DOM selection back onto the right words', () => {
-    // The full loop, in one test: select text in the DOM, create an anchor,
-    // then resolve it against the article as it stands.
     const paragraph = root.querySelector('p')!
     const textNode = paragraph.firstChild as Text
     const range = document.createRange()
@@ -134,10 +125,8 @@ describe('range conversion', () => {
     const flatRange = domRangeToFlatRange(projection, range)!
     const anchor = createAnchor(projection.flat.text, flatRange.start, flatRange.end)
     expect(anchor.quote).toBe('ferryman')
-    // The first occurrence, whose context is "Molgar paid the ... in silver."
     expect(anchor.startOffset).toBe(16)
 
-    // Now the article gains a paragraph above, moving every offset below it.
     const after = render(
       '<article><p>It rained all night.</p>' +
         '<p>Molgar paid the ferryman in silver.</p>' +
@@ -148,7 +137,6 @@ describe('range conversion', () => {
     expect(result.status).toBe('repaired')
     if (result.status !== 'orphaned') {
       expect(after.projection.flat.text.slice(result.start, result.end)).toBe('ferryman')
-      // Still the first occurrence — the one whose context names Molgar.
       expect(after.projection.flat.text.slice(0, result.start)).toContain('Molgar')
       expect(after.projection.flat.text.slice(0, result.start)).not.toContain('nodded')
     }
@@ -156,12 +144,6 @@ describe('range conversion', () => {
 })
 
 describe('rangeToContainerRects', () => {
-  /**
-   * A stand-in for a laid-out element. jsdom has no layout at all — every
-   * `getClientRects` returns empty and every `getBoundingClientRect` returns
-   * zeroes — so the measurement is supplied rather than performed, which is
-   * also what lets the scaled case be written down exactly.
-   */
   function fakeRange(rects: { left: number; top: number; width: number; height: number }[]) {
     return { getClientRects: () => rects } as unknown as Range
   }
@@ -180,11 +162,6 @@ describe('rangeToContainerRects', () => {
   })
 
   it('divides the zoom back out, so the result is in the container own pixels', () => {
-    // The board is one `scale(zoom)` on a single ancestor, so a word 50px into
-    // the article measures 65.5px into it on screen at 131%. Used unmodified as
-    // a local coordinate it was scaled a second time — which is how a highlight
-    // ended up 1.31x too wide and drifting further off its word the more the
-    // board was zoomed in.
     const zoom = 1.31
     const range = fakeRange([
       { left: 100 + 50 * zoom, top: 200 + 20 * zoom, width: 40 * zoom, height: 20 * zoom },
@@ -200,9 +177,6 @@ describe('rangeToContainerRects', () => {
   })
 
   it('is unaffected by which zoom the measurement was taken at', () => {
-    // The rects come out in the article's own space, so an anchor resolved at
-    // one zoom and re-resolved at another must land in the same place. Without
-    // the division this is the property that fails.
     const rangeAt = (zoom: number) =>
       fakeRange([{ left: 100 + 50 * zoom, top: 200 + 20 * zoom, width: 40 * zoom, height: 20 * zoom }])
     const containerAt = (zoom: number) =>
@@ -225,10 +199,6 @@ describe('rangeToContainerRects', () => {
   })
 
   it('degrades to nothing where the environment cannot measure at all', () => {
-    // Some embedded webviews leave `getClientRects` off Range entirely, and a
-    // container without a bounding rect is possible in a detached tree. A
-    // caller must get "no position" — and a pin that renders without one —
-    // rather than a throw midway through a render pass.
     const host = document.createElement('div')
     host.innerHTML = '<article><p>Molgar paid the ferryman.</p></article>'
     const container = host.firstElementChild as Element

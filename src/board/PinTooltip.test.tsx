@@ -18,11 +18,6 @@ const PIN: PinTooltipPin = {
   dateLabel: 'Session 12, 1492 DR',
 }
 
-/**
- * The tack the pointer is on. It lives outside React because the component's
- * contract is an element plus a pin, not a render tree — this is the same
- * element the integrator hands over from `event.currentTarget`.
- */
 let anchor: HTMLButtonElement
 
 beforeEach(() => {
@@ -36,7 +31,6 @@ afterEach(() => {
   anchor.remove()
 })
 
-/** Renders the card and waits out the hover delay. */
 function show(pin: PinTooltipPin = PIN, delay: number = PIN_TOOLTIP_DELAY_MS): void {
   render(<PinTooltip pin={pin} anchor={anchor} delay={delay} />)
   act(() => {
@@ -74,7 +68,6 @@ describe('PinTooltip', () => {
   })
 
   it('shows within 200ms by default, far ahead of the native tooltip', () => {
-    // The whole reason the card exists: ~1s of `title` is too slow to scan by.
     expect(PIN_TOOLTIP_DELAY_MS).toBeLessThan(200)
 
     render(<PinTooltip pin={PIN} anchor={anchor} />)
@@ -115,9 +108,8 @@ describe('PinTooltip', () => {
   })
 
   it('applies the measured placement to the card', () => {
-    // jsdom reports every box as zero, so the component stays unplaced and the
-    // wiring from measurement to inline style would go untested. Stand in fake
-    // boxes — a 14px tack, a 240x96 card — to hold it to that contract.
+    // jsdom reports every box as zero, so the component stays unplaced; stand in fake boxes to
+    // test the wiring from measurement to inline style.
     const stub = Element.prototype.getBoundingClientRect
     Element.prototype.getBoundingClientRect = function measured(this: Element) {
       const box =
@@ -153,8 +145,6 @@ describe('PinTooltip', () => {
   it('omits the quote when the pin has none', () => {
     show({ ...PIN, quote: '' })
 
-    // The quote element itself, not just its text: a free pin must not carry
-    // an empty quote line.
     const card = screen.getByRole('tooltip')
     expect(card.querySelector('.pin-tooltip__quote')).toBeNull()
     expect(screen.getByText(/Marnie swears she locked it/)).toBeTruthy()
@@ -206,17 +196,13 @@ describe('dismissal', () => {
     const pane = document.createElement('div')
     document.body.appendChild(pane)
 
-    // A real scroll does not bubble, so only a capture listener on window can
-    // hear a pane's scroll — the plain window-target scroll above would pass
-    // even without capture.
+    // A real scroll does not bubble, so only a window capture listener hears a pane's scroll.
     fireEvent(pane, new Event('scroll'))
     expect(screen.queryByRole('tooltip')).toBeNull()
     pane.remove()
   })
 
   it('shows again when the pointer re-enters after Escape', () => {
-    // Escape must silence the card, not the pin: leaving and coming back is a
-    // fresh hover, and the delay effect has to re-arm for it.
     show()
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('tooltip')).toBeNull()
@@ -280,7 +266,6 @@ describe('placeTooltip', () => {
   })
 
   it('drops to the margin when the card is wider and taller than the viewport', () => {
-    // No flip can help here; losing the far edge beats losing the first line.
     expect(placeTooltip(pin(500, 300), { width: 1200, height: 900 }, viewport)).toEqual({
       left: PIN_TOOLTIP_MARGIN,
       top: PIN_TOOLTIP_MARGIN,

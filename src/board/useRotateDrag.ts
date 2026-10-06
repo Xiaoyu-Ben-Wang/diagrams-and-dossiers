@@ -1,47 +1,20 @@
-/**
- * The gesture that swings a pinned sheet.
- *
- * Shared rather than written twice because a picture and a page are the same
- * interaction — grab the handle at the head of the sheet, turn it, let go — and
- * two copies of a rotation convention is two places for the sign to drift.
- *
- * The pointer is taken in *board* space through a mapping the caller supplies,
- * not measured against the handle's own bounding box. The handle rides inside
- * the sheet, so it is itself rotated; its bounding box is the axis-aligned box
- * around a turned shape and has nothing to do with where its contents are. That
- * is the one measurement that looks obvious and is quietly wrong.
- */
-
+// The pointer is mapped into board space, never measured off the handle's rotated bounding box.
 import { useCallback, useRef } from 'react'
 
 import { tiltAngle, tiltTowards } from './pivot'
 import type { Point } from './yarn'
 
 export interface RotateDragOptions {
-  /** The pin the sheet turns about, in board space. */
+  /** In board space. */
   pivot: Point
-  /** The angle the sheet is at now. */
   tilt: number
-  /** A viewport point in board space. */
   toBoard: (clientX: number, clientY: number) => Point
   onRotate: (degrees: number) => void
-  /**
-   * Called when the handle is double-clicked, instead of starting a drag.
-   *
-   * Two presses rather than the `dblclick` event, because this handle calls
-   * `preventDefault` on `pointerdown` to keep the press from selecting text —
-   * and that suppresses the compatibility mouse events, `dblclick` among them.
-   * The event never arrives, so it is counted instead.
-   */
+  /** Counted presses, not `dblclick`: `preventDefault` on pointerdown suppresses the compatibility event. */
   onReset?: () => void
 }
 
-/**
- * How long between two presses on a handle still counts as one gesture.
- *
- * Generous, because this is a deliberate action on a small target rather than
- * a typist's double letter.
- */
+/** Generous: a deliberate press on a small target, not a typist's double letter. */
 const DOUBLE_PRESS_MS = 400
 
 export interface RotateDragHandlers {
@@ -58,18 +31,10 @@ export function useRotateDrag({
   onRotate,
   onReset,
 }: RotateDragOptions): RotateDragHandlers {
-  /**
-   * Where the handle was grabbed, and the tilt then.
-   *
-   * A ref rather than state: this is read and written on every pointer move,
-   * and routing it through a render would lag the pointer by a frame. Holding
-   * both means a drag is a *change* in angle rather than an absolute one, so
-   * the sheet turns by what the hand turned and the handle stays under it.
-   */
+  /** Grab angle and tilt together, so a drag is a change in angle, not an absolute one. */
   const grabRef = useRef<{ at: number; tilt: number } | null>(null)
 
-  // The pivot is rebuilt every render, so it is carried in a ref too — the
-  // handlers below must not be rebuilt mid-gesture by a re-render.
+  // Pivot is rebuilt every render; the ref keeps a re-render from rebuilding handlers mid-gesture.
   const pivotRef = useRef(pivot)
   pivotRef.current = pivot
   const tiltRef = useRef(tilt)
@@ -80,7 +45,6 @@ export function useRotateDrag({
   onRotateRef.current = onRotate
   const onResetRef = useRef(onReset)
   onResetRef.current = onReset
-  /** When the handle was last pressed, for spotting the second press. */
   const lastPressRef = useRef(0)
 
   const onPointerDown = useCallback((event: React.PointerEvent) => {
@@ -90,8 +54,7 @@ export function useRotateDrag({
     const since = now - lastPressRef.current
     lastPressRef.current = now
     if (onResetRef.current && since < DOUBLE_PRESS_MS) {
-      // Cleared, so a third press starts a fresh drag rather than being read as
-      // another double.
+      // Cleared so a third press starts a fresh drag rather than being read as another double.
       lastPressRef.current = 0
       event.stopPropagation()
       event.preventDefault()

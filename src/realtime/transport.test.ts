@@ -21,8 +21,6 @@ describe('localSync', () => {
   })
 
   it('takes a change and says so, without claiming it went anywhere', () => {
-    // Not a placeholder that throws: "there is nobody else here" is a real
-    // answer, and it is what lets the calls be written now.
     expect(localSync().publish({ kind: 'entity/delete', id: 'x' })).toBe('local')
   })
 

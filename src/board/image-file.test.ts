@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { firstImage, isImageFile } from './image-file'
 
-/** A stand-in for a dropped file. jsdom has File, but not the FileList around it. */
+// jsdom has File, but not the FileList around it.
 function file(name: string, type = ''): File {
   return new File([new Uint8Array([1, 2, 3])], name, { type })
 }
@@ -15,8 +15,7 @@ describe('isImageFile', () => {
   })
 
   it('falls back to the extension when the type is missing', () => {
-    // A file dragged out of some file managers arrives with an empty type, and
-    // refusing it would look like the board simply does not take pictures.
+    // Files dragged out of some file managers arrive with an empty type.
     for (const name of ['a.png', 'a.PNG', 'a.jpg', 'a.jpeg', 'a.gif', 'a.webp', 'a.svg']) {
       expect(isImageFile(file(name)), name).toBe(true)
     }
@@ -26,7 +25,6 @@ describe('isImageFile', () => {
     expect(isImageFile(file('notes.txt', 'text/plain'))).toBe(false)
     expect(isImageFile(file('archive.zip', 'application/zip'))).toBe(false)
     expect(isImageFile(file('notes.txt'))).toBe(false)
-    // A picture's name inside a non-picture type is not a picture.
     expect(isImageFile(file('holiday.png.txt', 'text/plain'))).toBe(false)
   })
 })

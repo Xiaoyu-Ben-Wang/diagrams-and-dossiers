@@ -1,38 +1,3 @@
-/**
- * A board as a file.
- *
- * The board lives in memory and nowhere else, so this is how it survives being
- * closed: everything on it, as JSON, and a reader that can put it back. It is
- * also the shape the server will eventually speak, which is why the envelope
- * carries a format marker and a version rather than being a bare `BoardState` —
- * a file that says what it is can be refused by name when it is not that thing,
- * and a bare array cannot.
- *
- * ## The parse refuses rather than repairs
- *
- * Everything else in this codebase that reads untyped input — `parseArticleOptions`,
- * `parsePreferences` — falls back per field, so one bad value costs only itself.
- * This does not, and the difference is deliberate: those read a blob the app
- * itself wrote, where a bad field means a bug, and this reads a file somebody
- * may have edited, truncated, or written by hand. A board that half-loads is
- * worse than one that refuses, because a case file missing three of its notes
- * looks exactly like a case file that never had them. So the first thing that
- * does not check out stops the load and the person is told what it was.
- *
- * The validation is therefore structural rather than exhaustive. It insists on
- * the things whose absence would leave the board drawing to nowhere — a kind,
- * a placement, an anchor, an image source — and lets the cosmetic fields fall
- * back to their defaults, because a missing `zIndex` is not a reason to refuse
- * somebody's notes.
- *
- * ## Image sources are checked, not trusted
- *
- * An imported `src` goes straight into an `<img>`. `javascript:` URLs are inert
- * there in every current browser, but "the browser happens not to run this" is
- * not a reason to write it into the board — and an unbounded data URI is a way
- * to hand the tab a gigabyte of base64. Both are refused by name.
- */
-
 import type { TextAnchor } from '../anchors/types'
 import { parseArticleOptions } from '../model/article-options'
 import {
@@ -55,43 +20,25 @@ import { NOTE_FONT_SCALE_DEFAULT, NOTE_FONT_SCALE_MAX, NOTE_FONT_SCALE_MIN } fro
 import type { BoardState } from './store'
 import type { Point } from './yarn'
 
-/** What the envelope says it is. Checked on the way in, written on the way out. */
 export const BOARD_FILE_FORMAT = 'dossiers-and-diagrams.board'
 
-/**
- * The version of the *envelope*, not of any entity.
- *
- * Bumped when a reader from an older build would misunderstand the file rather
- * than merely lose a field. An unknown version is refused outright instead of
- * being read optimistically: guessing at a newer format is how a load silently
- * discards the parts it did not recognise.
- */
+/** Bump only when an older reader would misunderstand the file, not merely lose a field. */
 export const BOARD_FILE_VERSION = 1
 
-/** What a board file is called when the board has no page to name it after. */
 export const DEFAULT_BOARD_FILE_NAME = 'case-board.json'
 
 export interface BoardFile {
   format: typeof BOARD_FILE_FORMAT
   version: number
-  /** For a person reading the file, not for the reader. Ignored on the way in. */
+  /** Ignored on the way in. */
   exportedAt: string
   board: BoardState
 }
 
-/** The result of reading a file: the board, or why it could not be read. */
 export type BoardFileResult =
   | { ok: true; board: BoardState }
   | { ok: false; reason: string }
 
-/**
- * A name for the file this board should be saved as.
- *
- * Taken from the first page rather than from a board title, because a board has
- * no title and the page it is about is the closest thing it has to one. Two
- * boards exported from the same app must not land on the same filename, and
- * "board (3).json" is what happens when they do.
- */
 export function boardFileName(board: BoardState): string {
   const article = board.entities.find((entity) => entity.kind === 'article')
   const slug = (article?.title ?? '')
@@ -101,15 +48,7 @@ export function boardFileName(board: BoardState): string {
   return slug ? `${slug}.json` : DEFAULT_BOARD_FILE_NAME
 }
 
-/**
- * Read a file's text.
- *
- * `Blob.text()` is the obvious call, and it is the one this started as — but
- * jsdom does not implement it, which made the whole import path untestable and
- * would have shipped it verified only by hand. `FileReader` is older, is
- * implemented everywhere including the test environment, and the errand is a
- * single file read.
- */
+/** `FileReader`, not `Blob.text()`: jsdom does not implement `Blob.text()`. */
 export function readBoardFile(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -119,7 +58,6 @@ export function readBoardFile(file: Blob): Promise<string> {
   })
 }
 
-/** The board as the text of a file. */
 export function serializeBoard(board: BoardState, now: number = Date.now()): string {
   const file: BoardFile = {
     format: BOARD_FILE_FORMAT,
@@ -127,18 +65,10 @@ export function serializeBoard(board: BoardState, now: number = Date.now()): str
     exportedAt: new Date(now).toISOString(),
     board,
   }
-  // Two-space indent: this is a file people will open and read, and the whole
-  // point of a documented format is that they can.
   return `${JSON.stringify(file, null, 2)}\n`
 }
 
-/**
- * Read a board out of a file.
- *
- * Total: never throws, whatever the text is. A file that cannot be read comes
- * back with the reason rather than an exception, because the caller's job is to
- * put that reason in front of somebody, not to handle a stack trace.
- */
+/** Never throws: a bad file comes back as a reason for the caller to show. */
 export function parseBoardFile(text: string): BoardFileResult {
   let raw: unknown
   try {
@@ -171,8 +101,7 @@ export function parseBoardFile(text: string): BoardFileResult {
 
     const strings = array(board.strings, 'board.strings').map((link, at) => {
       const parsed = parseString(link, `strings[${at}]`)
-      // A string to something that is not in the file has nothing to attach to,
-      // and the board draws a string with an unresolvable end to the origin.
+      // A string to something not in the file would be drawn to the origin.
       if (!ids.has(parsed.from) || !ids.has(parsed.to)) {
         throw new Error(`strings[${at}] is tied to something that is not in the file`)
       }
@@ -188,14 +117,7 @@ export function parseBoardFile(text: string): BoardFileResult {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Field readers
-//
-// Each throws with the path of the field it was reading. The message is the one
-// the person sees, so it names the field rather than describing the type that
-// was expected — "entities[3].board is not a point" tells them where to look.
-// ---------------------------------------------------------------------------
-
+// Field readers throw with the field's path; the message is what the person sees.
 function fail(where: string, expected: string): never {
   throw new Error(`That board could not be read: ${where} is not ${expected}.`)
 }
@@ -222,7 +144,6 @@ function text(value: unknown, where: string): string {
   return value
 }
 
-/** An optional string: absent or wrong-typed becomes the fallback, never a refusal. */
 function optionalText(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback
 }
@@ -244,14 +165,6 @@ function record(value: unknown, where: string): Record<string, unknown> {
   return asRecord(value, where)
 }
 
-/**
- * A string's own fields, with the board's defaults for anything absent.
- *
- * `nudge` and the title and colour are cosmetic — a file without them is a
- * board, just a plainer one — so they fall back rather than refusing the load.
- * What is required is what the board would draw wrongly without: where the
- * thing is, and what it is.
- */
 function commonFields(raw: Record<string, unknown>, where: string) {
   return {
     id: text(raw.id, `${where}.id`),
@@ -276,13 +189,12 @@ function commonFields(raw: Record<string, unknown>, where: string) {
   }
 }
 
-/** The longest image source accepted, in characters. See the note at the top. */
+// Guards against an unbounded data URI handing the tab a gigabyte of base64.
 const MAX_IMAGE_SRC = 8 * 1024 * 1024
 
-/** Only sources an `<img>` may be pointed at. */
+// `javascript:` is inert in an <img> today, but not a reason to write it into the board.
 const SAFE_IMAGE_SRC = /^(?:data:image\/|blob:|https?:\/\/)/i
 
-/** A stored type size, brought back inside the range the controls allow. */
 function clampFontScale(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value)) return NOTE_FONT_SCALE_DEFAULT
   return Math.min(NOTE_FONT_SCALE_MAX, Math.max(NOTE_FONT_SCALE_MIN, value))
@@ -309,9 +221,6 @@ function parseEntity(value: unknown, where: string): BoardEntity {
 
   switch (kind) {
     case 'pin':
-      // A pin is the one kind whose placement is not fixed by its name: the
-      // same tack is either through a word or into the cork, and which one is
-      // exactly what the anchor's presence says.
       return 'anchor' in raw
         ? {
             ...base,
@@ -328,9 +237,6 @@ function parseEntity(value: unknown, where: string): BoardEntity {
         board: point(raw.board, `${where}.board`),
         width: number(raw.width, `${where}.width`),
         height: number(raw.height, `${where}.height`),
-        // Absent in every file written before notes could be resized, and a
-        // missing size is not a reason to refuse somebody's board: it falls
-        // back to the size the note would have been drawn at anyway.
         fontScale: clampFontScale(optionalNumber(raw.fontScale)),
       }
 
@@ -340,8 +246,6 @@ function parseEntity(value: unknown, where: string): BoardEntity {
         kind: 'article',
         board: point(raw.board, `${where}.board`),
         rotation: optionalNumber(raw.rotation) ?? 0,
-        // The article's own options already have a total parse — it is the same
-        // problem and the same answer, so this calls it rather than copying it.
         options: parseArticleOptions(raw.options),
       }
 
@@ -372,9 +276,7 @@ function parseEntity(value: unknown, where: string): BoardEntity {
       }
     }
   }
-  // Unreachable: the kind was checked against the registry above. Written out
-  // rather than cast so that adding a kind to the union is a compile error here
-  // rather than a runtime surprise when somebody imports a board with one.
+  // Unreachable: kind was checked above. Written out so a new kind is a compile error here.
   throw new Error(`${where}.kind is one of the entity kinds but has no reader`)
 }
 
@@ -384,8 +286,6 @@ function parseString(value: unknown, where: string): StringLink {
     id: text(raw.id, `${where}.id`),
     from: text(raw.from, `${where}.from`),
     to: text(raw.to, `${where}.to`),
-    // Clamped rather than refused: slack outside the range is a rope that sags
-    // oddly, not a board that cannot be read. `yarn.ts` clamps it again anyway.
     slack: Math.min(1, Math.max(0, optionalNumber(raw.slack) ?? 0.18)),
     color: optionalText(raw.color, '#a3302b'),
     style: oneOf<StringStyle>(raw.style, STRING_STYLES, 'solid'),

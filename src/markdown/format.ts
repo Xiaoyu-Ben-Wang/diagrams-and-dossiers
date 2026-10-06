@@ -1,27 +1,3 @@
-/**
- * Markdown formatting actions for the editor toolbar.
- *
- * Every action is a pure function of (text, selection) → (text, selection),
- * which is what makes a formatting toolbar testable at all. The component is
- * then only responsible for reading the textarea's selection, calling this, and
- * writing the result back.
- *
- * Two behaviours make the difference between a toolbar that feels good and one
- * that fights you:
- *
- *   1. **They toggle.** Bold on already-bold text removes it. Without this, the
- *      second press produces `****text****` and you have to clean it up by hand,
- *      which is worse than having no button.
- *   2. **They keep the text selected.** After bolding, the words stay selected so
- *      you can immediately italicise them too. Collapsing the selection to the
- *      end means re-selecting by hand for every nested style.
- *
- * Line actions (headings, lists, quotes) work on every line the selection
- * touches, and toggle off only when *all* of those lines already carry the
- * prefix — otherwise a partially-listed block would un-list the lines that were
- * already correct instead of fixing the ones that weren't.
- */
-
 export type MarkdownAction =
   | 'bold'
   | 'italic'
@@ -39,26 +15,12 @@ export interface EditResult {
   selectionEnd: number
 }
 
-/**
- * Replace one range of text with an insertion, and say where the caret goes.
- *
- * The sibling of `applyMarkdownAction` for the one edit that is not a toolbar
- * action: picking a name out of the mention list replaces the `@query` run with
- * `@[Name]`. Kept here, next to the action it is shaped like, because the
- * interesting part is the same — where the caret ends up — and because the
- * alternative was a second copy of that arithmetic in the editor component.
- *
- * The caret lands after the insertion, ready for whatever is typed next.
- */
 export function replaceRange(
   text: string,
   from: number,
   to: number,
   insertion: string,
 ): EditResult {
-  // Reversed ranges are normalized rather than refused, as `applyMarkdownAction`
-  // does with them: a selection read from somewhere other than a textarea — a
-  // test, a stored offset — can arrive either way round.
   const [low, high] = from <= to ? [from, to] : [to, from]
   const start = Math.max(0, Math.min(low, text.length))
   const end = Math.max(start, Math.min(high, text.length))
@@ -70,7 +32,6 @@ export function replaceRange(
   }
 }
 
-/** Wrapping markers, for the actions that bracket a span. */
 const WRAPPERS: Partial<Record<MarkdownAction, [string, string]>> = {
   bold: ['**', '**'],
   italic: ['*', '*'],
@@ -78,7 +39,6 @@ const WRAPPERS: Partial<Record<MarkdownAction, [string, string]>> = {
   code: ['`', '`'],
 }
 
-/** Placeholder inserted when an action is used with nothing selected. */
 const PLACEHOLDERS: Partial<Record<MarkdownAction, string>> = {
   bold: 'bold text',
   italic: 'italic text',
@@ -91,7 +51,6 @@ const PLACEHOLDERS: Partial<Record<MarkdownAction, string>> = {
   quote: 'Quoted text',
 }
 
-/** Line prefixes. `null` matches any leading list marker so toggling works on either. */
 const LINE_PREFIXES: Partial<Record<MarkdownAction, RegExp>> = {
   heading: /^(#{1,6})\s/,
   bullet: /^[-*+]\s/,
@@ -99,7 +58,6 @@ const LINE_PREFIXES: Partial<Record<MarkdownAction, RegExp>> = {
   quote: /^>\s?/,
 }
 
-/** What a line action inserts when the line doesn't already have it. */
 function linePrefixFor(action: MarkdownAction, index: number): string {
   switch (action) {
     case 'heading':
@@ -115,12 +73,6 @@ function linePrefixFor(action: MarkdownAction, index: number): string {
   }
 }
 
-/**
- * Apply a formatting action.
- *
- * `start` and `end` are the textarea's selection bounds; a reversed selection
- * (dragging right-to-left) is normalized rather than mishandled.
- */
 export function applyMarkdownAction(
   text: string,
   start: number,
@@ -148,8 +100,6 @@ function applyWrapper(
 ): EditResult {
   const selected = text.slice(from, to)
 
-  // Nothing selected: insert a placeholder and select it, so the next keystroke
-  // replaces it rather than landing awkwardly between the markers.
   if (from === to) {
     const placeholder = PLACEHOLDERS[action] ?? ''
     const inserted = `${open}${placeholder}${close}`
@@ -160,7 +110,6 @@ function applyWrapper(
     }
   }
 
-  // Already wrapped, just inside the selection: strip the markers.
   const outerStart = from - open.length
   const outerEnd = to + close.length
   if (
@@ -175,7 +124,6 @@ function applyWrapper(
     }
   }
 
-  // Already wrapped, inside the selection: strip them from within.
   if (
     selected.length >= open.length + close.length &&
     selected.startsWith(open) &&
@@ -201,8 +149,6 @@ function applyLink(text: string, from: number, to: number): EditResult {
   const label = selected || PLACEHOLDERS.link!
   const url = 'url'
 
-  // If the selection is already a markdown link, select its URL so the common
-  // follow-up — pasting a real address — just works.
   const existing = /^\[([^\]]*)\]\(([^)]*)\)$/.exec(selected)
   if (existing) {
     const urlStart = from + 1 + existing[1].length + 2
@@ -216,8 +162,6 @@ function applyLink(text: string, from: number, to: number): EditResult {
   const inserted = `[${label}](${url})`
   return {
     text: text.slice(0, from) + inserted + text.slice(to),
-    // Select the URL, not the label: the label is usually right already and the
-    // address is the part you have to go and fetch.
     selectionStart: from + 1 + label.length + 2,
     selectionEnd: from + 1 + label.length + 2 + url.length,
   }
@@ -231,8 +175,6 @@ function applyLineAction(
 ): EditResult {
   const pattern = LINE_PREFIXES[action]!
 
-  // Expand to whole lines — a heading applies to the line, not to a character
-  // range inside it.
   const lineStart = text.lastIndexOf('\n', Math.max(0, from - 1)) + 1
   const nextBreak = text.indexOf('\n', to)
   const lineEnd = nextBreak === -1 ? text.length : nextBreak
@@ -240,13 +182,10 @@ function applyLineAction(
   const block = text.slice(lineStart, lineEnd)
   const lines = block.split('\n')
 
-  // Which line the caret is on, so an empty line can still be acted on.
   const caretLine = block.slice(0, from - lineStart).split('\n').length - 1
 
-  // Toggle off only when every line already has the prefix. A half-prefixed
-  // block should be completed, not stripped. Blank lines are ignored rather than
-  // counted as prefixed — counting them makes an all-blank block toggle the
-  // wrong way and the button appear to do nothing.
+  // Toggle off only when every non-blank line is prefixed; blank lines must not
+  // count, or an all-blank block toggles the wrong way.
   const meaningful = lines.filter((line) => line.trim() !== '')
   const allPrefixed = meaningful.length > 0 && meaningful.every((line) => pattern.test(line))
 
@@ -256,9 +195,8 @@ function applyLineAction(
       if (pattern.test(line)) return line
 
       if (line.trim() === '') {
-        // A blank interior line stays blank — prefixing it leaves trailing
-        // whitespace behind. The caret's own line is the exception: pressing
-        // the button on an empty line should start the construct.
+        // A blank interior line stays blank to avoid trailing whitespace; the
+        // caret's own line is the exception, so the construct can be started.
         if (index !== caretLine) return line
         return linePrefixFor(action, index) + (from === to ? (PLACEHOLDERS[action] ?? '') : '')
       }
@@ -274,7 +212,6 @@ function applyLineAction(
   }
 }
 
-/** The prefix a line carries, for the toolbar's active-state display. */
 export function detectLinePrefix(line: string): MarkdownAction | null {
   for (const [action, pattern] of Object.entries(LINE_PREFIXES)) {
     if (pattern.test(line)) return action as MarkdownAction
@@ -282,7 +219,6 @@ export function detectLinePrefix(line: string): MarkdownAction | null {
   return null
 }
 
-/** Whether the selection is currently wrapped by an action's markers. */
 export function isWrapped(text: string, start: number, end: number, action: MarkdownAction): boolean {
   const wrapper = WRAPPERS[action]
   if (!wrapper) return false
