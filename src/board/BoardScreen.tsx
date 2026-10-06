@@ -62,6 +62,7 @@ import { attachAutosave } from "../boards/autosave";
 import { loadCameraView, saveCameraView } from "../boards/last-camera";
 import { isPatternEdge, type EdgeStyle } from "./edges";
 import { decodeImageFile, firstImage } from "./image-file";
+import { linkFrom, measure, nameFromUrl } from "./image-url";
 import { clampTilt, rotateAbout } from "./pivot";
 
 import { NO_RECTS, frameTargets } from "./frame";
@@ -547,6 +548,32 @@ export function BoardScreen({
     [nextDateLabel, worldPoint],
   );
 
+  const addImageFromUrl = useCallback(
+    async (src: string, clientX: number, clientY: number) => {
+      let size;
+      try {
+        size = await measure(src);
+      } catch {
+        return;
+      }
+
+      const footprint = imageFootprint(size.width, size.height);
+      const at = worldPoint(clientX, clientY);
+      store.addEntities((state) => [
+        newImage(
+          { x: at.x - footprint.width / 2, y: at.y - footprint.height / 2 },
+          src,
+          footprint,
+          {
+            title: uniqueName(pictureName(nameFromUrl(src)), state.entities),
+            dateLabel: nextDateLabel(state.entities.length),
+          },
+        ),
+      ]);
+    },
+    [nextDateLabel, worldPoint],
+  );
+
   const rotateEntity = useCallback((id: string, degrees: number) => {
     const angle = clampTilt(degrees);
     store.updateEntities([id], (entity) =>
@@ -862,19 +889,20 @@ export function BoardScreen({
   const handleFileDrop = useCallback(
     (event: React.DragEvent) => {
       const file = firstImage(Array.from(event.dataTransfer?.files ?? []));
-      if (!file) return;
+      const link = file ? null : linkFrom(event.dataTransfer);
+      if (!file && !link) return;
       event.preventDefault();
-      void addImageAt(file, event.clientX, event.clientY);
+      if (file) void addImageAt(file, event.clientX, event.clientY);
+      else void addImageFromUrl(link!, event.clientX, event.clientY);
     },
-    [addImageAt],
+    [addImageAt, addImageFromUrl],
   );
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
     // Without this the browser refuses the drop and opens the file in a new tab.
-    const carriesFiles = Array.from(event.dataTransfer?.types ?? []).includes(
-      "Files",
-    );
-    if (carriesFiles) event.preventDefault();
+    const types = Array.from(event.dataTransfer?.types ?? []);
+    if (types.includes("Files") || types.includes("text/uri-list"))
+      event.preventDefault();
   }, []);
 
   const handlePaste = useCallback(
@@ -890,16 +918,20 @@ export function BoardScreen({
       }
 
       const file = firstImage(Array.from(event.clipboardData?.files ?? []));
-      if (!file) return;
+      const link = file ? null : linkFrom(event.clipboardData);
+      if (!file && !link) return;
 
       event.preventDefault();
       const box = document
         .querySelector('[data-testid="board-canvas"]')
         ?.getBoundingClientRect();
       if (!box) return;
-      void addImageAt(file, box.left + box.width / 2, box.top + box.height / 2);
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      if (file) void addImageAt(file, x, y);
+      else void addImageFromUrl(link!, x, y);
     },
-    [addImageAt],
+    [addImageAt, addImageFromUrl],
   );
 
   useEffect(() => {
