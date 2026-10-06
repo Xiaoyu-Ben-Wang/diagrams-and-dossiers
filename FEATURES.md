@@ -18,9 +18,41 @@ Numbering continues from the archive rather than restarting, so an item number s
 thing across both files. The queue was cleared on 5 October 2026; earlier items are in
 `docs/feature-queue-archive-2026-10-05.md`.
 
-Nothing is waiting. Items 20–23 were finished on 5 October 2026 and taken out. What was asked for
-while those were being built — the demo board on its own address, a saved camera, a stored lean on
-a post-it — went in with them rather than through this file.
+Items 20–23 were finished on 5 October 2026 and taken out. What was asked for while those were
+being built — the demo board on its own address, a saved camera, a stored lean on a post-it — went
+in with them rather than through this file.
+
+### 24. Add a picture by URL, on both branches
+
+Main takes pictures only by drop or paste. `demo` already has the other half — `src/board/image-url.ts`
+and `isHttpImageSrc` — so this is a port of that to main, keeping file drop as well. Both add paths
+should end up on both branches.
+
+### 25. The free edition should store picture bytes after all
+
+`demo`'s rule is that a picture is a link and nothing else: `isHttpImageSrc` accepts only http(s),
+and image-file.ts was deleted to enforce it. IndexedDB is client-side, so the bytes never leave the
+machine and the rule is buying nothing. Store uploads as blobs under a generated id, with the
+entity's `src` a stable reference (`idb:<id>`) resolved to an object URL at render — not a data URI,
+which would bloat every board record past the parser's src cap.
+
+### 26. Say on the board list that nothing leaves the machine
+
+`demo` only. A line above the list of boards: storage is local, no personal data is sent anywhere.
+Wants to be true, so it should land with #25 rather than before it.
+
+### 27. Publish the demo, and say what it is
+
+`demo` only. Add a Pages workflow (there is none — the repo has `ci.yml` and no deploy job) built
+for the `/diagrams-and-dossiers/` subpath, and cut the README back to a short description plus a
+link to the published board at `/diagrams-and-dossiers/demo`.
+
+### 28. Rebase `demo` onto the rewritten `main`
+
+Forced by the history rewrite: `demo` still sits on the old `610e01b` and shares no ancestry with
+`main`, so nothing can move between them. Its first commit, _A picture is a link, not a file_, is
+the rule #25 reverses — dropping it is cheaper than resolving four conflicts and then undoing half
+of it. Order: #24 and #25 on main first, then rebase, then #26 and #27.
 
 ---
 
@@ -39,7 +71,7 @@ Recorded so nobody re-litigates them:
   which is the trap the flat-text projection exists to avoid.
 - **Virtualisation in a scroll container** — `@tanstack/react-virtual`, `react-window` and
   `react-virtuoso` all assume a linear scroll container with an intrinsic content size; a pan/zoom
-  camera is a transform. (A *spatial* culler is a different thing and may be worth taking — see
+  camera is a transform. (A _spatial_ culler is a different thing and may be worth taking — see
   #13.)
 - **`content-visibility: auto`** — it imposes size containment, so `getBoundingClientRect` returns
   the placeholder and every pin on the article would silently land at zero size. It also does not
