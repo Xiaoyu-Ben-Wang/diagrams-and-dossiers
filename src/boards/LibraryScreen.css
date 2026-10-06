@@ -1,0 +1,171 @@
+/* The board list, in the board's own language: parchment on cork, brass for the
+   things you press. */
+
+.library-warning {
+  max-width: 46rem;
+  margin: 0 auto 14px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-wax) 55%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-wax) 18%, transparent);
+  color: var(--color-board-ink);
+  font-size: 12px;
+}
+
+.library-list {
+  display: grid;
+  gap: 10px;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.library-board {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--color-parchment-edge);
+  border-left: 3px solid var(--color-folder);
+  border-radius: 2px 6px 3px 5px;
+  background-color: var(--color-parchment-100);
+  color: var(--color-ink);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.5) inset,
+    0 6px 14px -8px rgb(0 0 0 / 0.6);
+}
+
+.library-name {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.library-name:hover {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.library-meta {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  font-size: 11px;
+}
+
+.library-rename {
+  padding: 3px 6px;
+  border: 1px solid var(--color-brass);
+  border-radius: 2px;
+  background: #fffdf6;
+  color: var(--color-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.library-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.library-confirm {
+  margin-right: 4px;
+  color: var(--color-wax);
+  font-size: 11px;
+}
+
+.library-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 25%, transparent);
+  border-radius: 2px;
+  background: none;
+  color: var(--color-ink-soft);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    border-color 110ms ease,
+    color 110ms ease;
+}
+
+.library-button:hover {
+  border-color: var(--color-brass);
+  color: var(--color-ink);
+}
+
+.library-button-primary {
+  border-color: var(--color-brass);
+  color: var(--color-ink);
+}
+
+.library-button-danger {
+  border-color: color-mix(in srgb, var(--color-wax) 60%, transparent);
+  color: var(--color-wax);
+}
+
+.library-link {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.library-link-field {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 25%, transparent);
+  border-radius: 2px;
+  background: #fffdf6;
+  color: var(--color-ink);
+  font-size: 11px;
+}
+
+.library-link-hint {
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  font-size: 10px;
+}
+
+.library-empty {
+  max-width: 30rem;
+  margin: 8vh auto 0;
+  padding: 20px 22px;
+  border: 1px solid var(--color-parchment-edge);
+  border-radius: 3px 8px 4px 7px;
+  background-color: var(--color-parchment-100);
+  color: var(--color-ink);
+  text-align: center;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.5) inset,
+    0 10px 22px -12px rgb(0 0 0 / 0.6);
+}
+
+.library-empty-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.library-empty-hint {
+  margin: 0 0 16px;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.library-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}

@@ -13,6 +13,8 @@ import {
 import { DEFAULT_SLACK, sagFor, YARN_COLOR } from './board/yarn'
 import { demoBoard, demoPages } from './app/demo'
 import { parseBoardFile, readBoardFile, serializeBoard } from './board/board-file'
+import { memoryBoardStorage } from './boards/board-storage'
+import { createBoardRecord, type BoardRecord } from './boards/board-record'
 import { POST_IT_COLORS } from './board/tuning'
 import { newArticle } from './model/create'
 import type { BoardEntity } from './model/types'
@@ -230,23 +232,176 @@ describe('App — routing', () => {
     expect(screen.getByTestId('board-canvas')).toBeTruthy()
   })
 
-  it('has no nav to anywhere else', () => {
+  it('offers no way out of a board that was handed to it directly', () => {
+    // A seeded board has no library behind it, so there is nowhere to go back to.
     renderBoard()
-    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull()
+    expect(screen.queryByTestId('back-to-boards')).toBeNull()
   })
 })
 
-describe('App — pin mode', () => {
+describe('App — the boards library', () => {
+  const board = { entities: [], strings: [] }
+  const ledger = { ...createBoardRecord('Ledger', board, 1) }
+  const manifest = { ...createBoardRecord('Manifest', board, 2) }
+
+  const openLibrary = (records: readonly BoardRecord[] = [ledger, manifest]) => {
+    const storage = memoryBoardStorage(records)
+    // At `/` the app opens the last board; the library is its own address.
+    window.history.replaceState(null, '', '/boards')
+    render(<App storage={storage} />)
+    return storage
+  }
+
+  it('lists the boards you have, most recently changed first', () => {
+    openLibrary()
+
+    const names = screen
+      .getAllByRole('button', { name: /Ledger|Manifest/ })
+      .map((button) => button.textContent)
+    expect(names[0]).toContain('Manifest')
+  })
+
+  it('walks back out of a board to the library', async () => {
+    const storage = memoryBoardStorage([ledger])
+    window.history.replaceState(null, '', `/b/${ledger.id}`)
+    render(<App storage={storage} />)
+    expect(screen.getByTestId('board-canvas')).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId('back-to-boards'))
+
+    expect(window.location.pathname).toBe('/boards')
+    expect(screen.getByTestId('library')).toBeTruthy()
+  })
+
+  it('opens a board from the library, and says which one it is', async () => {
+    openLibrary()
+
+    fireEvent.click(screen.getByTestId(`open-${ledger.id}`))
+
+    expect(window.location.pathname).toBe(`/b/${ledger.id}`)
+    expect(await screen.findByTestId('board-name')).toBeTruthy()
+  })
+
+  it('renames a board, and writes it down', async () => {
+    const storage = openLibrary([ledger])
+
+    fireEvent.click(screen.getByTestId(`rename-${ledger.id}`))
+    fireEvent.change(screen.getByLabelText('New name for Ledger'), {
+      target: { value: 'The Ledger' },
+    })
+    fireEvent.keyDown(screen.getByLabelText('New name for Ledger'), { key: 'Enter' })
+
+    expect(await screen.findByRole('button', { name: 'The Ledger' })).toBeTruthy()
+    expect((await storage.get(ledger.id))?.name).toBe('The Ledger')
+  })
+
+  it('will not leave a board without a name', async () => {
+    const storage = openLibrary([ledger])
+
+    fireEvent.click(screen.getByTestId(`rename-${ledger.id}`))
+    fireEvent.change(screen.getByLabelText('New name for Ledger'), { target: { value: '   ' } })
+    fireEvent.keyDown(screen.getByLabelText('New name for Ledger'), { key: 'Enter' })
+
+    expect((await storage.get(ledger.id))?.name).toBe('Ledger')
+  })
+
+  it('asks before it deletes, and then deletes', async () => {
+    const storage = openLibrary([ledger])
+
+    fireEvent.click(screen.getByTestId(`delete-${ledger.id}`))
+    expect(await storage.get(ledger.id)).not.toBeNull()
+
+    fireEvent.click(screen.getByTestId(`confirm-delete-${ledger.id}`))
+
+    expect(await screen.findByTestId('library-empty')).toBeTruthy()
+    expect(await storage.get(ledger.id)).toBeNull()
+  })
+
+  it('copies a link to a board', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    openLibrary([ledger])
+
+    fireEvent.click(screen.getByTestId(`share-${ledger.id}`))
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining(`/b/${ledger.id}`))
+    Reflect.deleteProperty(navigator, 'clipboard')
+  })
+
+  it('offers the link in a field when the clipboard will not take it', async () => {
+    openLibrary([ledger])
+
+    fireEvent.click(screen.getByTestId(`share-${ledger.id}`))
+
+    const field = await screen.findByTestId(`link-${ledger.id}`)
+    expect((field as HTMLInputElement).value).toContain(`/b/${ledger.id}`)
+  })
+
+  it('starts empty, and offers the demo board rather than saving it for you', async () => {
+    openLibrary([])
+
+    expect(screen.getByTestId('library-empty')).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId('open-demo'))
+
+    expect(await screen.findByTestId('board-canvas')).toBeTruthy()
+  })
+
+  it('makes a new board and opens it', async () => {
+    const storage = openLibrary([])
+
+    fireEvent.click(screen.getByTestId('new-board'))
+
+    expect(await screen.findByTestId('board-canvas')).toBeTruthy()
+    expect((await storage.list()).map((record) => record.name)).toEqual(['Untitled board'])
+  })
+
+  it('adds an imported file as another board, when that is what you pick', async () => {
+    const storage = memoryBoardStorage([ledger])
+    window.history.replaceState(null, '', `/b/${ledger.id}`)
+    render(<App storage={storage} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /open preferences/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^import board…$/i }))
+    const input = screen.getByLabelText(/choose a board file/i) as HTMLInputElement
+    const page = newArticle(
+      { x: 0, y: 0 },
+      '# A Loaded Case\n\nThe file this board came from.',
+      'A Loaded Case',
+      undefined,
+      { id: 'loaded-page' },
+    )
+    const file = new File([serializeBoard({ entities: [page], strings: [] })], 'case-board.json', {
+      type: 'application/json',
+    })
+    Object.defineProperty(input, 'files', { value: [file], configurable: true })
+    fireEvent.change(input)
+
+    fireEvent.click(await screen.findByTestId('import-add'))
+
+    expect(await screen.findByTestId('board-canvas')).toBeTruthy()
+    // Named after the page it carried, which is the habit the file name already had.
+    expect((await storage.list()).map((record) => record.name).sort()).toEqual([
+      'A Loaded Case',
+      'Ledger',
+    ])
+  })
+})
+
+describe('App — pinning by click', () => {
   const freePins = (container: HTMLElement) =>
     container.querySelectorAll('[data-status="free"]').length
 
-  it('does not pin on a plain click by default', () => {
+  it('does not pin on a plain click', () => {
     const { container } = renderBoard()
     fireEvent.click(screen.getByTestId('board-canvas'))
     expect(freePins(container)).toBe(0)
   })
 
-  it('pins on a ctrl-click without any mode', () => {
+  it('pins on a ctrl-click', () => {
     const { container } = renderBoard()
     fireEvent.click(screen.getByTestId('board-canvas'), { ctrlKey: true })
     expect(freePins(container)).toBe(1)
@@ -256,31 +411,6 @@ describe('App — pin mode', () => {
     const { container } = renderBoard()
     fireEvent.click(screen.getByTestId('board-canvas'), { metaKey: true })
     expect(freePins(container)).toBe(1)
-  })
-
-  it('pins on a plain click once pin mode is on', () => {
-    const { container } = renderBoard()
-    fireEvent.click(screen.getByLabelText('Pin mode'))
-    fireEvent.click(screen.getByTestId('board-canvas'))
-    expect(freePins(container)).toBe(1)
-  })
-
-  it('stops pinning when pin mode is switched back off', () => {
-    const { container } = renderBoard()
-    const toggle = screen.getByLabelText('Pin mode')
-    fireEvent.click(toggle)
-    fireEvent.click(toggle)
-
-    fireEvent.click(screen.getByTestId('board-canvas'))
-    expect(freePins(container)).toBe(0)
-  })
-
-  it('announces its pressed state', () => {
-    renderBoard()
-    const toggle = screen.getByLabelText('Pin mode')
-    expect(toggle.getAttribute('aria-pressed')).toBe('false')
-    fireEvent.click(toggle)
-    expect(toggle.getAttribute('aria-pressed')).toBe('true')
   })
 })
 
@@ -643,17 +773,6 @@ describe('App — placing pins', () => {
     fireEvent.click(canvas, { clientX: 10, clientY: 10 })
     expect(container.querySelectorAll('.is-selected').length).toBe(0)
   })
-
-  it('does not rubber-band in pin mode, where a drag is a pin', () => {
-    renderBoard()
-    const canvas = screen.getByTestId('board-canvas')
-    fireEvent.click(screen.getByLabelText('Pin mode'))
-
-    fireEvent.pointerDown(canvas, { button: 0, pointerId: 9, clientX: 250, clientY: 150 })
-    fireEvent.pointerMove(canvas, { pointerId: 9, clientX: 350, clientY: 250 })
-
-    expect(screen.queryByTestId('marquee')).toBeNull()
-  })
 })
 
 describe('App — pin descriptions', () => {
@@ -962,7 +1081,7 @@ describe('App — the writing on a note', () => {
   }
 
   it('offers the size controls once the note is selected', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     expect(screen.queryByTestId('post-it-font-up')).toBeNull()
 
     selectNote(container)
@@ -973,7 +1092,7 @@ describe('App — the writing on a note', () => {
   })
 
   it('makes the writing bigger and smaller, a step at a time', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     selectNote(container)
     const start = writing(container).style.fontSize
     expect(start).toBe('12px')
@@ -987,7 +1106,7 @@ describe('App — the writing on a note', () => {
   })
 
   it('puts it back to the normal size in one press', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     selectNote(container)
     for (let i = 0; i < 3; i++) fireEvent.click(screen.getByTestId('post-it-font-up'))
 
@@ -997,7 +1116,7 @@ describe('App — the writing on a note', () => {
   })
 
   it('will not step past either end, rather than going quiet about it', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     selectNote(container)
 
     expect((screen.getByTestId('post-it-font-reset') as HTMLButtonElement).disabled).toBe(true)
@@ -1007,7 +1126,7 @@ describe('App — the writing on a note', () => {
   })
 
   it('changes only the note it belongs to', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     const all = container.querySelectorAll<HTMLTextAreaElement>('textarea[aria-label="Post-it note"]')
     selectNote(container)
 
@@ -1018,7 +1137,7 @@ describe('App — the writing on a note', () => {
   })
 
   it('offers the note its paper and colours once its menu is opened', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     expect(screen.queryByTestId('post-it-color-sage')).toBeNull()
 
     selectNote(container)
@@ -1032,7 +1151,7 @@ describe('App — the writing on a note', () => {
   })
 
   it('repaints the note when a colour is picked', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     selectNote(container)
     openNoteMenu()
     const before = note(container).style.backgroundColor
@@ -1045,7 +1164,7 @@ describe('App — the writing on a note', () => {
   })
 
   it('repaints one note, not the board', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     const notes = container.querySelectorAll<HTMLElement>('[data-post-it-id]')
     const other = notes[1].style.backgroundColor
     selectNote(container)
@@ -1074,7 +1193,7 @@ describe('App — the note’s paper', () => {
   })
 
   it('gives the note the paper that was picked, and only that note', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     const notes = container.querySelectorAll<HTMLElement>('[data-post-it-id]')
     expect(notes[0].getAttribute('data-note-style')).toBe('plain')
     const other = notes[1].getAttribute('data-note-style')
@@ -1088,7 +1207,7 @@ describe('App — the note’s paper', () => {
   })
 
   it('opens the menu on a press that stays put', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     const before = container.querySelectorAll('[data-post-it-id]').length
 
     // Down and up at the same point: the click the pad used to swallow.
@@ -1099,7 +1218,7 @@ describe('App — the note’s paper', () => {
   })
 
   it('still makes a note when the press travels, and opens no menu', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     // jsdom lays nothing out, so the drop's own bounds check needs a real box.
     const canvas = container.querySelector('[data-testid="board-canvas"]') as HTMLElement
     const box = vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
@@ -1130,7 +1249,7 @@ describe('App — the note’s paper', () => {
   })
 
   it('makes the next note out of the pair chosen on the pad, and remembers it', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
 
     tap(screen.getByTestId('palette-pad-1'))
     fireEvent.click(screen.getByTestId('post-it-paper-taped'))
@@ -1164,7 +1283,7 @@ describe('App — naming a picture', () => {
   }
 
   it('shows a picture’s title and description once it is clicked', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     expect(screen.queryByTestId('image-caption')).toBeNull()
 
     clickPicture(container)
@@ -1178,7 +1297,7 @@ describe('App — naming a picture', () => {
   })
 
   it('writes both fields back to the picture', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     clickPicture(container)
 
     fireEvent.change(screen.getByLabelText('Picture title'), { target: { value: 'The Map' } })
@@ -1193,7 +1312,7 @@ describe('App — naming a picture', () => {
   })
 
   it('makes the new name the one a mention resolves to', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     const mention = sheet(container, ARTICLE_ID).querySelector('a.mention') as HTMLElement
     expect(mention.classList.contains('mention--missing')).toBe(false)
 
@@ -1207,7 +1326,7 @@ describe('App — naming a picture', () => {
 
 describe('App — the demo board', () => {
   it('leaves a click on a picture’s pin doing nothing, since a picture has no editor', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     const pin = container.querySelector('[data-testid="image-pin"]') as HTMLElement
 
     fireEvent.pointerDown(pin, { button: 0, pointerId: 43, clientX: 300, clientY: 200 })
@@ -1217,7 +1336,7 @@ describe('App — the demo board', () => {
   })
 
   it('opens on four pages with notes, pictures, tacks and yarn around them', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
 
     expect(container.querySelectorAll('[data-article-id]').length).toBe(ARTICLE_IDS.length)
     expect(container.querySelectorAll('[aria-label="Post-it note"]').length).toBe(8)
@@ -1227,7 +1346,7 @@ describe('App — the demo board', () => {
   })
 
   it('leaves some tacks and notes without a description', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
 
     const tacks = container.querySelectorAll('button[data-pin-id]')
     const described = container.querySelectorAll('button[data-pin-id][data-described="true"]')
@@ -1240,21 +1359,21 @@ describe('App — the demo board', () => {
   })
 
   it('rolls one page up, so the board shows that state too', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
 
     expect(sheet(container, FOURTH_PAGE).textContent).toContain('▸')
     expect(sheet(container, FIRST_PAGE).textContent).toContain('▾')
   })
 
   it('writes a tag that says what the connection is, not what the note says', () => {
-    render(<App />)
+    render(<App seed={demoBoard()} />)
 
     expect(screen.getByText('Molgar paid him')).toBeTruthy()
     expect(screen.getByText('a third hand')).toBeTruthy()
   })
 
   it('ties yarn to a page, not only to pins', () => {
-    render(<App />)
+    render(<App seed={demoBoard()} />)
     const yarn = screen.getByTestId('string-layer').querySelectorAll('g')
     expect(yarn.length).toBe(12)
 
@@ -1264,7 +1383,7 @@ describe('App — the demo board', () => {
   })
 
   it('does not count a tack in the cork as an anchored pin', () => {
-    render(<App />)
+    render(<App seed={demoBoard()} />)
 
     expect(screen.getByText('Anchored exactly (0)')).toBeTruthy()
     expect(screen.getByText('8 pins · 12 strings')).toBeTruthy()
@@ -1316,31 +1435,6 @@ describe('App — moving a page by its body', () => {
     bodyDrag(container, FIRST_PAGE, [400, 400], [402, 401])
 
     expect(posOf(container, FIRST_PAGE)).toEqual(before)
-  })
-
-  it('does not pin a note with the click a drag leaves behind', () => {
-    // The browser sends a click wherever a drag finished; unswallowed, this
-    // would pin a tack at the drop point.
-    const { container } = renderBoard()
-    fireEvent.click(screen.getByLabelText('Pin mode'))
-    const before = container.querySelectorAll('button[data-pin-id]').length
-
-    bodyDrag(container, FIRST_PAGE, [400, 400], [540, 460])
-
-    expect(container.querySelectorAll('button[data-pin-id]').length).toBe(before)
-  })
-
-  it('still pins a note when the body is clicked and not dragged', () => {
-    const { container } = renderBoard()
-    fireEvent.click(screen.getByLabelText('Pin mode'))
-    const before = container.querySelectorAll('button[data-pin-id]').length
-
-    const target = body(container, FIRST_PAGE)
-    fireEvent.pointerDown(target, { button: 0, pointerId: 3, clientX: 400, clientY: 400 })
-    fireEvent.pointerUp(target, { button: 0, pointerId: 3, clientX: 400, clientY: 400 })
-    fireEvent.click(target, { clientX: 400, clientY: 400 })
-
-    expect(container.querySelectorAll('button[data-pin-id]').length).toBe(before + 1)
   })
 
   it('says on the sheet that it is being dragged', () => {
@@ -1513,7 +1607,7 @@ describe('App — board files', () => {
   }
 
   it('loads a board out of a file, replacing the one that was there', async () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     expect(container.querySelectorAll('[data-article-id]').length).toBe(ARTICLE_IDS.length)
 
     const page = newArticle(
@@ -1525,6 +1619,10 @@ describe('App — board files', () => {
     )
     choose(serializeBoard({ entities: [page], strings: [] }))
 
+    // Nothing is overwritten until it has been asked where the file should go.
+    expect(await screen.findByTestId('import-choice')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('import-replace'))
+
     expect(await screen.findByRole('heading', { name: 'A Loaded Case' })).toBeTruthy()
     expect(within(sheet(container, 'loaded-page')).getByTestId('paper-tab').textContent).toContain(
       'A Loaded Case',
@@ -1532,8 +1630,25 @@ describe('App — board files', () => {
     expect(container.querySelectorAll('[data-article-id]').length).toBe(1)
   })
 
+  it('leaves the board alone when the file is turned away', async () => {
+    const { container } = render(<App seed={demoBoard()} />)
+    const page = newArticle(
+      { x: 0, y: 0 },
+      '# A Loaded Case\n\nThe file this board came from.',
+      'A Loaded Case',
+      undefined,
+      { id: 'loaded-page' },
+    )
+    choose(serializeBoard({ entities: [page], strings: [] }))
+
+    fireEvent.click(await screen.findByTestId('import-cancel'))
+
+    expect(screen.queryByTestId('import-choice')).toBeNull()
+    expect(container.querySelectorAll('[data-article-id]').length).toBe(ARTICLE_IDS.length)
+  })
+
   it('says why a file could not be read, and leaves the board alone', async () => {
-    const { container } = render(<App />)
+    const { container } = render(<App seed={demoBoard()} />)
     choose('{ this is not json')
 
     const alert = await screen.findByRole('alert')
@@ -1559,7 +1674,7 @@ describe('App — board files', () => {
       })
 
     try {
-      render(<App />)
+      render(<App seed={demoBoard()} />)
       fireEvent.click(screen.getByRole('button', { name: /open preferences/i }))
       fireEvent.click(screen.getByRole('button', { name: /^export board…$/i }))
 

@@ -31,12 +31,29 @@ describe("normalizePath", () => {
 });
 
 describe("parseRoute", () => {
-  it("maps the root to the board", () => {
-    expect(parseRoute("/")).toEqual({ name: "board" });
+  it("maps the root to the board it should open", () => {
+    expect(parseRoute("/")).toEqual({ name: "board", id: null });
   });
 
   it("treats a trailing slash on the root as the same page", () => {
-    expect(parseRoute("/")).toEqual({ name: "board" });
+    expect(parseRoute("/")).toEqual({ name: "board", id: null });
+  });
+
+  it("reads a board out of its own address", () => {
+    expect(parseRoute("/b/abc123")).toEqual({ name: "board", id: "abc123" });
+  });
+
+  it("maps the library", () => {
+    expect(parseRoute("/boards")).toEqual({ name: "library" });
+  });
+
+  it("will not take a board address with nothing in it", () => {
+    expect(parseRoute("/b")).toEqual({ name: "notFound", path: "/b" });
+    expect(parseRoute("/b/")).toEqual({ name: "notFound", path: "/b" });
+  });
+
+  it("will not take a deeper board address", () => {
+    expect(parseRoute("/b/abc/def")).toEqual({ name: "notFound", path: "/b/abc/def" });
   });
 
   it("reports an unknown path rather than silently showing the board", () => {
@@ -53,9 +70,13 @@ describe("parseRoute", () => {
 
 describe("routeToPath", () => {
   it("round-trips every route", () => {
-    for (const path of ["/"]) {
+    for (const path of ["/", "/boards", "/b/abc123"]) {
       expect(routeToPath(parseRoute(path))).toBe(path);
     }
+  });
+
+  it("sends the board with no id to the root, which is where it is looked up", () => {
+    expect(routeToPath({ name: "board", id: null })).toBe("/");
   });
 
   it("sends an unknown path back to itself, not to the board", () => {

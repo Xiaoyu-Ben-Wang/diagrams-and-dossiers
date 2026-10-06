@@ -1,9 +1,10 @@
 import { Settings } from 'lucide-react'
 
 export interface TopBarProps {
-  onOpenPreferences: () => void
-  preferencesOpen: boolean
-  preferencesPanelId: string
+  /** Left out where there is no panel to open, which is everywhere but the board. */
+  onOpenPreferences?: () => void
+  preferencesOpen?: boolean
+  preferencesPanelId?: string
   children?: React.ReactNode
 }
 
@@ -21,7 +22,8 @@ export function TopBar({
 
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">{children}</div>
 
-      <button
+      {onOpenPreferences ? (
+        <button
         type="button"
         onClick={onOpenPreferences}
         className="ml-auto flex shrink-0 items-center gap-1.5 rounded border border-parchment-edge/25 px-2.5 py-1 text-xs text-board-ink-soft transition hover:border-brass hover:text-board-ink"
@@ -32,7 +34,8 @@ export function TopBar({
       >
         <Settings size={13} strokeWidth={2} aria-hidden="true" />
         Preferences
-      </button>
+        </button>
+      ) : null}
     </header>
   )
 }

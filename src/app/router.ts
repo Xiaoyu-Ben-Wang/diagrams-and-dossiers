@@ -1,6 +1,9 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-export type Route = { name: "board" } | { name: "notFound"; path: string };
+export type Route =
+  | { name: "board"; /** Null at `/`, which opens whichever board was last open. */ id: string | null }
+  | { name: "library" }
+  | { name: "notFound"; path: string };
 
 /** pushState fires no popstate; this event is how the app hears its own navigation. */
 export const ROUTE_CHANGE_EVENT = "case-board:route-change";
@@ -8,7 +11,11 @@ export const ROUTE_CHANGE_EVENT = "case-board:route-change";
 export function parseRoute(pathname: string): Route {
   const path = normalizePath(pathname);
 
-  if (path === "/") return { name: "board" };
+  if (path === "/") return { name: "board", id: null };
+  if (path === "/boards") return { name: "library" };
+
+  const board = /^\/b\/([^/]+)$/.exec(path);
+  if (board) return { name: "board", id: decodeURIComponent(board[1]) };
 
   return { name: "notFound", path };
 }
@@ -38,9 +45,36 @@ export function normalizePath(pathname: string): string {
 export function routeToPath(route: Route): string {
   switch (route.name) {
     case "board":
-      return "/";
+      return route.id === null ? "/" : `/b/${encodeURIComponent(route.id)}`;
+    case "library":
+      return "/boards";
     case "notFound":
       return route.path;
+  }
+}
+
+/**
+ * Where `public/404.html` parks the path GitHub Pages could not serve. Must match
+ * the literal in that file, which cannot read `import.meta.env` (Vite copies
+ * `public/` verbatim).
+ */
+export const DEEP_LINK_KEY = "case-board:deep-link";
+
+/**
+ * Puts back the path the 404 boot page stashed, before anything reads the
+ * location. Pages has no rewrite, so this is the only way a pasted
+ * `/dossiers-and-diagrams/b/<id>` reaches the router at all.
+ */
+export function restoreDeepLink(storage?: Storage): void {
+  try {
+    const store = storage ?? globalThis.sessionStorage;
+    const path = store?.getItem(DEEP_LINK_KEY);
+    if (!path || !path.startsWith("/")) return;
+    store?.removeItem(DEEP_LINK_KEY);
+    if (typeof window === "undefined") return;
+    window.history.replaceState(null, "", path);
+  } catch {
+    // Private windows block sessionStorage; `/` and the last-open board remain.
   }
 }
 

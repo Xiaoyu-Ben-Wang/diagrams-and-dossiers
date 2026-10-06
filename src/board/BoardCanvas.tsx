@@ -37,7 +37,6 @@ export interface BoardCanvasProps {
   overlay?: ReactNode
   backdrop?: (viewport: Viewport) => ReactNode
   onBackgroundClick?: (click: { point: Point; ctrlKey: boolean; metaKey: boolean }) => void
-  pinMode?: boolean
   onMarquee?: (rect: Rect | null) => void
   onEntityDrag?: (element: Element, delta: Point) => void
   onHover?: (point: Point | null) => void
@@ -90,7 +89,6 @@ export function BoardCanvas({
   overlay,
   backdrop,
   onBackgroundClick,
-  pinMode = false,
   onMarquee,
   onEntityDrag,
   onHover,
@@ -415,7 +413,7 @@ export function BoardCanvas({
       onContextMenu={(event) => event.preventDefault()}
       style={{
         touchAction: 'none',
-        cursor: panRef.current ? 'grabbing' : pinMode ? 'crosshair' : idleCursor,
+        cursor: panRef.current ? 'grabbing' : idleCursor,
       }}
       data-testid="board-canvas"
     >
