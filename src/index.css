@@ -92,6 +92,73 @@ body {
   transform: rotate(0.8deg);
 }
 
+/* The paper a note is drawn on. Keyed on the attribute rather than on `.post-it`
+   so the picker's chips are drawn by the same rules, at their own size. Every
+   mark is semi-transparent ink or black, which composites over any note colour.
+
+   `--note-line` is the writing's own line height and `--note-line-start` its
+   first line, both set on the note by `PostIt` — a constant pitch would drift
+   off the words as soon as the writing is resized. */
+[data-note-style='ruled'] {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--note-line, 16px) - 1px),
+    color-mix(in srgb, var(--color-ink) 18%, transparent) calc(var(--note-line, 16px) - 1px),
+    color-mix(in srgb, var(--color-ink) 18%, transparent) var(--note-line, 16px)
+  );
+  /* A rule under each line of writing rather than through the middle of one. */
+  background-position: 0 var(--note-line-start, 0px);
+}
+
+[data-note-style='grid'] {
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(var(--note-line, 16px) - 1px),
+      color-mix(in srgb, var(--color-ink) 13%, transparent) calc(var(--note-line, 16px) - 1px),
+      color-mix(in srgb, var(--color-ink) 13%, transparent) var(--note-line, 16px)
+    ),
+    repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(var(--note-line, 16px) - 1px),
+      color-mix(in srgb, var(--color-ink) 13%, transparent) calc(var(--note-line, 16px) - 1px),
+      color-mix(in srgb, var(--color-ink) 13%, transparent) var(--note-line, 16px)
+    );
+  background-position: 0 var(--note-line-start, 0px);
+}
+
+/* Clamped against a percentage, so one rule serves both a 168px note and a 30px
+   chip in the picker. */
+[data-note-style='dog-eared']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: min(20px, 45%);
+  height: min(20px, 45%);
+  background: rgb(0 0 0 / 0.18);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  pointer-events: none;
+}
+
+[data-note-style='taped']::before {
+  content: '';
+  position: absolute;
+  top: max(-7px, -24%);
+  left: 50%;
+  width: min(64px, 70%);
+  height: min(15px, 24%);
+  transform: translateX(-50%) rotate(-1.2deg);
+  background: rgb(255 255 255 / 0.4);
+  border-left: 1px solid rgb(255 255 255 / 0.55);
+  border-right: 1px solid rgb(255 255 255 / 0.55);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+  pointer-events: none;
+}
+
 /* Must stay `cursor: grab`: the words keep a text cursor, and `data-dragging` stops a press selecting text. */
 .parchment {
   cursor: grab;
@@ -866,11 +933,14 @@ body {
 }
 
 .palette-glyph-note {
+  /* Relative so the paper's fold and tape hang off it, and a longhand colour so
+     the `[data-note-style]` rules can still set its `background-image`. */
+  position: relative;
   display: block;
   width: 22px;
   height: 17px;
   border-radius: 1px;
-  background: #e8d9a8;
+  background-color: #e8d9a8;
   box-shadow:
     0 1px 0 rgb(255 255 255 / 0.5) inset,
     0 1px 3px rgb(0 0 0 / 0.4);
@@ -1000,6 +1070,78 @@ body {
   cursor: default;
   /* Above the sheen and the yarn. */
   z-index: 30;
+}
+
+/* The post-it's paper-and-colour menu. Same rung as the edge picker: above the
+   board, below the tooltip and the editors. */
+.note-style-menu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 6px;
+  border: 1px solid rgb(201 180 138 / 0.35);
+  background: rgb(20 13 8 / 0.92);
+  box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.7);
+  cursor: default;
+  z-index: 30;
+}
+
+.note-style-menu:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 2px;
+}
+
+.note-style-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.note-style-split {
+  align-self: stretch;
+  width: 1px;
+  margin: 2px 3px;
+  background: rgb(201 180 138 / 0.3);
+}
+
+.note-style-paper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 30%, transparent);
+  border-radius: 2px;
+  background: none;
+  cursor: pointer;
+  transition:
+    transform 110ms ease,
+    box-shadow 110ms ease;
+}
+
+.note-style-paper:hover {
+  transform: translateY(-1px);
+}
+
+.note-style-paper[data-selected='true'] {
+  box-shadow:
+    0 0 0 1px rgb(20 13 8 / 0.92),
+    0 0 0 2px var(--color-brass);
+}
+
+/* Relative so `[data-note-style]`'s fold and tape hang off the chip. The pitch
+   is its own: at the note's real line height a 17px chip shows a single rule,
+   which reads as a stripe rather than as ruled paper. */
+.note-style-chip {
+  --note-line: 5px;
+  --note-line-start: 0px;
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 17px;
+  border-radius: 1px;
 }
 
 .edge-picker-split {
@@ -1175,10 +1317,45 @@ body {
   flex: none;
 }
 
-.post-it-colors {
+/* The trigger for the paper-and-colour menu, in the row the swatches used to
+   fill. It shows the pair it edits: the note's own paper, in its own colour. */
+.post-it-style {
   display: flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 30%, transparent);
+  border-radius: 2px;
+  background: none;
+  cursor: pointer;
+  transition:
+    transform 110ms ease,
+    box-shadow 110ms ease;
+}
+
+.post-it-style:hover {
+  transform: scale(1.08);
+}
+
+.post-it-style[data-selected='true'] {
+  box-shadow:
+    0 0 0 1px var(--color-parchment-100),
+    0 0 0 2px color-mix(in srgb, var(--color-ink) 55%, transparent);
+}
+
+/* Relative so the paper's own `::before`/`::after` hang off it. */
+.post-it-style-chip {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 1px;
+  /* Its own pitch, like the menu's chip: the note's real line height is set on
+     this element's parent, so without this the preview shows one rule. */
+  --note-line: 5px;
+  --note-line-start: 0px;
 }
 
 /* The hairline is load-bearing: a pale swatch on a pale note is otherwise invisible. */

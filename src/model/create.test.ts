@@ -91,4 +91,9 @@ describe('newImage', () => {
     expect({ width: note.width, height: note.height }).toEqual(NOTE_SIZE)
     expect(note.width).not.toBe(IMAGE_SIZE.width)
   })
+
+  it('writes on plain paper unless it is asked for another', () => {
+    expect(newNote({ x: 0, y: 0 }).style).toBe('plain')
+    expect(newNote({ x: 0, y: 0 }, { style: 'grid' }).style).toBe('grid')
+  })
 })

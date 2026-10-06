@@ -10,7 +10,33 @@ import {
   type ThemeMode,
   type YarnStyle,
 } from './preferences'
+import { POST_IT_COLORS } from '../board/tuning'
+import { NOTE_STYLES, type NoteStyle } from '../model/types'
 import './PreferencesPanel.css'
+
+/** A swatch is a flat colour here, so each paper is approximated with a gradient. */
+const PAPER_SWATCHES: Readonly<Record<NoteStyle, string>> = {
+  plain: 'var(--color-parchment-200)',
+  ruled:
+    'repeating-linear-gradient(to bottom, var(--color-parchment-200) 0 4px, color-mix(in srgb, var(--color-ink) 25%, transparent) 4px 5px)',
+  grid: 'repeating-linear-gradient(to bottom, var(--color-parchment-200) 0 4px, color-mix(in srgb, var(--color-ink) 18%, transparent) 4px 5px), repeating-linear-gradient(to right, var(--color-parchment-200) 0 4px, color-mix(in srgb, var(--color-ink) 18%, transparent) 4px 5px)',
+  'dog-eared':
+    'linear-gradient(135deg, var(--color-parchment-200) 0 68%, color-mix(in srgb, var(--color-ink) 30%, transparent) 68% 100%)',
+  taped:
+    'linear-gradient(to bottom, rgb(255 255 255 / 0.75) 0 28%, var(--color-parchment-200) 28% 100%)',
+}
+
+const PAPER_OPTIONS: readonly ChoiceOption<NoteStyle>[] = NOTE_STYLES.map((id) => ({
+  value: id,
+  label: id === 'dog-eared' ? 'Dog-eared' : id.charAt(0).toUpperCase() + id.slice(1),
+  swatch: PAPER_SWATCHES[id],
+}))
+
+const NOTE_COLOR_OPTIONS: readonly ChoiceOption<string>[] = POST_IT_COLORS.map((entry) => ({
+  value: entry.color,
+  label: entry.name,
+  swatch: entry.color,
+}))
 
 /** Referenced by the trigger's aria-controls. */
 export const PREFERENCES_PANEL_ID = 'preferences-panel'
@@ -366,11 +392,26 @@ export function PreferencesPanel({
             onChange={(yarnStyle) => setPreferences({ yarnStyle })}
           />
 
+          <ChoiceGroup
+            legend="New post-it paper"
+            name="prefs-note-style"
+            value={preferences.noteStyle}
+            options={PAPER_OPTIONS}
+            onChange={(noteStyle) => setPreferences({ noteStyle })}
+          />
+          <ChoiceGroup
+            legend="New post-it colour"
+            name="prefs-note-color"
+            value={preferences.noteColor}
+            options={NOTE_COLOR_OPTIONS}
+            onChange={(noteColor) => setPreferences({ noteColor })}
+          />
+
           <div className="prefs-actions">
             <button type="button" className="prefs-button" onClick={() => resetPreferences()}>
               Reset preferences
             </button>
-            <p className="prefs-hint">Puts theme, surface and yarn back to their defaults. Your board is untouched.</p>
+            <p className="prefs-hint">Puts theme, surface, yarn and the new-post-it pair back to their defaults. Your board is untouched.</p>
           </div>
 
           <BoardFileSection

@@ -188,6 +188,7 @@ export function demoBoard(): BoardState {
   const missing = newNote(POINTS.missing, {
     ...dateAt(13),
     color: POST_IT_COLORS[1].color,
+    style: 'ruled',
     bodyMd: 'Three dockworkers, all since the festival. Get the names.',
   })
   const blank = newNote(POINTS.blank, { ...dateAt(13), color: POST_IT_COLORS[2].color })
@@ -204,12 +205,18 @@ export function demoBoard(): BoardState {
   const tide = newNote(POINTS.tide, {
     ...dateAt(14),
     color: POST_IT_COLORS[0].color,
+    style: 'dog-eared',
     bodyMd: 'Low tide twice a day. The bell rings at one of them.',
   })
-  const blankToo = newNote(POINTS.blankToo, { ...dateAt(14), color: POST_IT_COLORS[1].color })
+  const blankToo = newNote(POINTS.blankToo, {
+    ...dateAt(14),
+    color: POST_IT_COLORS[1].color,
+    style: 'taped',
+  })
   const ferryman = newNote(POINTS.ferryman, {
     ...dateAt(15),
     color: POST_IT_COLORS[2].color,
+    style: 'grid',
     bodyMd: 'The ferryman knew the chest before he saw it.',
   })
   const ebb = newNote(POINTS.ebb, {

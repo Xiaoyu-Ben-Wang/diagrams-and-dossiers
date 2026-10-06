@@ -13,6 +13,7 @@ import type {
   ImageFit,
   ItemStatus,
   NoteEntity,
+  NoteStyle,
   Visibility,
 } from './types'
 
@@ -74,15 +75,16 @@ export function newFreePin(board: Point, seed: EntitySeed = {}): FreePin {
 
 export function newNote(
   board: Point,
-  seed: EntitySeed & { fontScale?: number } = {},
+  seed: EntitySeed & { fontScale?: number; style?: NoteStyle } = {},
 ): NoteEntity {
-  const { fontScale, ...rest } = seed
+  const { fontScale, style, ...rest } = seed
   return {
     ...base(rest),
     kind: 'note',
     board,
     ...NOTE_SIZE,
     fontScale: fontScale ?? NOTE_FONT_SCALE_DEFAULT,
+    style: style ?? 'plain',
   }
 }
 

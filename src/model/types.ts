@@ -26,6 +26,10 @@ export type DatePrecision = (typeof DATE_PRECISIONS)[number]
 export const STRING_STYLES = ['solid', 'dashed', 'double'] as const
 export type StringStyle = (typeof STRING_STYLES)[number]
 
+/** The paper a note is drawn on. Each is a CSS rule keyed on `data-note-style`. */
+export const NOTE_STYLES = ['plain', 'ruled', 'grid', 'dog-eared', 'taped'] as const
+export type NoteStyle = (typeof NOTE_STYLES)[number]
+
 export const ROLES = ['viewer', 'editor', 'dm', 'owner'] as const
 export type Role = (typeof ROLES)[number]
 
@@ -76,6 +80,7 @@ export interface NoteEntity extends EntityBase {
   height: number
   /** Font size as a multiple of `NOTE_FONT_SIZE`. */
   fontScale: number
+  style: NoteStyle
 }
 
 export interface ArticleEntity extends EntityBase {

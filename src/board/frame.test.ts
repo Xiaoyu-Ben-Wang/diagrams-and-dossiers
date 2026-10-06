@@ -23,6 +23,7 @@ const note = (over: Partial<NoteEntity> = {}): NoteEntity => ({
   width: 168,
   height: 128,
   fontScale: 1,
+  style: 'plain',
   ...over,
 })
 

@@ -7,8 +7,9 @@ import {
   NOTE_FONT_SIZE,
   stepFontScale,
 } from '../../model/kinds'
+import type { CSSProperties } from 'react'
+
 import type { NoteEntity } from '../../model/types'
-import { POST_IT_COLORS } from '../tuning'
 import { useBoardDrag } from '../useBoardDrag'
 import { useResizeDrag } from '../useResizeDrag'
 import type { Point } from '../yarn'
@@ -16,6 +17,13 @@ import type { Point } from '../yarn'
 const MIN_WIDTH = 96
 const MIN_HEIGHT = 80
 const MAX_EDGE = 900
+
+/** The note's padding plus the header row, above the first line of writing. */
+const TEXT_TOP = 8 + 12 + 4
+
+/** Tailwind's `leading-snug`. The textarea is given this line height inline, from
+ *  the same product, so the paper's rules cannot drift from the writing. */
+const LINE_RATIO = 1.375
 
 export interface PostItProps {
   note: NoteEntity
@@ -27,7 +35,8 @@ export interface PostItProps {
   onChange: (id: string, body: string) => void
   onResize: (id: string, size: { width: number; height: number }) => void
   onSetFontScale: (id: string, scale: number) => void
-  onSetColor: (id: string, color: string) => void
+  onOpenStyleMenu: (id: string) => void
+  styleMenuOpen: boolean
   onRemove: (id: string) => void
 }
 
@@ -41,13 +50,16 @@ export function PostIt({
   onChange,
   onResize,
   onSetFontScale,
-  onSetColor,
+  onOpenStyleMenu,
+  styleMenuOpen,
   onRemove,
 }: PostItProps) {
   const drag = useBoardDrag({
     zoom,
     onDrag: (delta) => onDrag(note.id, delta),
   })
+
+  const lineHeight = NOTE_FONT_SIZE * note.fontScale * LINE_RATIO
 
   const resize = useResizeDrag({
     size: { width: note.width, height: note.height },
@@ -68,6 +80,7 @@ export function PostIt({
       data-entity-id={note.id}
       data-post-it-id={note.id}
       data-board-entity="note"
+      data-note-style={note.style}
       // Select on the press, not a tap: the resize corner is only drawn on a selected note, so
       // a tap that travelled could move it and never select it, never reaching the corner.
       onPointerDown={() => onSelect(note.id)}
@@ -79,8 +92,15 @@ export function PostIt({
         top: note.board.y,
         width: note.width,
         height: note.height,
-        background: note.color,
-      }}
+        // Longhand, not `background`: the shorthand resets `background-image`, and
+        // an inline style outranks the stylesheet, so every paper style would be
+        // wiped. See `[data-note-style]` in index.css.
+        backgroundColor: note.color,
+        // The ruled and grid papers draw at the text's own pitch, which is the one
+        // thing a constant cannot know.
+        '--note-line': `${lineHeight}px`,
+        '--note-line-start': `${TEXT_TOP}px`,
+      } as CSSProperties}
     >
       <div className="mb-1 flex h-3 shrink-0 items-center gap-1">
         <div
@@ -104,30 +124,33 @@ export function PostIt({
         value={note.bodyMd}
         onChange={(event) => onChange(note.id, event.target.value)}
         placeholder="Write something…"
-        className="min-h-0 w-full flex-1 resize-none bg-transparent leading-snug text-ink outline-none placeholder:text-ink-soft/40"
-        style={{ fontSize: NOTE_FONT_SIZE * note.fontScale }}
+        className="min-h-0 w-full flex-1 resize-none bg-transparent text-ink outline-none placeholder:text-ink-soft/40"
+        style={{ fontSize: NOTE_FONT_SIZE * note.fontScale, lineHeight: `${lineHeight}px` }}
         aria-label="Post-it note"
       />
 
       {selected ? (
         <div className="post-it-tools">
-          <div className="post-it-colors">
-            {POST_IT_COLORS.map(({ name, color }) => (
-              <button
-                key={color}
-                type="button"
-                data-testid={`post-it-color-${name.toLowerCase()}`}
-                aria-label={`${name} note`}
-                aria-pressed={note.color === color}
-                title={name}
-                className="post-it-color"
-                data-selected={note.color === color}
-                style={{ background: color }}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={() => onSetColor(note.id, color)}
-              />
-            ))}
-          </div>
+          <button
+            type="button"
+            data-testid="post-it-style"
+            data-note-style-menu-trigger
+            aria-label="Style and colour"
+            aria-haspopup="true"
+            aria-expanded={styleMenuOpen}
+            title="Paper and colour"
+            className="post-it-style"
+            data-selected={styleMenuOpen}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => onOpenStyleMenu(note.id)}
+          >
+            <span
+              aria-hidden="true"
+              className="post-it-style-chip"
+              data-note-style={note.style}
+              style={{ backgroundColor: note.color }}
+            />
+          </button>
 
           <div className="post-it-fonts">
           <button

@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { POST_IT_COLORS } from '../board/tuning'
 
 import {
   DEFAULT_PREFERENCES,
@@ -100,12 +102,35 @@ describe('parsePreferences', () => {
 
   it('parses JSON text, the shape localStorage hands back', () => {
     const parsed = parsePreferences('{"theme":"light","surface":"slate","yarnStyle":"realistic"}')
-    expect(parsed).toEqual({ theme: 'light', surface: 'slate', yarnStyle: 'realistic' })
+    expect(parsed).toEqual({ ...DEFAULT_PREFERENCES, theme: 'light', surface: 'slate', yarnStyle: 'realistic' })
   })
 
   it('reads a half-written entry without losing the valid half', () => {
     const parsed = parsePreferences('{"theme":"light","surface":13}')
     expect(parsed).toEqual({ ...DEFAULT_PREFERENCES, theme: 'light' })
+  })
+
+  it('keeps the note default only when both halves are real', () => {
+    // A colour the palette does not carry would leave the picker with nothing pressed.
+    const parsed = parsePreferences({ noteStyle: 'grid', noteColor: '#123456' })
+
+    expect(parsed.noteStyle).toBe('grid')
+    expect(parsed.noteColor).toBe(DEFAULT_PREFERENCES.noteColor)
+  })
+
+  it('falls back to plain paper for a style it does not know', () => {
+    expect(parsePreferences({ noteStyle: 'marbled' }).noteStyle).toBe('plain')
+  })
+
+  it('notifies when only the note default changed', () => {
+    const seen = vi.fn()
+    const stop = subscribePreferences(seen)
+
+    setPreferences({ noteColor: POST_IT_COLORS[2].color })
+
+    stop()
+    expect(seen).toHaveBeenCalledTimes(1)
+    expect(getPreferences().noteColor).toBe(POST_IT_COLORS[2].color)
   })
 })
 
@@ -115,7 +140,13 @@ describe('preference storage', () => {
   })
 
   it('round-trips a full preference set', () => {
-    const wanted: Preferences = { theme: 'light', surface: 'whiteboard', yarnStyle: 'realistic' }
+    const wanted: Preferences = {
+      theme: 'light',
+      surface: 'whiteboard',
+      yarnStyle: 'realistic',
+      noteStyle: 'ruled',
+      noteColor: '#cfd6bd',
+    }
     savePreferences(wanted)
     expect(loadPreferences()).toEqual(wanted)
   })
@@ -190,7 +221,7 @@ describe('preference store', () => {
   it('ignores undefined patch entries instead of resetting them', () => {
     setPreferences({ theme: 'light', surface: 'slate' })
     setPreferences({ yarnStyle: undefined })
-    expect(getPreferences()).toEqual({ theme: 'light', surface: 'slate', yarnStyle: DEFAULT_PREFERENCES.yarnStyle })
+    expect(getPreferences()).toEqual({ ...DEFAULT_PREFERENCES, theme: 'light', surface: 'slate' })
   })
 
   it('returns to defaults on reset and saves that', () => {
@@ -219,7 +250,7 @@ describe('a throwing localStorage', () => {
   })
 
   it('saves without propagating', () => {
-    expect(() => savePreferences({ theme: 'light', surface: 'whiteboard', yarnStyle: 'realistic' })).not.toThrow()
+    expect(() => savePreferences({ ...DEFAULT_PREFERENCES, theme: 'light', surface: 'whiteboard' })).not.toThrow()
   })
 
   it('still updates the in-memory store so the board keeps working', () => {

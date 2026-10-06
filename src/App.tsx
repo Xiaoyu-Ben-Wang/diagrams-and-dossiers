@@ -4,7 +4,7 @@ import { createAnchor } from './anchors/create'
 import { domRangeToFlatRange } from './anchors/dom'
 import { caretRangeFromPoint, caretRangeThroughPins } from './anchors/caret'
 import { CAMPAIGN_EPOCH, demoBoard, FIRST_SESSION, SESSION_GAP_MS } from './app/demo'
-import { IMAGE_CAPTION_SPACE, IMAGE_CAPTION_TOP, NUDGE_SLOP_PX, POST_IT_COLORS, SLACK_STEP, SNAP_RADIUS, STRING_HIT_PX } from './board/tuning'
+import { IMAGE_CAPTION_SPACE, IMAGE_CAPTION_TOP, NUDGE_SLOP_PX, SLACK_STEP, SNAP_RADIUS, STRING_HIT_PX } from './board/tuning'
 import { DRAG_THRESHOLD } from './board/useBoardDrag'
 import { CAMERA_FLIGHT_MS, prefersReducedMotion } from './board/motion'
 import { MENTION_ATTRIBUTE, resolveMention } from './markdown/mentions'
@@ -17,7 +17,8 @@ import { renderBoardPng } from './board/export-png'
 import { YarnBead } from './board/entities/YarnBead'
 import { Legend } from './board/Legend'
 import { StringLayer } from './board/StringLayer'
-import { EdgePicker } from './board/EdgePicker'
+import { EdgePicker, type Box } from './board/EdgePicker'
+import { NoteStyleMenu } from './board/NoteStyleMenu'
 import { CAPTION_WIDTH, ImageCaption } from './board/ImageCaption'
 import { BoardPalette } from './board/Palette'
 import { StringNote } from './board/StringNote'
@@ -86,9 +87,10 @@ import {
   type EntityContext,
   type ImageEntity,
   type NoteEntity,
+  type NoteStyle,
 } from './model/types'
 import { PREFERENCES_PANEL_ID, PreferencesPanel } from './theme/PreferencesPanel'
-import { preferenceVariables, usePreferences } from './theme/preferences'
+import { preferenceVariables, setPreferences, usePreferences } from './theme/preferences'
 
 function pictureName(fileName: string): string {
   const trimmed = fileName.replace(/\.[^.]+$/, '').trim()
@@ -195,6 +197,11 @@ export function App({ seed }: AppProps = {}) {
   entityContextRef.current = entityContext
 
   const [exportImageOpen, setExportImageOpen] = useState(false)
+
+  /** Open for one note, or for the palette pad where it sets what new notes are made of. */
+  const [noteStyleMenu, setNoteStyleMenu] = useState<
+    { at: 'pad'; anchor: Box } | { at: 'note'; id: string } | null
+  >(null)
 
   /** The same "everything" the opening view frames, so the two cannot disagree. */
   const exportRects = useMemo(() => frameTargets(entities, entityContext), [entities, entityContext])
@@ -877,12 +884,15 @@ export function App({ seed }: AppProps = {}) {
     (point: Point) => {
       store.addEntities((state) => [
         newNote(point, {
-          color: POST_IT_COLORS[state.entities.length % POST_IT_COLORS.length].color,
+          // The pad's menu sets these, and they are remembered, so a board made
+          // of one kind of note does not have to be recoloured as it is written.
+          color: preferences.noteColor,
+          style: preferences.noteStyle,
           dateLabel: nextDateLabel(state.entities.length),
         }),
       ])
     },
-    [nextDateLabel],
+    [nextDateLabel, preferences.noteColor, preferences.noteStyle],
   )
 
   const tapArticleTab = useCallback(
@@ -949,6 +959,53 @@ export function App({ seed }: AppProps = {}) {
     )
   }, [])
 
+  const setNoteStyle = useCallback((id: string, style: NoteStyle) => {
+    store.updateEntities([id], (entity) =>
+      entity.kind === 'note' ? { ...entity, style, updatedAt: Date.now() } : entity,
+    )
+  }, [])
+
+  // One menu, two hosts. A pick made on the pad changes what the next note is
+  // made of; a pick made on a note changes that note. It deliberately does not
+  // also move the default — changing one old note should not silently change
+  // every note made afterwards.
+  const pickStyle = useCallback(
+    (style: NoteStyle) => {
+      if (!noteStyleMenu) return
+      if (noteStyleMenu.at === 'note') setNoteStyle(noteStyleMenu.id, style)
+      else setPreferences({ noteStyle: style })
+    },
+    [noteStyleMenu, setNoteStyle],
+  )
+
+  const pickColor = useCallback(
+    (color: string) => {
+      if (!noteStyleMenu) return
+      if (noteStyleMenu.at === 'note') setNoteColor(noteStyleMenu.id, color)
+      else setPreferences({ noteColor: color })
+    },
+    [noteStyleMenu, setNoteColor],
+  )
+
+  // The anchor is in board-canvas pixels, not viewport pixels: the menu is
+  // placed by `placeEdgePicker` against its offsetParent, which is the canvas.
+  const openStyleMenuForPad = useCallback(() => {
+    const pad = document.querySelector('[data-testid="palette-pad-1"]')?.getBoundingClientRect()
+    const canvas = document.querySelector('[data-testid="board-canvas"]')?.getBoundingClientRect()
+    const anchor =
+      pad && canvas && pad.width > 0
+        ? {
+            left: pad.left - canvas.left,
+            top: pad.top - canvas.top,
+            width: pad.width,
+            height: pad.height,
+          }
+        : // jsdom lays nothing out; the menu only has to be in the tree there.
+          { left: 16, top: 100, width: 62, height: 62 }
+    // The pad is a disclosure, so a second press closes it, as the note's trigger does.
+    setNoteStyleMenu((menu) => (menu?.at === 'pad' ? null : { at: 'pad', anchor }))
+  }, [])
+
   const setEntityTitle = useCallback((id: string, title: string) => {
     store.updateEntities([id], (entity) => ({ ...entity, title, updatedAt: Date.now() }))
   }, [])
@@ -965,6 +1022,7 @@ export function App({ seed }: AppProps = {}) {
     (id: string) => {
       store.removeEntities([id])
       setEditingPin(null)
+      setNoteStyleMenu((menu) => (menu?.at === 'note' && menu.id === id ? null : menu))
     },
     [store],
   )
@@ -1004,6 +1062,7 @@ export function App({ seed }: AppProps = {}) {
       setEditingPin(null)
       setHovered(null)
       setContextMenu(null)
+      setNoteStyleMenu(null)
       setAwaitingFit(true)
       return null
     },
@@ -1016,6 +1075,7 @@ export function App({ seed }: AppProps = {}) {
     setEditingPin(null)
     setHovered(null)
     setContextMenu(null)
+    setNoteStyleMenu(null)
   }, [store])
 
   const anchorPoints = useMemo(() => {
@@ -1113,7 +1173,9 @@ export function App({ seed }: AppProps = {}) {
       ) {
         return
       }
-      if (editingPin || contextMenu || prefsOpen || movingPin || exportImageOpen) return
+      if (editingPin || contextMenu || prefsOpen || movingPin || exportImageOpen || noteStyleMenu) {
+        return
+      }
 
       if (event.key === 'Delete' || event.key === 'Backspace') {
         if (selectedString) {
@@ -1140,6 +1202,7 @@ export function App({ seed }: AppProps = {}) {
     editingPin,
     exportImageOpen,
     movingPin,
+    noteStyleMenu,
     prefsOpen,
     removeEntities,
     removeString,
@@ -1205,6 +1268,33 @@ export function App({ seed }: AppProps = {}) {
       height: bottomRight.y - topLeft.y + IMAGE_CAPTION_SPACE,
     }
   }, [selectedImage, entityContext, camera])
+
+  const menuNote = useMemo(() => {
+    if (noteStyleMenu?.at !== 'note') return null
+    const found = entities.find((entity) => entity.id === noteStyleMenu.id)
+    return found && found.kind === 'note' ? found : null
+  }, [noteStyleMenu, entities])
+
+  const noteStyleAnchor = useMemo(() => {
+    if (!menuNote) return null
+    const box = descriptorFor(menuNote).bounds(menuNote, entityContext)
+    if (!box) return null
+    const topLeft = boardToScreen(camera, { x: box.x, y: box.y })
+    const bottomRight = boardToScreen(camera, { x: box.x + box.width, y: box.y + box.height })
+    return {
+      left: topLeft.x,
+      top: topLeft.y,
+      width: bottomRight.x - topLeft.x,
+      height: bottomRight.y - topLeft.y,
+    }
+  }, [menuNote, entityContext, camera])
+
+  /** What the menu shows as current: the note's own pair, or the pad's default. */
+  const menuTarget = useMemo(() => {
+    // A note with no colour of its own presses nothing, rather than claiming one.
+    if (menuNote) return { style: menuNote.style, color: menuNote.color ?? '' }
+    return { style: preferences.noteStyle, color: preferences.noteColor }
+  }, [menuNote, preferences.noteStyle, preferences.noteColor])
 
   const named = useMemo(
     () =>
@@ -1375,7 +1465,24 @@ export function App({ seed }: AppProps = {}) {
                     })
                   }}
                     onDropPin={(clientX, clientY) => createFreePin(worldPoint(clientX, clientY))}
+                    onOpenNoteMenu={openStyleMenuForPad}
+                    noteMenuOpen={noteStyleMenu?.at === 'pad'}
+                    noteStyle={preferences.noteStyle}
+                    noteColor={preferences.noteColor}
                   />
+
+                  {noteStyleMenu && (noteStyleMenu.at === 'pad' ? noteStyleMenu.anchor : noteStyleAnchor) ? (
+                    <NoteStyleMenu
+                      anchor={
+                        noteStyleMenu.at === 'pad' ? noteStyleMenu.anchor : noteStyleAnchor!
+                      }
+                      style={menuTarget.style}
+                      color={menuTarget.color}
+                      onPickStyle={pickStyle}
+                      onPickColor={pickColor}
+                      onClose={() => setNoteStyleMenu(null)}
+                    />
+                  ) : null}
                 </>
               }
             >
@@ -1432,7 +1539,12 @@ export function App({ seed }: AppProps = {}) {
                 onSetBody={setEntityBody}
                 onResizeNote={resizeNote}
                 onSetFontScale={setNoteFontScale}
-                onSetColor={setNoteColor}
+                onOpenStyleMenu={(id) =>
+                  setNoteStyleMenu((menu) =>
+                    menu?.at === 'note' && menu.id === id ? null : { at: 'note', id },
+                  )
+                }
+                styleMenuNoteId={noteStyleMenu?.at === 'note' ? noteStyleMenu.id : null}
                 onRemove={removeEntity}
               />
               {/* Rendered last so the yarn paints over everything; pointer-events-none

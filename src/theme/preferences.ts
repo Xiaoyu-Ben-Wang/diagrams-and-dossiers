@@ -1,5 +1,8 @@
 import { useSyncExternalStore } from 'react'
 
+import { POST_IT_COLORS } from '../board/tuning'
+import { NOTE_STYLES, type NoteStyle } from '../model/types'
+
 export const THEMES = ['light', 'dark'] as const
 export type ThemeMode = (typeof THEMES)[number]
 
@@ -10,16 +13,24 @@ export type BoardSurface = (typeof SURFACES)[number]
 export const YARN_STYLES = ['minimal', 'realistic'] as const
 export type YarnStyle = (typeof YARN_STYLES)[number]
 
+/** The palette a new note may be made in, validated on the way out of storage. */
+const NOTE_COLORS: readonly string[] = POST_IT_COLORS.map((entry) => entry.color)
+
 export interface Preferences {
   theme: ThemeMode
   surface: BoardSurface
   yarnStyle: YarnStyle
+  /** What the palette's note pad makes, and what its menu starts on. */
+  noteStyle: NoteStyle
+  noteColor: string
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: 'dark',
   surface: 'cork',
   yarnStyle: 'minimal',
+  noteStyle: 'plain',
+  noteColor: POST_IT_COLORS[0].color,
 }
 
 interface ThemePalette {
@@ -148,6 +159,8 @@ export function parsePreferences(raw: unknown): Preferences {
     theme: pick(value.theme, THEMES, DEFAULT_PREFERENCES.theme),
     surface: pick(value.surface, SURFACES, DEFAULT_PREFERENCES.surface),
     yarnStyle: pick(value.yarnStyle, YARN_STYLES, DEFAULT_PREFERENCES.yarnStyle),
+    noteStyle: pick(value.noteStyle, NOTE_STYLES, DEFAULT_PREFERENCES.noteStyle),
+    noteColor: pick(value.noteColor, NOTE_COLORS, DEFAULT_PREFERENCES.noteColor),
   }
 }
 
@@ -163,8 +176,16 @@ function tryParse(text: string): unknown {
   }
 }
 
+// Every field must be named here: `setPreferences` uses this to decide whether
+// anything changed, so one left out silently drops the update.
 function samePreferences(a: Preferences, b: Preferences): boolean {
-  return a.theme === b.theme && a.surface === b.surface && a.yarnStyle === b.yarnStyle
+  return (
+    a.theme === b.theme &&
+    a.surface === b.surface &&
+    a.yarnStyle === b.yarnStyle &&
+    a.noteStyle === b.noteStyle &&
+    a.noteColor === b.noteColor
+  )
 }
 
 export function applyPreferences(preferences: Preferences): void {

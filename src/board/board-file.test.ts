@@ -56,6 +56,7 @@ function tinyBoard(): BoardState {
         width: 168,
         height: 128,
         fontScale: 1,
+        style: 'plain',
       },
     ],
     strings: [
@@ -243,6 +244,37 @@ describe('refusing a file', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.board.entities[1]).toMatchObject({ color: '#cfd6bd' })
+  })
+
+  it('carries the paper a note is written on', () => {
+    const board = tinyBoard()
+    const folded = { ...board.entities[1], style: 'dog-eared' }
+    const result = parseBoardFile(fileWith({ ...board, entities: [board.entities[0], folded] }))
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.board.entities[1]).toMatchObject({ style: 'dog-eared' })
+  })
+
+  it('gives a note plain paper when the file predates the style', () => {
+    const board = tinyBoard()
+    const older: Record<string, unknown> = { ...board.entities[1] }
+    delete older.style
+    const result = parseBoardFile(fileWith({ ...board, entities: [board.entities[0], older] }))
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.board.entities[1]).toMatchObject({ style: 'plain' })
+  })
+
+  it('falls back to plain paper rather than refusing a style it does not know', () => {
+    const board = tinyBoard()
+    const future = { ...board.entities[1], style: 'marbled' }
+    const result = parseBoardFile(fileWith({ ...board, entities: [board.entities[0], future] }))
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.board.entities[1]).toMatchObject({ style: 'plain' })
   })
 
   it('gives a note its normal size when the file predates the setting', () => {

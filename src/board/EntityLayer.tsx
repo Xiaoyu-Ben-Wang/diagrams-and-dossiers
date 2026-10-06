@@ -31,7 +31,9 @@ export interface EntityLayerProps {
   onSetBody: (id: string, body: string) => void
   onResizeNote: (id: string, size: { width: number; height: number }) => void
   onSetFontScale: (id: string, scale: number) => void
-  onSetColor: (id: string, color: string) => void
+  onOpenStyleMenu: (id: string) => void
+  /** The note whose style menu is open, so its trigger can say so. */
+  styleMenuNoteId: string | null
   onRemove: (id: string) => void
 }
 
@@ -60,7 +62,8 @@ export function EntityLayer({
   onSetBody,
   onResizeNote,
   onSetFontScale,
-  onSetColor,
+  onOpenStyleMenu,
+  styleMenuNoteId,
   onRemove,
 }: EntityLayerProps) {
   return (
@@ -121,7 +124,8 @@ export function EntityLayer({
           onChange={onSetBody}
           onResize={onResizeNote}
           onSetFontScale={onSetFontScale}
-          onSetColor={onSetColor}
+          onOpenStyleMenu={onOpenStyleMenu}
+          styleMenuOpen={styleMenuNoteId === note.id}
           onRemove={onRemove}
         />
       ))}

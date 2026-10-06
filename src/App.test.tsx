@@ -13,8 +13,10 @@ import {
 import { DEFAULT_SLACK, sagFor, YARN_COLOR } from './board/yarn'
 import { demoBoard, demoPages } from './app/demo'
 import { parseBoardFile, readBoardFile, serializeBoard } from './board/board-file'
+import { POST_IT_COLORS } from './board/tuning'
 import { newArticle } from './model/create'
 import type { BoardEntity } from './model/types'
+import { getPreferences, resetPreferences } from './theme/preferences'
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/')
@@ -955,6 +957,10 @@ describe('App — the writing on a note', () => {
     fireEvent.pointerDown(note(container), { button: 0, pointerId: 5 })
   }
 
+  const openNoteMenu = (): void => {
+    fireEvent.click(screen.getByTestId('post-it-style'))
+  }
+
   it('offers the size controls once the note is selected', () => {
     const { container } = render(<App />)
     expect(screen.queryByTestId('post-it-font-up')).toBeNull()
@@ -1011,24 +1017,29 @@ describe('App — the writing on a note', () => {
     expect(all[1].style.fontSize).toBe('12px')
   })
 
-  it('offers the note its colours once it is selected', () => {
+  it('offers the note its paper and colours once its menu is opened', () => {
     const { container } = render(<App />)
     expect(screen.queryByTestId('post-it-color-sage')).toBeNull()
 
     selectNote(container)
+    expect(screen.queryByTestId('post-it-color-sage')).toBeNull()
+
+    openNoteMenu()
 
     expect(screen.getByTestId('post-it-color-sage')).toBeTruthy()
     expect(screen.getByTestId('post-it-color-yellow')).toBeTruthy()
+    expect(screen.getByTestId('post-it-paper-ruled')).toBeTruthy()
   })
 
   it('repaints the note when a colour is picked', () => {
     const { container } = render(<App />)
     selectNote(container)
-    const before = note(container).style.background
+    openNoteMenu()
+    const before = note(container).style.backgroundColor
 
     fireEvent.click(screen.getByTestId('post-it-color-sage'))
 
-    expect(note(container).style.background).not.toBe(before)
+    expect(note(container).style.backgroundColor).not.toBe(before)
     expect(screen.getByTestId('post-it-color-sage').getAttribute('data-selected')).toBe('true')
     expect(screen.getByTestId('post-it-color-yellow').getAttribute('data-selected')).toBe('false')
   })
@@ -1036,14 +1047,110 @@ describe('App — the writing on a note', () => {
   it('repaints one note, not the board', () => {
     const { container } = render(<App />)
     const notes = container.querySelectorAll<HTMLElement>('[data-post-it-id]')
-    const other = notes[1].style.background
+    const other = notes[1].style.backgroundColor
     selectNote(container)
+    openNoteMenu()
 
     fireEvent.click(screen.getByTestId('post-it-color-sage'))
 
-    expect(notes[1].style.background).toBe(other)
+    expect(notes[1].style.backgroundColor).toBe(other)
   })
 
+})
+
+describe('App — the note’s paper', () => {
+  const note = (container: HTMLElement): HTMLElement =>
+    container.querySelector('[data-post-it-id]') as HTMLElement
+  const selectNote = (container: HTMLElement): void => {
+    fireEvent.pointerDown(note(container), { button: 0, pointerId: 5 })
+  }
+  const openNoteMenu = (): void => {
+    fireEvent.click(screen.getByTestId('post-it-style'))
+  }
+
+  // The preferences store is module-global, and this block changes it.
+  afterEach(() => {
+    act(() => resetPreferences())
+  })
+
+  it('gives the note the paper that was picked, and only that note', () => {
+    const { container } = render(<App />)
+    const notes = container.querySelectorAll<HTMLElement>('[data-post-it-id]')
+    expect(notes[0].getAttribute('data-note-style')).toBe('plain')
+    const other = notes[1].getAttribute('data-note-style')
+
+    selectNote(container)
+    openNoteMenu()
+    fireEvent.click(screen.getByTestId('post-it-paper-grid'))
+
+    expect(notes[0].getAttribute('data-note-style')).toBe('grid')
+    expect(notes[1].getAttribute('data-note-style')).toBe(other)
+  })
+
+  it('opens the menu on a press that stays put', () => {
+    const { container } = render(<App />)
+    const before = container.querySelectorAll('[data-post-it-id]').length
+
+    // Down and up at the same point: the click the pad used to swallow.
+    tap(screen.getByTestId('palette-pad-1'))
+
+    expect(screen.getByTestId('post-it-style-menu')).toBeTruthy()
+    expect(container.querySelectorAll('[data-post-it-id]').length).toBe(before)
+  })
+
+  it('still makes a note when the press travels, and opens no menu', () => {
+    const { container } = render(<App />)
+    // jsdom lays nothing out, so the drop's own bounds check needs a real box.
+    const canvas = container.querySelector('[data-testid="board-canvas"]') as HTMLElement
+    const box = vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 1200,
+      bottom: 800,
+      width: 1200,
+      height: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+    const before = container.querySelectorAll('[data-post-it-id]').length
+
+    fireEvent.pointerDown(screen.getByTestId('palette-pad-1'), {
+      button: 0,
+      pointerId: 9,
+      clientX: 40,
+      clientY: 500,
+    })
+    fireEvent.pointerMove(window, { pointerId: 9, clientX: 400, clientY: 400 })
+    fireEvent.pointerUp(window, { pointerId: 9, clientX: 400, clientY: 400 })
+
+    box.mockRestore()
+    expect(screen.queryByTestId('post-it-style-menu')).toBeNull()
+    expect(container.querySelectorAll('[data-post-it-id]').length).toBe(before + 1)
+  })
+
+  it('makes the next note out of the pair chosen on the pad, and remembers it', () => {
+    const { container } = render(<App />)
+
+    tap(screen.getByTestId('palette-pad-1'))
+    fireEvent.click(screen.getByTestId('post-it-paper-taped'))
+    fireEvent.click(screen.getByTestId('post-it-color-sage'))
+    expect(screen.getByTestId('post-it-style-menu')).toBeTruthy()
+
+    // The menu owns Escape, and a real key event goes to whatever has focus.
+    expect(document.activeElement).toBe(screen.getByTestId('post-it-style-menu'))
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Escape' })
+    expect(screen.queryByTestId('post-it-style-menu')).toBeNull()
+
+    expect(getPreferences().noteStyle).toBe('taped')
+    expect(getPreferences().noteColor).toBe(POST_IT_COLORS[3].color)
+
+    // The pad carries the pair, so the next drop is visible before it happens.
+    const before = container.querySelectorAll('[data-post-it-id]').length
+    fireEvent.keyDown(screen.getByTestId('palette-pad-1'), { key: 'Enter' })
+    expect(screen.getByTestId('post-it-style-menu')).toBeTruthy()
+    expect(container.querySelectorAll('[data-post-it-id]').length).toBe(before)
+  })
 })
 
 describe('App — naming a picture', () => {

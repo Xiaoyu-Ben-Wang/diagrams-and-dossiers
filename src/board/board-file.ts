@@ -5,12 +5,14 @@ import {
   ENTITY_KINDS,
   IMAGE_FITS,
   ITEM_STATUSES,
+  NOTE_STYLES,
   STRING_STYLES,
   VISIBILITIES,
   type BoardEntity,
   type DatePrecision,
   type ImageFit,
   type ItemStatus,
+  type NoteStyle,
   type StringLink,
   type StringStyle,
   type Visibility,
@@ -238,6 +240,7 @@ function parseEntity(value: unknown, where: string): BoardEntity {
         width: number(raw.width, `${where}.width`),
         height: number(raw.height, `${where}.height`),
         fontScale: clampFontScale(optionalNumber(raw.fontScale)),
+        style: oneOf<NoteStyle>(raw.style, NOTE_STYLES, 'plain'),
       }
 
     case 'article':
