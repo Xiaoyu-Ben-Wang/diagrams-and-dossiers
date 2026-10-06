@@ -157,7 +157,9 @@ export function PaperEditor({
       // Over the board rather than beside it: a panel that took width from the
       // canvas would resize it, and the board would slide sideways the moment a
       // page was opened for editing. Taken out of the flow, nothing moves.
-      className="absolute inset-y-0 left-0 z-20 flex w-[min(92vw,380px)] flex-col overflow-hidden border-r border-parchment-edge/15 bg-cork-900/95 shadow-2xl"
+      // Above the palette (28) and opaque, so it covers the pad rather than letting
+      // it ghost through; below the menus (30), which must not be hidden while open.
+      className="absolute inset-y-0 left-0 z-[29] flex w-[min(92vw,380px)] flex-col overflow-hidden border-r border-parchment-edge/15 bg-cork-900 shadow-2xl"
       aria-label="Document editor"
       data-testid="paper-editor"
     >
