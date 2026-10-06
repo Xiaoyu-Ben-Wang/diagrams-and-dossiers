@@ -228,36 +228,31 @@ body {
    are in px rather than %, so the tear is the same size on a small note and a
    large one — a percentage would make a tall note look chewed. */
 [data-note-style="torn"] {
-  clip-path: polygon(
-    0px 6px,
-    2% 2px,
-    5% 8px,
-    6% 3px,
-    11% 1px,
-    14% 7px,
-    18% 4px,
-    21% 2px,
-    25% 8px,
-    30% 3px,
-    33% 1px,
-    38% 6px,
-    41% 2px,
-    46% 8px,
-    52% 4px,
-    54% 1px,
-    58% 7px,
-    63% 3px,
-    67% 6px,
-    71% 2px,
-    76% 8px,
-    79% 3px,
-    84% 5px,
-    88% 1px,
-    92% 7px,
-    97% 2px,
-    100% 5px,
-    100% 100%,
-    0px 100%
+  /* The tear comes from the note's own id; the fallback is what the picker's chip
+     draws, having no id to seed from. */
+  clip-path: var(
+    --note-tear,
+    polygon(
+      0px 6px,
+      3% 2px,
+      6% 8px,
+      11% 1px,
+      14% 7px,
+      19% 4px,
+      25% 8px,
+      30% 3px,
+      38% 6px,
+      46% 8px,
+      54% 1px,
+      58% 7px,
+      67% 6px,
+      76% 8px,
+      84% 5px,
+      92% 7px,
+      100% 5px,
+      100% 100%,
+      0px 100%
+    )
   );
 }
 

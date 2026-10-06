@@ -44,6 +44,34 @@ export function seededTilt(id: string): number {
   return round2((unit(hash32(id, 0)) * 2 - 1) * NOTE_TILT_MAX);
 }
 
+/** Teeth across a torn edge, and how deep one may bite. */
+const TEAR_TEETH = 22;
+const TEAR_DEPTH_MAX = 7;
+
+/**
+ * The ragged top edge a torn note gets, from its own id. Both how wide each bite
+ * is and how deep vary, because an even sawtooth reads as a cut, not a tear.
+ */
+export function seededTear(id: string): string {
+  const widths: number[] = [];
+  let total = 0;
+  for (let i = 0; i < TEAR_TEETH; i += 1) {
+    const width = 0.4 + unit(hash32(id, 101 + i));
+    widths.push(width);
+    total += width;
+  }
+
+  const points: string[] = [];
+  let across = 0;
+  for (let i = 0; i <= TEAR_TEETH; i += 1) {
+    const depth = Math.round(1 + unit(hash32(id, 201 + i)) * TEAR_DEPTH_MAX);
+    points.push(`${across.toFixed(1)}% ${depth}px`);
+    if (i < TEAR_TEETH) across += (widths[i]! / total) * 100;
+  }
+
+  return `polygon(${points.join(", ")}, 100% 100%, 0% 100%)`;
+}
+
 /** FNV-1a, then an avalanche pass, so ids differing by one do not land together. */
 function hash32(text: string, salt: number): number {
   let hash = 0x811c9dc5 ^ salt;

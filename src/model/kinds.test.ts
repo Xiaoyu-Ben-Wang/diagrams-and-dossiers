@@ -17,6 +17,7 @@ import {
   TACK_RADIUS,
   TACK_OFFSET_X,
   TACK_OFFSET_Y,
+  seededTear,
   seededTilt,
 } from "./kinds";
 import {
@@ -466,6 +467,33 @@ describe("the lean a note is given", () => {
       expect(Math.abs(seededTilt(`note-${i}`))).toBeLessThanOrEqual(
         NOTE_TILT_MAX,
       );
+    }
+  });
+});
+
+describe("the tear a note's top edge gets", () => {
+  it("is the same every time, for the same id", () => {
+    expect(seededTear("note-abcdef")).toBe(seededTear("note-abcdef"));
+  });
+
+  it("differs between notes, so no two are torn alike", () => {
+    const tears = ["n1", "n2", "n3", "n4", "n5"].map(seededTear);
+    expect(new Set(tears).size).toBeGreaterThan(1);
+  });
+
+  it("is a closed polygon that keeps the body of the note", () => {
+    const tear = seededTear("note-1");
+    expect(tear.startsWith("polygon(")).toBe(true);
+    expect(tear.endsWith("100% 100%, 0% 100%)")).toBe(true);
+    expect(tear).not.toContain("NaN");
+  });
+
+  it("never bites deeper than the header row, where the controls sit", () => {
+    for (let i = 0; i < 200; i += 1) {
+      const depths = [...seededTear(`note-${i}`).matchAll(/(\d+)px/g)].map(
+        (m) => Number(m[1]),
+      );
+      expect(Math.max(...depths)).toBeLessThanOrEqual(8);
     }
   });
 });

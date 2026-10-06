@@ -6,6 +6,7 @@ import {
   NOTE_FONT_SCALE_MIN,
   NOTE_FONT_SIZE,
   noteLineRatio,
+  seededTear,
   stepFontScale,
 } from "../../model/kinds";
 import type { CSSProperties } from "react";
@@ -58,6 +59,13 @@ export function PostIt({
 
   const lineHeight = NOTE_FONT_SIZE * note.fontScale * noteLineRatio(note.font);
 
+  // The tear is the note's own, so it rides on its style attribute; the picker's
+  // chip has no id to seed from and draws the fallback in the stylesheet.
+  const tearVars =
+    note.style === "torn"
+      ? ({ "--note-tear": seededTear(note.id) } as CSSProperties)
+      : null;
+
   const resize = useResizeDrag({
     size: { width: note.width, height: note.height },
     toBoard,
@@ -96,13 +104,13 @@ export function PostIt({
           transform: `rotate(${note.tilt}deg)`,
           // Longhand, not `background`: the shorthand resets `background-image`, and
           // an inline style outranks the stylesheet, so every paper style would be
-          // wiped. See `[data-note-style]` in index.css. Crumpled leaves it unset —
-          // its paper is the shaded `::before`, and the note itself is see-through.
+          // wiped. See `[data-note-style]` in index.css.
           backgroundColor: note.color,
           // The ruled and grid papers draw at the text's own pitch, which is the one
           // thing a constant cannot know.
           "--note-line": `${lineHeight}px`,
           "--note-line-start": `${TEXT_TOP}px`,
+          ...tearVars,
         } as CSSProperties
       }
     >
