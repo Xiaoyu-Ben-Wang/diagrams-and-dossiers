@@ -54,8 +54,8 @@ const THEME_OPTIONS: readonly ChoiceOption<ThemeMode>[] = [
 ]
 
 const YARN_OPTIONS: readonly ChoiceOption<YarnStyle>[] = [
-  { value: 'minimal', label: 'Minimal', hint: 'A clean line' },
-  { value: 'realistic', label: 'Realistic', hint: 'Fibre, fuzz and noise' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'realistic', label: 'Dynamic' },
 ]
 
 const SURFACE_LABELS: Record<BoardSurface, string | Record<ThemeMode, string>> = {
