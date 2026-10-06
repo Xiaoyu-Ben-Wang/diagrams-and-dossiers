@@ -1,7 +1,7 @@
 // The rotation is a CSS `transform-origin` of `50% 0`, the top-centre pin; `kinds.ts` reports
 // hit-testing numbers from the same pivot by the same maths in `pivot.ts`.
 
-import { useCallback } from 'react'
+import { memo, useCallback } from 'react'
 
 import { edgeClipPath, type EdgeStyle } from './edges'
 import { IMAGE_PIN_INSET } from '../model/kinds'
@@ -32,7 +32,7 @@ export interface ImageCardProps {
   onMove: (id: string, delta: Point) => void
   onRotate: (id: string, degrees: number) => void
   onResize: (id: string, size: { width: number; height: number }) => void
-  onStartYarn: (event: React.PointerEvent) => void
+  onStartYarn: (event: React.PointerEvent, id: string) => void
   onSelect: (id: string) => void
 }
 
@@ -68,7 +68,7 @@ export function sizeFor(
   }
 }
 
-export function ImageCard({
+export const ImageCard = memo(function ImageCard({
   id,
   src,
   alt,
@@ -184,7 +184,7 @@ export function ImageCard({
           marginTop: -7,
           touchAction: 'none',
         }}
-        onPointerDown={onStartYarn}
+        onPointerDown={(event) => onStartYarn(event, id)}
       />
 
       {selected ? (
@@ -244,4 +244,4 @@ export function ImageCard({
       ) : null}
     </div>
   )
-}
+})

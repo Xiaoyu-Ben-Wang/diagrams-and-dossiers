@@ -3,7 +3,7 @@
 
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
 import { ChevronDown, ChevronRight, RotateCw, X } from "lucide-react";
 
@@ -44,11 +44,11 @@ export interface ArticleSheetProps {
   onPinDrop: (id: string, clientX: number, clientY: number) => void;
   onOpenPinEditor: (id: string, clientX: number, clientY: number) => void;
   onPinHover: (pin: PinView, element: Element | null) => void;
-  onRotate: (degrees: number) => void;
-  onResize: (width: number) => void;
-  onToggleCollapsed: () => void;
-  onTapTab: () => void;
-  onMove: (delta: Point) => void;
+  onRotate: (id: string, degrees: number) => void;
+  onResize: (id: string, width: number) => void;
+  onToggleCollapsed: (id: string) => void;
+  onTapTab: (id: string) => void;
+  onMove: (id: string, delta: Point) => void;
   toBoard: (clientX: number, clientY: number) => Point;
   articleToBoard: (articleId: string, local: Point) => Point | null;
 }
@@ -56,7 +56,7 @@ export interface ArticleSheetProps {
 const TACK_DX = -6;
 const TACK_DY = -5;
 
-export function ArticleSheet({
+export const ArticleSheet = memo(function ArticleSheet({
   article,
   nodes,
   anchored,
@@ -80,7 +80,7 @@ export function ArticleSheet({
   toBoard,
   articleToBoard,
 }: ArticleSheetProps) {
-  const { board: pos, rotation: tilt, options } = article;
+  const { id, board: pos, rotation: tilt, options } = article;
   const width = options.width;
   const collapsed = options.collapsed;
 
@@ -109,8 +109,8 @@ export function ArticleSheet({
     pivot: { x: pos.x + width / 2, y: pos.y },
     tilt,
     toBoard,
-    onRotate,
-    onReset: () => onRotate(0),
+    onRotate: (degrees) => onRotate(id, degrees),
+    onReset: () => onRotate(id, 0),
   });
 
   const resize = useResizeDrag({
@@ -125,10 +125,14 @@ export function ArticleSheet({
       const half = Math.abs(local.x - (pos.x + width / 2));
       return { width: clampWidth(half * 2), height: 0 };
     },
-    onResize: (size) => onResize(size.width),
+    onResize: (size) => onResize(id, size.width),
   });
 
-  const tabDrag = useBoardDrag({ zoom, onDrag: onMove, onTap: onTapTab });
+  const tabDrag = useBoardDrag({
+    zoom,
+    onDrag: (delta) => onMove(id, delta),
+    onTap: () => onTapTab(id),
+  });
 
   // Remembered, not measured: when collapsed the element's height is the fold, so the
   // open height cannot be read back off it.
@@ -155,7 +159,7 @@ export function ArticleSheet({
     // Not on the way down: capture retargets the click that follows onto the
     // sheet, and the click is how a link or a mention in the page is reached.
     captureOnPress: false,
-    onDrag: onMove,
+    onDrag: (delta) => onMove(id, delta),
     onDragStart: () => {
       setDragging(true);
       window.getSelection()?.removeAllRanges();
@@ -194,8 +198,14 @@ export function ArticleSheet({
       !foldRef.current?.contains(target as Node)
     )
       return;
-    onToggleCollapsed();
+    onToggleCollapsed(id);
   };
+
+  const startPinYarn = useCallback(
+    (event: PointerEvent, pin: PinView) =>
+      onStartYarn(event, pin.id, pinPoint(pin, articleToBoard)),
+    [onStartYarn, articleToBoard],
+  );
 
   return (
     <div
@@ -292,7 +302,7 @@ export function ArticleSheet({
           // Stops the press reaching the tab's drag hook, where a release that never
           // travelled would read as a tap and open the editor.
           onPointerDown={(event) => event.stopPropagation()}
-          onClick={onToggleCollapsed}
+          onClick={() => onToggleCollapsed(id)}
           data-selected={selected}
           className="paper-disclosure flex h-full w-8 items-center justify-center rounded-tl leading-none"
         >
@@ -329,7 +339,7 @@ export function ArticleSheet({
           className="sheet-close"
           style={{ right: -10, top: -10 }}
           onPointerDown={(event) => event.stopPropagation()}
-          onClick={onToggleCollapsed}
+          onClick={() => onToggleCollapsed(id)}
         >
           <X size={13} strokeWidth={2.5} aria-hidden="true" />
         </button>
@@ -387,9 +397,7 @@ export function ArticleSheet({
                   selected={selectedPins.has(pin.id)}
                   moving={movingPin === pin.id}
                   zoom={zoom}
-                  onStartYarn={(event) =>
-                    onStartYarn(event, pin.id, pinPoint(pin, articleToBoard))
-                  }
+                  onStartYarn={startPinYarn}
                   onMove={onMoveOne}
                   onDrop={onPinDrop}
                   onOpenEditor={onOpenPinEditor}
@@ -402,7 +410,7 @@ export function ArticleSheet({
       )}
     </div>
   );
-}
+});
 
 function clampWidth(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_ARTICLE_OPTIONS.width;

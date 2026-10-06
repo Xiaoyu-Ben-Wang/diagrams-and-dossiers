@@ -1,7 +1,7 @@
 // The drag is tracked on the window, not by pointer capture on the pad: capture would aim
 // every move event at the 60px pad while the pointer is somewhere else entirely.
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { NoteStyle } from '../model/types'
 import { DRAG_THRESHOLD } from './useBoardDrag'
@@ -172,7 +172,7 @@ export interface BoardPaletteProps {
   canCreate: boolean
 }
 
-export function BoardPalette({
+export const BoardPalette = memo(function BoardPalette({
   onDropNote,
   onDropPin,
   onOpenNoteMenu,
@@ -205,7 +205,7 @@ export function BoardPalette({
       />
     </div>
   )
-}
+})
 
 function PinGlyph() {
   return <span className="palette-glyph-tack" />

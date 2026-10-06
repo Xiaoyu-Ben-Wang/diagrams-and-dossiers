@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { replaceRange } from "../markdown/format";
 import { MarkdownToolbar } from "./MarkdownToolbar";
@@ -48,7 +48,7 @@ function queryAt(
   return { from: index, to: caret, query: text.slice(index + 1, caret) };
 }
 
-export function PaperEditor({
+export const PaperEditor = memo(function PaperEditor({
   title,
   value,
   onChange,
@@ -259,4 +259,4 @@ export function PaperEditor({
       </p>
     </aside>
   );
-}
+});

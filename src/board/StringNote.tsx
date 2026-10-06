@@ -1,7 +1,7 @@
 // The slide projects the pointer onto the curve rather than applying a delta, which would
 // accumulate off the end of the rope and leave the note hanging beside the string.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
 import type { StringLink } from '../model/types'
 import { DRAG_THRESHOLD } from './useBoardDrag'
@@ -13,11 +13,11 @@ export interface StringNoteProps {
   to: Point
   selected: boolean
   toBoard: (clientX: number, clientY: number) => Point
-  onSlide: (t: number) => void
-  onWrite: (text: string) => void
+  onSlide: (id: string, t: number) => void
+  onWrite: (id: string, text: string) => void
 }
 
-export function StringNote({
+export const StringNote = memo(function StringNote({
   link,
   from,
   to,
@@ -64,9 +64,9 @@ export function StringNote({
       press.y = event.clientY
       if (press.travel < DRAG_THRESHOLD) return
 
-      onSlide(tAt(from, to, toBoard(event.clientX, event.clientY), link.slack))
+      onSlide(link.id, tAt(from, to, toBoard(event.clientX, event.clientY), link.slack))
     },
-    [from, link.slack, onSlide, to, toBoard],
+    [from, link.id, link.slack, onSlide, to, toBoard],
   )
 
   const onPointerUp = useCallback((event: React.PointerEvent) => {
@@ -86,8 +86,8 @@ export function StringNote({
 
   const commit = useCallback(() => {
     setEditing(false)
-    onWrite(draft.trim())
-  }, [draft, onWrite])
+    onWrite(link.id, draft.trim())
+  }, [draft, link.id, onWrite])
 
   if (!text && !selected && !editing) return null
 
@@ -142,7 +142,7 @@ export function StringNote({
       <span aria-hidden="true" className="string-note-dot" />
     </div>
   )
-}
+})
 
 export function tAt(from: Point, to: Point, point: Point, slack: number): number {
   if (Math.hypot(to.x - from.x, to.y - from.y) === 0) return 0.5

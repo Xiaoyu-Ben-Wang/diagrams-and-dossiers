@@ -9,7 +9,7 @@ import {
   seededTear,
   stepFontScale,
 } from "../../model/kinds";
-import type { CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 
 import type { NoteEntity } from "../../model/types";
 import { useBoardDrag } from "../useBoardDrag";
@@ -38,7 +38,7 @@ export interface PostItProps {
   onRemove: (id: string) => void;
 }
 
-export function PostIt({
+export const PostIt = memo(function PostIt({
   note,
   zoom,
   selected,
@@ -246,7 +246,7 @@ export function PostIt({
       ) : null}
     </div>
   );
-}
+});
 
 function clamp(value: number, low: number, high: number): number {
   if (!Number.isFinite(value)) return low;

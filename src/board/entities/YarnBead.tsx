@@ -1,23 +1,27 @@
+import { memo } from 'react'
+
 import { HANDLE_SIZE } from '../tuning'
 import { useBoardDrag } from '../useBoardDrag'
 import { pointOnYarn, YARN_COLOR, type Point } from '../yarn'
 
 // Only the vertical component of the drag is used: feeding sideways travel into the sag would
 // make the string lurch whenever the hand drifted.
-export function YarnBead({
+export const YarnBead = memo(function YarnBead({
+  id,
   from,
   to,
   slack,
   zoom,
   onSag,
 }: {
+  id: string
   from: Point
   to: Point
   slack: number
   zoom: number
-  onSag: (dy: number) => void
+  onSag: (id: string, dy: number) => void
 }) {
-  const drag = useBoardDrag({ zoom, onDrag: (delta) => onSag(delta.y) })
+  const drag = useBoardDrag({ zoom, onDrag: (delta) => onSag(id, delta.y) })
   const apex = pointOnYarn(from, to, 0.5, slack)
 
   return (
@@ -47,5 +51,4 @@ export function YarnBead({
       </svg>
     </button>
   )
-}
-
+})

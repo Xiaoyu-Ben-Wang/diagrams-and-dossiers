@@ -88,7 +88,6 @@ import {
   type Rect,
 } from "./camera";
 import {
-  createSpring,
   distance,
   distanceToYarn,
   DEFAULT_SLACK,
@@ -96,7 +95,6 @@ import {
   MAX_SLACK,
   sagFor,
   slackForSag,
-  stepSpring,
   yarnPath,
   YARN_COLOR,
   type Point,
@@ -138,6 +136,8 @@ function pictureName(fileName: string): string {
   return trimmed === "" ? fileName : trimmed;
 }
 
+const NO_PINS: readonly PinView[] = [];
+
 function uniqueName(desired: string, entities: readonly BoardEntity[]): string {
   const taken = new Set(
     entities
@@ -150,6 +150,24 @@ function uniqueName(desired: string, entities: readonly BoardEntity[]): string {
     if (!taken.has(candidate.toLowerCase())) return candidate;
   }
 }
+
+/** Keeps the previous array while it holds the same items, so an edit elsewhere leaves memoised children alone. */
+function useSameItems<T>(
+  next: readonly T[],
+  same: (a: T, b: T) => boolean = Object.is,
+): readonly T[] {
+  const ref = useRef(next);
+  const previous = ref.current;
+  if (
+    previous !== next &&
+    (previous.length !== next.length ||
+      previous.some((item, index) => !same(item, next[index])))
+  ) {
+    ref.current = next;
+  }
+  return ref.current;
+}
+
 export interface BoardScreenProps {
   /** The document to open. Loaded before this renders, never empty by accident. */
   board: BoardState;
@@ -197,18 +215,26 @@ export function BoardScreen({
 
   // Memoised: these feed dependency lists, and a fresh array every render would
   // re-run the anchor projection — which sets state, so the board would loop.
-  const placed = useMemo(() => entities.filter(isPin), [entities]);
-  const postIts = useMemo(
-    () =>
-      entities.filter((entity): entity is NoteEntity => entity.kind === "note"),
-    [entities],
+  const placed = useSameItems(
+    useMemo(() => entities.filter(isPin), [entities]),
   );
-  const articles = useMemo(
-    () =>
-      entities.filter(
-        (entity): entity is ArticleEntity => entity.kind === "article",
-      ),
-    [entities],
+  const postIts = useSameItems(
+    useMemo(
+      () =>
+        entities.filter(
+          (entity): entity is NoteEntity => entity.kind === "note",
+        ),
+      [entities],
+    ),
+  );
+  const articles = useSameItems(
+    useMemo(
+      () =>
+        entities.filter(
+          (entity): entity is ArticleEntity => entity.kind === "article",
+        ),
+      [entities],
+    ),
   );
   const articlesById = useMemo(
     () => new Map(articles.map((article) => [article.id, article])),
@@ -262,6 +288,9 @@ export function BoardScreen({
   >(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
+  // Read by the drag and select handlers, so their identity survives a selection change.
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
   const [movingPin, setMovingPin] = useState<string | null>(null);
   const [hovered, setHovered] = useState<{
     id: string;
@@ -314,6 +343,9 @@ export function BoardScreen({
     () => frameTargets(entities, entityContext),
     [entities, entityContext],
   );
+  const contentRect = useMemo(() => unionRect(exportRects), [exportRects]);
+  const contentRectRef = useRef(contentRect);
+  contentRectRef.current = contentRect;
 
   /**
    * Draw the board and hand back the file, or a reason it could not be drawn.
@@ -350,8 +382,8 @@ export function BoardScreen({
 
   const livePathRef = useRef<SVGPathElement>(null);
 
-  const springRef = useRef({ x: createSpring(0), y: createSpring(0) });
   const targetRef = useRef<Point>({ x: 0, y: 0 });
+  const drawnRef = useRef<Point | null>(null);
   const originRef = useRef<Point | null>(null);
   const frameRef = useRef<number>(0);
   const cameraRef = useRef(camera);
@@ -367,7 +399,7 @@ export function BoardScreen({
   }, []);
 
   /**
-   * The content's box, plus the tether. Read live rather than memoised, because
+   * The content's box, plus the tether. Read through a ref, not captured, because
    * the point of it is that moving an item moves the limit.
    */
   const tether = useCallback((next: Camera): Camera => {
@@ -375,9 +407,7 @@ export function BoardScreen({
       .querySelector('[data-testid="board-canvas"]')
       ?.getBoundingClientRect();
     if (!box || box.width === 0 || box.height === 0) return next;
-    const content = unionRect(
-      frameTargets(entitiesRef.current, entityContextRef.current),
-    );
+    const content = contentRectRef.current;
     if (!content) return next;
     return clampCameraToContent(next, content, {
       width: box.width,
@@ -625,13 +655,14 @@ export function BoardScreen({
 
   const selectImage = useCallback(
     (id: string) => {
-      const alreadySelected = selection.size === 1 && selection.has(id);
+      const current = selectionRef.current;
+      const alreadySelected = current.size === 1 && current.has(id);
       setSelection(new Set([id]));
       if (alreadySelected) return;
       const picture = entitiesRef.current.find((entity) => entity.id === id);
       reseedEdge(id, picture?.kind === "image" ? picture.edge : undefined);
     },
-    [reseedEdge, selection],
+    [reseedEdge],
   );
 
   const resizeArticle = useCallback(
@@ -939,18 +970,18 @@ export function BoardScreen({
     return () => document.removeEventListener("paste", handlePaste);
   }, [handlePaste]);
 
+  // The tip sits exactly under the pointer; pointermove only records it, and one
+  // write per frame coalesces the several moves a fast flick can send between frames.
   const runClock = useCallback(() => {
     const origin = originRef.current;
     const path = livePathRef.current;
     if (!origin || !path) return;
 
-    const spring = springRef.current;
-    stepSpring(spring.x, targetRef.current.x, 1 / 60);
-    stepSpring(spring.y, targetRef.current.y, 1 / 60);
-    path.setAttribute(
-      "d",
-      yarnPath(origin, { x: spring.x.value, y: spring.y.value }, DEFAULT_SLACK),
-    );
+    const target = targetRef.current;
+    if (target !== drawnRef.current) {
+      path.setAttribute("d", yarnPath(origin, target, DEFAULT_SLACK));
+      drawnRef.current = target;
+    }
     frameRef.current = requestAnimationFrame(runClock);
   }, []);
 
@@ -969,10 +1000,7 @@ export function BoardScreen({
 
       originRef.current = origin;
       targetRef.current = origin;
-      springRef.current = {
-        x: createSpring(origin.x, 220, 22),
-        y: createSpring(origin.y, 220, 22),
-      };
+      drawnRef.current = null;
       setDragFrom(fromId);
       frameRef.current = requestAnimationFrame(runClock);
     },
@@ -1093,17 +1121,14 @@ export function BoardScreen({
     [entities],
   );
 
-  const moveSelection = useCallback(
-    (delta: Point) => {
-      store.updateEntities([...selection], (entity) => {
-        const descriptor = descriptorFor(entity);
-        return descriptor.capabilities(entity).movable
-          ? descriptor.move(entity, delta)
-          : entity;
-      });
-    },
-    [selection],
-  );
+  const moveSelection = useCallback((delta: Point) => {
+    store.updateEntities([...selectionRef.current], (entity) => {
+      const descriptor = descriptorFor(entity);
+      return descriptor.capabilities(entity).movable
+        ? descriptor.move(entity, delta)
+        : entity;
+    });
+  }, []);
 
   const fitBoard = useCallback(() => {
     const canvas = document.querySelector('[data-testid="board-canvas"]');
@@ -1197,13 +1222,13 @@ export function BoardScreen({
 
   const moveEntity = useCallback(
     (id: string, delta: Point) => {
-      if (selection.has(id)) {
+      if (selectionRef.current.has(id)) {
         moveSelection(delta);
         return;
       }
       moveOne(id, delta);
     },
-    [moveOne, moveSelection, selection],
+    [moveOne, moveSelection],
   );
 
   const handleEntityDrag = useCallback(
@@ -1318,6 +1343,12 @@ export function BoardScreen({
     // The pad is a disclosure, so a second press closes it, as the note's trigger does.
     setNoteStyleMenu((menu) =>
       menu?.at === "pad" ? null : { at: "pad", anchor },
+    );
+  }, []);
+
+  const toggleNoteStyleMenu = useCallback((id: string) => {
+    setNoteStyleMenu((menu) =>
+      menu?.at === "note" && menu.id === id ? null : { at: "note", id },
     );
   }, []);
 
@@ -1436,38 +1467,62 @@ export function BoardScreen({
     setNoteStyleMenu(null);
   }, [store]);
 
+  const anchorPointsRef = useRef<ReadonlyMap<string, Point>>(new Map());
   const anchorPoints = useMemo(() => {
+    // An unmoved anchor keeps its object, so the strings, notes and sheets tied
+    // to it are not re-rendered by an edit somewhere else on the board.
+    const previous = anchorPointsRef.current;
     const map = new Map<string, Point>();
     for (const entity of entities) {
       const descriptor = descriptorFor(entity);
       if (!descriptor.capabilities(entity).connectable) continue;
       const point = descriptor.anchorPoint(entity, entityContext);
-      if (point) map.set(entity.id, point);
+      if (!point) continue;
+      const before = previous.get(entity.id);
+      map.set(
+        entity.id,
+        before && before.x === point.x && before.y === point.y ? before : point,
+      );
     }
     return map;
   }, [entities, entityContext]);
-  const anchorPointsRef = useRef(anchorPoints);
   anchorPointsRef.current = anchorPoints;
 
-  const drawableStrings = strings.flatMap((string) => {
-    const fromPoint = anchorPoints.get(string.from);
-    const toPoint = anchorPoints.get(string.to);
-    if (!fromPoint || !toPoint) return [];
+  const anchorOf = useCallback(
+    (id: string) => anchorPointsRef.current.get(id) ?? null,
+    [],
+  );
 
-    return [
-      {
-        id: string.id,
-        slack: string.slack,
-        from: fromPoint,
-        to: toPoint,
-      },
-    ];
-  });
+  const drawableStrings = useMemo(
+    () =>
+      strings.flatMap((string): DrawableString[] => {
+        const fromPoint = anchorPoints.get(string.from);
+        const toPoint = anchorPoints.get(string.to);
+        if (!fromPoint || !toPoint) return [];
+
+        return [
+          {
+            id: string.id,
+            slack: string.slack,
+            from: fromPoint,
+            to: toPoint,
+          },
+        ];
+      }),
+    [strings, anchorPoints],
+  );
 
   drawableStringsRef.current = drawableStrings;
 
-  const selectedString =
-    drawableStrings.find((string) => selection.has(string.id)) ?? null;
+  const stringsById = useMemo(
+    () => new Map(strings.map((link) => [link.id, link])),
+    [strings],
+  );
+
+  const selectedString = useMemo(
+    () => drawableStrings.find((string) => selection.has(string.id)) ?? null,
+    [drawableStrings, selection],
+  );
 
   const [hoveredString, setHoveredString] = useState<string | null>(null);
   const handleCanvasHover = useCallback(
@@ -1592,12 +1647,14 @@ export function BoardScreen({
     selection,
   ]);
 
-  const images = useMemo(
-    () =>
-      entities.filter(
-        (entity): entity is ImageEntity => entity.kind === "image",
-      ),
-    [entities],
+  const images = useSameItems(
+    useMemo(
+      () =>
+        entities.filter(
+          (entity): entity is ImageEntity => entity.kind === "image",
+        ),
+      [entities],
+    ),
   );
 
   const selectedImage = useMemo(
@@ -1717,14 +1774,19 @@ export function BoardScreen({
     preferences.noteFont,
   ]);
 
-  const named = useMemo(
-    () =>
-      entities.flatMap((entity) => {
-        if (entity.kind !== "article" && entity.kind !== "image") return [];
-        const name = entity.title?.trim();
-        return name ? [{ id: entity.id, name, kind: entity.kind }] : [];
-      }),
-    [entities],
+  // Compared by value: these are rebuilt on every edit, and a fresh `mentionNames`
+  // would re-run every sheet's mention marking on each frame of a drag.
+  const named = useSameItems(
+    useMemo(
+      () =>
+        entities.flatMap((entity) => {
+          if (entity.kind !== "article" && entity.kind !== "image") return [];
+          const name = entity.title?.trim();
+          return name ? [{ id: entity.id, name, kind: entity.kind }] : [];
+        }),
+      [entities],
+    ),
+    (a, b) => a.id === b.id && a.name === b.name && a.kind === b.kind,
   );
 
   const mentionNames = useMemo(
@@ -1741,8 +1803,48 @@ export function BoardScreen({
   const byIdRef = useRef(byId);
   byIdRef.current = byId;
 
-  const anchored = pins.filter((pin) => pin.rect);
-  const freePins = pins.filter((pin) => pin.board);
+  const anchoredByArticle = useMemo(() => {
+    const grouped = new Map<string, PinView[]>();
+    for (const pin of pins) {
+      if (!pin.rect || !pin.articleId) continue;
+      const group = grouped.get(pin.articleId);
+      if (group) group.push(pin);
+      else grouped.set(pin.articleId, [pin]);
+    }
+    return grouped;
+  }, [pins]);
+  const freePins = useMemo(() => pins.filter((pin) => pin.board), [pins]);
+
+  const selectedArticleId = selectedArticle?.id ?? null;
+  const setSelectedArticleBody = useCallback(
+    (body: string) => {
+      if (selectedArticleId) setEntityBody(selectedArticleId, body);
+    },
+    [selectedArticleId, setEntityBody],
+  );
+  const renameSelectedArticle = useCallback(
+    (next: string) => {
+      if (selectedArticleId) renameEntity(selectedArticleId, next);
+    },
+    [selectedArticleId, renameEntity],
+  );
+  const clearSelection = useCallback(() => setSelection(new Set()), []);
+
+  const dropNote = useCallback(
+    (clientX: number, clientY: number) => {
+      const at = worldPoint(clientX, clientY);
+      createPostIt({
+        x: at.x - NOTE_SIZE.width / 2,
+        y: at.y - NOTE_SIZE.height / 2,
+      });
+    },
+    [createPostIt, worldPoint],
+  );
+  const dropPin = useCallback(
+    (clientX: number, clientY: number) =>
+      createFreePin(worldPoint(clientX, clientY)),
+    [createFreePin, worldPoint],
+  );
   const activePin = editingPin ? byId.get(editingPin.id) : null;
 
   const contextEntity = contextMenu?.entityId
@@ -1822,9 +1924,9 @@ export function BoardScreen({
               // would otherwise store "Untitled sheet" as the page's real name.
               title={selectedArticle.title ?? ""}
               value={selectedArticle.bodyMd}
-              onChange={(body) => setEntityBody(selectedArticle.id, body)}
-              onRename={(next) => renameEntity(selectedArticle.id, next)}
-              onClose={() => setSelection(new Set())}
+              onChange={setSelectedArticleBody}
+              onRename={renameSelectedArticle}
+              onClose={clearSelection}
               mentions={mentions}
             />
           )}
@@ -1877,16 +1979,8 @@ export function BoardScreen({
 
                   <BoardPalette
                     canCreate={can(LOCAL_VIEWER, "create")}
-                    onDropNote={(clientX, clientY) => {
-                      const at = worldPoint(clientX, clientY);
-                      createPostIt({
-                        x: at.x - NOTE_SIZE.width / 2,
-                        y: at.y - NOTE_SIZE.height / 2,
-                      });
-                    }}
-                    onDropPin={(clientX, clientY) =>
-                      createFreePin(worldPoint(clientX, clientY))
-                    }
+                    onDropNote={dropNote}
+                    onDropPin={dropPin}
                     onOpenNoteMenu={openStyleMenuForPad}
                     noteMenuOpen={noteStyleMenu?.at === "pad"}
                     noteStyle={preferences.noteStyle}
@@ -1922,9 +2016,7 @@ export function BoardScreen({
                   key={article.id}
                   article={article}
                   nodes={articleViews.nodesFor(article.id)}
-                  anchored={anchored.filter(
-                    (pin) => pin.articleId === article.id,
-                  )}
+                  anchored={anchoredByArticle.get(article.id) ?? NO_PINS}
                   selected={selection.has(article.id)}
                   selectedPins={selection}
                   movingPin={movingPin}
@@ -1937,11 +2029,11 @@ export function BoardScreen({
                   onPinDrop={handlePinDrop}
                   onOpenPinEditor={openPinEditorAt}
                   onPinHover={handlePinHover}
-                  onRotate={(degrees) => rotateEntity(article.id, degrees)}
-                  onResize={(width) => resizeArticle(article.id, width)}
-                  onToggleCollapsed={() => toggleArticleCollapsed(article.id)}
-                  onTapTab={() => tapArticleTab(article.id)}
-                  onMove={(delta) => moveEntity(article.id, delta)}
+                  onRotate={rotateEntity}
+                  onResize={resizeArticle}
+                  onToggleCollapsed={toggleArticleCollapsed}
+                  onTapTab={tapArticleTab}
+                  onMove={moveEntity}
                   toBoard={worldPoint}
                   articleToBoard={articleToBoard}
                 />
@@ -1956,7 +2048,7 @@ export function BoardScreen({
                 zoom={camera.zoom}
                 articleToBoard={articleToBoard}
                 toBoard={worldPoint}
-                anchorOf={(id) => anchorPoints.get(id) ?? null}
+                anchorOf={anchorOf}
                 onStartYarn={beginString}
                 onMoveOne={moveOne}
                 onMoveEntity={moveEntity}
@@ -1970,13 +2062,7 @@ export function BoardScreen({
                 onSetBody={setEntityBody}
                 onResizeNote={resizeNote}
                 onSetFontScale={setNoteFontScale}
-                onOpenStyleMenu={(id) =>
-                  setNoteStyleMenu((menu) =>
-                    menu?.at === "note" && menu.id === id
-                      ? null
-                      : { at: "note", id },
-                  )
-                }
+                onOpenStyleMenu={toggleNoteStyleMenu}
                 styleMenuNoteId={
                   noteStyleMenu?.at === "note" ? noteStyleMenu.id : null
                 }
@@ -1995,9 +2081,7 @@ export function BoardScreen({
                 drawing={dragFrom !== null}
               />
               {drawableStrings.map((drawn) => {
-                const link = strings.find(
-                  (candidate) => candidate.id === drawn.id,
-                );
+                const link = stringsById.get(drawn.id);
                 if (!link) return null;
                 return (
                   <StringNote
@@ -2007,8 +2091,8 @@ export function BoardScreen({
                     to={drawn.to}
                     selected={selection.has(link.id)}
                     toBoard={worldPoint}
-                    onSlide={(t) => slideStringNote(link.id, t)}
-                    onWrite={(text) => writeStringNote(link.id, text)}
+                    onSlide={slideStringNote}
+                    onWrite={writeStringNote}
                   />
                 );
               })}
@@ -2016,11 +2100,12 @@ export function BoardScreen({
               {selectedString ? (
                 <YarnBead
                   key={selectedString.id}
+                  id={selectedString.id}
                   from={selectedString.from}
                   to={selectedString.to}
                   slack={selectedString.slack}
                   zoom={camera.zoom}
-                  onSag={(dy) => dragStringSag(selectedString.id, dy)}
+                  onSag={dragStringSag}
                 />
               ) : null}
             </BoardCanvas>

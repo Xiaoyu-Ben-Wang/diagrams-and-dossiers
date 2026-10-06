@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent } from 'react'
+import { memo, useRef, type PointerEvent } from 'react'
 
 import { useBoardDrag } from '../useBoardDrag'
 import type { PinView } from '../view'
@@ -8,7 +8,7 @@ import { TACK_SIZE } from '../../model/kinds'
 
 const TACK_HALF = TACK_SIZE / 2
 
-export function Tack({
+export const Tack = memo(function Tack({
   pin,
   x,
   y,
@@ -29,7 +29,7 @@ export function Tack({
   dimmed?: boolean
   moving: boolean
   zoom: number
-  onStartYarn: (event: PointerEvent) => void
+  onStartYarn: (event: PointerEvent, pin: PinView) => void
   onMove: (id: string, delta: Point) => void
   onDrop: (id: string, clientX: number, clientY: number) => void
   onOpenEditor: (id: string, clientX: number, clientY: number) => void
@@ -109,7 +109,9 @@ export function Tack({
       data-pin-id={pin.id}
       data-board-entity="pin"
       data-described={described ? 'true' : undefined}
-      {...(moving ? drag : { onPointerDown: onStartYarn })}
+      {...(moving
+        ? drag
+        : { onPointerDown: (event: PointerEvent) => onStartYarn(event, pin) })}
       onPointerEnter={(event) => onHover(pin, event.currentTarget)}
       onPointerLeave={() => onHover(pin, null)}
       // Safe unconditionally: the id only exists while the card is mounted, and aria-describedby
@@ -137,5 +139,4 @@ export function Tack({
       />
     </>
   )
-}
-
+})

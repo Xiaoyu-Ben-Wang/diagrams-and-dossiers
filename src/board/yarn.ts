@@ -132,43 +132,5 @@ export function anchorOnBox(
   return { x: centre.x + dx * scale, y: centre.y + dy * scale };
 }
 
-export interface Spring {
-  value: number;
-  velocity: number;
-  stiffness: number;
-  damping: number;
-}
-
-export function createSpring(
-  value: number,
-  stiffness = 170,
-  damping = 18,
-): Spring {
-  return { value, velocity: 0, stiffness, damping };
-}
-
-/** Advances in place and returns the same spring. */
-export function stepSpring(spring: Spring, target: number, dt: number): Spring {
-  // Clamp dt: a backgrounded tab would otherwise integrate one huge step on wake.
-  const step = Math.min(dt, 1 / 30);
-  const acceleration =
-    (target - spring.value) * spring.stiffness -
-    spring.velocity * spring.damping;
-  spring.velocity += acceleration * step;
-  spring.value += spring.velocity * step;
-  return spring;
-}
-
-export function springAtRest(
-  spring: Spring,
-  target: number,
-  epsilon = 0.05,
-): boolean {
-  return (
-    Math.abs(spring.value - target) < epsilon &&
-    Math.abs(spring.velocity) < epsilon
-  );
-}
-
 /** Deliberately one colour for every string; it holds contrast on both cork and paper. */
 export const YARN_COLOR = "#a3302b";

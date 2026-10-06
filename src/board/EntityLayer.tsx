@@ -1,3 +1,5 @@
+import { memo, useCallback } from 'react'
+
 import type { ImageEntity, NoteEntity } from '../model/types'
 import { ImageCard } from './ImageCard'
 import { PostIt } from './entities/PostIt'
@@ -39,7 +41,7 @@ export interface EntityLayerProps {
 
 const TACK_RADIUS = 7
 
-export function EntityLayer({
+export const EntityLayer = memo(function EntityLayer({
   freePins,
   images,
   postIts,
@@ -66,6 +68,16 @@ export function EntityLayer({
   styleMenuNoteId,
   onRemove,
 }: EntityLayerProps) {
+  const startPinYarn = useCallback(
+    (event: React.PointerEvent, pin: PinView) =>
+      onStartYarn(event, pin.id, pinPoint(pin, articleToBoard)),
+    [onStartYarn, articleToBoard],
+  )
+  const startImageYarn = useCallback(
+    (event: React.PointerEvent, id: string) => onStartYarn(event, id, anchorOf(id)),
+    [onStartYarn, anchorOf],
+  )
+
   return (
     <>
       {freePins.map((pin) =>
@@ -78,7 +90,7 @@ export function EntityLayer({
             selected={selection.has(pin.id)}
             moving={movingPin === pin.id}
             zoom={zoom}
-            onStartYarn={(event) => onStartYarn(event, pin.id, pinPoint(pin, articleToBoard))}
+            onStartYarn={startPinYarn}
             onMove={onMoveOne}
             onDrop={onPinDrop}
             onOpenEditor={onOpenPinEditor}
@@ -108,7 +120,7 @@ export function EntityLayer({
           onRotate={onRotate}
           onSelect={onSelectImage}
           onResize={onResize}
-          onStartYarn={(event) => onStartYarn(event, picture.id, anchorOf(picture.id))}
+          onStartYarn={startImageYarn}
         />
       ))}
 
@@ -131,4 +143,4 @@ export function EntityLayer({
       ))}
     </>
   )
-}
+})

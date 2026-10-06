@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   anchorOnBox,
   controlPoint,
-  createSpring,
   distance,
   distanceToYarn,
   MAX_SAG_RATIO,
@@ -11,8 +10,6 @@ import {
   pointOnYarn,
   sagFor,
   slackForSag,
-  springAtRest,
-  stepSpring,
   yarnPath,
 } from "./yarn";
 
@@ -216,38 +213,6 @@ describe("anchorOnBox", () => {
         true,
       );
     }
-  });
-});
-
-describe("spring", () => {
-  it("converges on its target", () => {
-    const spring = createSpring(0);
-    for (let i = 0; i < 300; i++) stepSpring(spring, 100, 1 / 60);
-    expect(spring.value).toBeCloseTo(100, 1);
-  });
-
-  it("overshoots slightly, so motion looks like it has weight", () => {
-    const spring = createSpring(0);
-    let peak = 0;
-    for (let i = 0; i < 120; i++) {
-      stepSpring(spring, 100, 1 / 60);
-      peak = Math.max(peak, spring.value);
-    }
-    expect(peak).toBeGreaterThan(100);
-  });
-
-  it("does not explode when a frame is enormous", () => {
-    // A backgrounded tab can hand a multi-second dt; integrating it in one step flings to infinity.
-    const spring = createSpring(0);
-    stepSpring(spring, 100, 5);
-    expect(Number.isFinite(spring.value)).toBe(true);
-    expect(Math.abs(spring.value)).toBeLessThan(1000);
-  });
-
-  it("reports rest once settled", () => {
-    const spring = createSpring(0, 200, 26);
-    for (let i = 0; i < 400; i++) stepSpring(spring, 50, 1 / 60);
-    expect(springAtRest(spring, 50)).toBe(true);
   });
 });
 
