@@ -98,7 +98,9 @@ const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
   },
   whiteboard: {
     light: { cork900: '#c9ced4', cork700: '#dde1e5', cork500: '#f7f9fa', cork300: '#a8b0b8', base: '#f7f9fa' },
-    dark: { cork900: '#0a0e0c', cork700: '#131a16', cork500: '#1e2a24', cork300: '#33443b', base: '#1e2a24' },
+    // Neutral, not green: the old ramp was green-dominant, which left it a hair
+    // from the felt and reading as a darker felt rather than a blackboard.
+    dark: { cork900: '#080809', cork700: '#111112', cork500: '#1b1b1d', cork300: '#2e2e31', base: '#1b1b1d' },
   },
   slate: {
     dark: { cork900: '#12161b', cork700: '#1c232a', cork500: '#2a333d', cork300: '#3f4b58', base: '#2a333d' },
