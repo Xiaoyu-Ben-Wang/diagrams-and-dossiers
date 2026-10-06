@@ -37,9 +37,9 @@ export interface Preferences {
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
-  theme: "dark",
+  theme: "light",
   surface: "cork",
-  yarnStyle: "minimal",
+  yarnStyle: "realistic",
   yarnShadow: true,
   noteStyle: "plain",
   noteColor: POST_IT_COLORS[0].color,

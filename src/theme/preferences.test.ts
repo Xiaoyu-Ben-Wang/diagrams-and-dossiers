@@ -190,7 +190,7 @@ describe("preference storage", () => {
   it("writes under a namespaced key", () => {
     savePreferences(DEFAULT_PREFERENCES);
     expect(localStorage.getItem(PREFERENCE_STORAGE_KEY)).toContain(
-      '"theme":"dark"',
+      '"theme":"light"',
     );
   });
 });
@@ -206,13 +206,13 @@ describe("preference store", () => {
       notifications++;
     });
 
-    setPreferences({ theme: "light", yarnStyle: "realistic" });
+    setPreferences({ theme: "dark", yarnStyle: "minimal" });
 
     expect(notifications).toBe(1);
     expect(getPreferences()).toEqual({
       ...DEFAULT_PREFERENCES,
-      theme: "light",
-      yarnStyle: "realistic",
+      theme: "dark",
+      yarnStyle: "minimal",
     });
     unsubscribe();
   });

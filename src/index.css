@@ -39,17 +39,18 @@
 }
 
 @theme {
-  /* Dark leather, which is what dark + cork paints: these must match
-     `SURFACE_RAMPS.cork.dark`, or the first visit repaints on load. */
-  --color-cork-900: #140d09;
-  --color-cork-700: #221610;
-  --color-cork-500: #33221a;
-  --color-cork-300: #4b3428;
+  /* Light cork, which is what the default light + cork paints. These must match
+     `SURFACE_RAMPS.cork.light` and `THEME_PALETTES.light`, or the first visit
+     repaints the moment preferences are read. */
+  --color-cork-900: #d9bd93;
+  --color-cork-700: #e4c9a0;
+  --color-cork-500: #efd4ad;
+  --color-cork-300: #c3a274;
 
-  --color-parchment-100: #f7efdd;
-  --color-parchment-200: #efe3c8;
-  --color-parchment-300: #e3d2ae;
-  --color-parchment-edge: #c9b48a;
+  --color-parchment-100: #fdf9ef;
+  --color-parchment-200: #f3ead6;
+  --color-parchment-300: #e6dabd;
+  --color-parchment-edge: #b7a078;
 
   --color-folder: #c9a561;
   --color-folder-paper: #f7f4ea;
@@ -57,7 +58,7 @@
   --color-ink: #241a12;
   --color-ink-soft: #4a382a;
   --color-wax: #8c2f1e;
-  --color-brass: #c9a227;
+  --color-brass: #8a6a12;
 
   --color-yarn-crimson: #a3302b;
   --color-yarn-indigo: #2e4a7d;
@@ -65,9 +66,10 @@
   --color-yarn-gold: #b8912f;
   --color-yarn-violet: #5b3a72;
 
-  /* Not the parchment ramp: a light theme flips it dark and chrome text would vanish. */
-  --color-board-ink: #f7efdd;
-  --color-board-ink-soft: #e3d2ae;
+  /* Not the parchment ramp: the other theme flips that one, and chrome text on it
+     would vanish. */
+  --color-board-ink: #2b2016;
+  --color-board-ink-soft: #57452f;
 
   --board-surface: var(--color-cork-500);
 }
