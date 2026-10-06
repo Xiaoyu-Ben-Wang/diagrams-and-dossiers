@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   SURFACES,
@@ -18,6 +18,7 @@ import {
   type NoteFont,
   type NoteStyle,
 } from "../model/types";
+import { YarnSample } from "./YarnSample";
 import "./PreferencesPanel.css";
 
 /** A swatch is a flat colour here, so each paper is approximated with a gradient. */
@@ -65,6 +66,8 @@ interface ChoiceOption<T extends string> {
   swatch?: string;
   /** Set in this face below the label, so the choice can be read rather than imagined. */
   face?: NoteFont;
+  /** Drawn below the label with the board's own renderer, for the same reason. */
+  yarn?: YarnStyle;
 }
 
 /** Long enough to show a face's slope and spacing, short enough not to wrap. */
@@ -75,10 +78,21 @@ const THEME_OPTIONS: readonly ChoiceOption<ThemeMode>[] = [
   { value: "light", label: "Light", hint: "Well-lit study" },
 ];
 
-const YARN_OPTIONS: readonly ChoiceOption<YarnStyle>[] = [
-  { value: "minimal", label: "Minimal" },
-  { value: "realistic", label: "Dynamic" },
+const YARN_CHOICES: readonly [YarnStyle, string][] = [
+  ["minimal", "Minimal"],
+  ["realistic", "Dynamic"],
+  ["plied", "Plied"],
+  ["cable", "Cable"],
+  ["plaid", "Plaid"],
 ];
+
+const YARN_OPTIONS: readonly ChoiceOption<YarnStyle>[] = YARN_CHOICES.map(
+  ([value, label]) => ({
+    value,
+    label,
+    yarn: value,
+  }),
+);
 
 const SURFACE_LABELS: Record<BoardSurface, string | Record<ThemeMode, string>> =
   {
@@ -103,12 +117,14 @@ function ChoiceGroup<T extends string>({
   value,
   options,
   onChange,
+  children,
 }: {
   legend: string;
   name: string;
   value: T;
   options: readonly ChoiceOption<T>[];
   onChange: (value: T) => void;
+  children?: ReactNode;
 }) {
   return (
     <fieldset className="prefs-section">
@@ -153,11 +169,36 @@ function ChoiceGroup<T extends string>({
                   </span>
                 )}
               </span>
+              {option.yarn && <YarnSample style={option.yarn} />}
             </label>
           );
         })}
+        {children}
       </div>
     </fieldset>
+  );
+}
+
+/** A choice that is simply on or off, wearing the same clothes as the ones that are picked. */
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="prefs-option" data-selected={checked}>
+      <input
+        className="prefs-radio"
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="prefs-option-label">{label}</span>
+    </label>
   );
 }
 
@@ -212,12 +253,9 @@ function DangerZone({ onClearBoard }: { onClearBoard: () => void }) {
         </>
       ) : (
         <>
-          <p className="prefs-hint">
-            Clearing removes every pin, note and string. It cannot be undone.
-          </p>
           <button
             type="button"
-            className="prefs-button prefs-button-danger"
+            className="prefs-button prefs-button-danger mt-2"
             onClick={() => setArmed(true)}
           >
             Clear board…
@@ -253,10 +291,6 @@ function BoardFileSection({
 
   return (
     <section className="prefs-section" aria-label="Board file">
-      <h3 className="prefs-legend">Board file</h3>
-      <p className="prefs-hint">
-        A board file is JSON: every page, note, tack, picture and string.
-      </p>
       <div className="prefs-danger-actions">
         <button type="button" className="prefs-button" onClick={onExportBoard}>
           Export board…
@@ -460,7 +494,13 @@ export function PreferencesPanel({
             value={preferences.yarnStyle}
             options={YARN_OPTIONS}
             onChange={(yarnStyle) => setPreferences({ yarnStyle })}
-          />
+          >
+            <ToggleRow
+              label="Shadow on the board"
+              checked={preferences.yarnShadow}
+              onChange={(yarnShadow) => setPreferences({ yarnShadow })}
+            />
+          </ChoiceGroup>
 
           <ChoiceGroup
             legend="New post-it paper"
@@ -492,10 +532,6 @@ export function PreferencesPanel({
             >
               Reset preferences
             </button>
-            <p className="prefs-hint">
-              Puts theme, surface, yarn and the new-post-it trio back to their
-              defaults. Your board is untouched.
-            </p>
           </div>
 
           <BoardFileSection

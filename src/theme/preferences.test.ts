@@ -169,6 +169,7 @@ describe("preference storage", () => {
       theme: "light",
       surface: "whiteboard",
       yarnStyle: "realistic",
+      yarnShadow: false,
       noteStyle: "ruled",
       noteColor: "#cfd6bd",
       noteFont: "kalam",

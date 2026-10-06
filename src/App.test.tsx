@@ -749,9 +749,10 @@ describe("App — placing pins", () => {
       'svg[aria-hidden="true"] g path',
     );
     expect(strands.length).toBeGreaterThan(0);
-    for (const strand of strands) {
-      expect(strand.getAttribute("stroke")).toBe(YARN_COLOR);
-    }
+    // The shadow is a pass of its own, so the string is the pass in the yarn's colour.
+    expect(
+      [...strands].map((strand) => strand.getAttribute("stroke")),
+    ).toContain(YARN_COLOR);
 
     const group = container.querySelector(
       'svg[aria-hidden="true"] g',

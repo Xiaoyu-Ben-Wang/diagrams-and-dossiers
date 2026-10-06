@@ -1957,6 +1957,7 @@ export function BoardScreen({
                 selected={selection}
                 hovered={hoveredString}
                 style={preferences.yarnStyle}
+                shadow={preferences.yarnShadow}
                 zoom={camera.zoom}
                 livePathRef={livePathRef}
                 drawing={dragFrom !== null}

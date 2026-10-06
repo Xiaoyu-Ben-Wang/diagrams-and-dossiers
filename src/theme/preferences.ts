@@ -15,9 +15,9 @@ export type ThemeMode = (typeof THEMES)[number];
 export const SURFACES = ["cork", "felt", "slate", "whiteboard"] as const;
 export type BoardSurface = (typeof SURFACES)[number];
 
-/** Duplicated from src/board/yarn-style.ts by hand; keep the two lists in sync. */
-export const YARN_STYLES = ["minimal", "realistic"] as const;
-export type YarnStyle = (typeof YARN_STYLES)[number];
+import { YARN_STYLES, type YarnStyle } from "../board/yarn-style";
+
+export { YARN_STYLES, type YarnStyle };
 
 /** The palette a new note may be made in, validated on the way out of storage. */
 const NOTE_COLORS: readonly string[] = POST_IT_COLORS.map(
@@ -28,6 +28,8 @@ export interface Preferences {
   theme: ThemeMode;
   surface: BoardSurface;
   yarnStyle: YarnStyle;
+  /** Whether a string throws a shadow onto the board. */
+  yarnShadow: boolean;
   /** What the palette's note pad makes, and what its menu starts on. */
   noteStyle: NoteStyle;
   noteColor: string;
@@ -38,6 +40,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   theme: "dark",
   surface: "cork",
   yarnStyle: "minimal",
+  yarnShadow: true,
   noteStyle: "plain",
   noteColor: POST_IT_COLORS[0].color,
   noteFont: NOTE_FONT_DEFAULT,
@@ -226,6 +229,10 @@ export function parsePreferences(raw: unknown): Preferences {
       YARN_STYLES,
       DEFAULT_PREFERENCES.yarnStyle,
     ),
+    yarnShadow:
+      typeof value.yarnShadow === "boolean"
+        ? value.yarnShadow
+        : DEFAULT_PREFERENCES.yarnShadow,
     noteStyle: pick(
       value.noteStyle,
       NOTE_STYLES,
@@ -266,6 +273,7 @@ function samePreferences(a: Preferences, b: Preferences): boolean {
     a.theme === b.theme &&
     a.surface === b.surface &&
     a.yarnStyle === b.yarnStyle &&
+    a.yarnShadow === b.yarnShadow &&
     a.noteStyle === b.noteStyle &&
     a.noteColor === b.noteColor &&
     a.noteFont === b.noteFont

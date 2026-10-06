@@ -1,23 +1,25 @@
 // `pointer-events-none` throughout, or the yarn on top would swallow clicks meant for the pins
 // underneath; the grabbable sag handle is rendered separately by the board.
 
-import type { Ref } from 'react'
+import type { Ref } from "react";
 
-import { STRING_HALO_PX } from './tuning'
-import type { DrawableString } from './view'
-import { seedFromKey, yarnStrands, type YarnStyle } from './yarn-style'
-import { YARN_COLOR, yarnPath } from './yarn'
+import { STRING_HALO_PX } from "./tuning";
+import type { DrawableString } from "./view";
+import { seedFromKey, yarnStrands, type YarnStyle } from "./yarn-style";
+import { YARN_COLOR, yarnPath } from "./yarn";
+import { YarnStrokes } from "./YarnStrokes";
 
 export interface StringLayerProps {
-  strings: readonly DrawableString[]
-  selected: ReadonlySet<string>
-  hovered: string | null
-  style: YarnStyle
-  zoom: number
+  strings: readonly DrawableString[];
+  selected: ReadonlySet<string>;
+  hovered: string | null;
+  style: YarnStyle;
+  shadow: boolean;
+  zoom: number;
   // A ref rather than a prop: the drag runs on rAF and writes `d` directly, keeping a live
   // string off React's render path.
-  livePathRef: Ref<SVGPathElement>
-  drawing: boolean
+  livePathRef: Ref<SVGPathElement>;
+  drawing: boolean;
 }
 
 export function StringLayer({
@@ -25,6 +27,7 @@ export function StringLayer({
   selected,
   hovered,
   style,
+  shadow,
   zoom,
   livePathRef,
   drawing,
@@ -50,19 +53,18 @@ export function StringLayer({
               strokeLinecap="round"
             />
           ) : null}
-          {yarnStrands(style, string.from, string.to, string.slack, seedFromKey(string.id)).map(
-            (strand, index) => (
-              <path
-                key={index}
-                d={strand.d}
-                fill="none"
-                stroke={YARN_COLOR}
-                strokeWidth={strand.width}
-                strokeOpacity={strand.opacity}
-                strokeLinecap="round"
-              />
-            ),
-          )}
+          <YarnStrokes
+            strands={yarnStrands(
+              style,
+              string.from,
+              string.to,
+              string.slack,
+              seedFromKey(string.id),
+              {
+                shadow,
+              },
+            )}
+          />
         </g>
       ))}
 
@@ -76,5 +78,5 @@ export function StringLayer({
         opacity={drawing ? 0.95 : 0}
       />
     </svg>
-  )
+  );
 }
