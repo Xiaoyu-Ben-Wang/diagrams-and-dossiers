@@ -108,6 +108,7 @@ import {
   newFreePin,
   newImage,
   newNote,
+  withImageFrame,
 } from "../model/create";
 import { descriptorFor, NOTE_SIZE } from "../model/kinds";
 import { pinToBoard, pinToText, sameAnchor } from "../model/pinning";
@@ -118,6 +119,7 @@ import {
   type BoardEntity,
   type EntityContext,
   type ImageEntity,
+  type ImageFrame,
   type NoteEntity,
   type NoteFont,
   type NoteStyle,
@@ -634,6 +636,14 @@ export function BoardScreen({
             edgeSeed: isPatternEdge(edge) ? entity.edgeSeed : freshEdgeSeed(),
             updatedAt: Date.now(),
           }
+        : entity,
+    );
+  }, []);
+
+  const setImageFrame = useCallback((id: string, frame: ImageFrame) => {
+    store.updateEntities([id], (entity) =>
+      entity.kind === "image"
+        ? { ...withImageFrame(entity, frame), updatedAt: Date.now() }
         : entity,
     );
   }, []);
@@ -1490,6 +1500,18 @@ export function BoardScreen({
   }, [entities, entityContext]);
   anchorPointsRef.current = anchorPoints;
 
+  const tackPoints = useMemo(() => {
+    const points: Point[] = [];
+    for (const entity of entities) {
+      // A note is tied at its edge, with no tack to sit over the yarn.
+      if (entity.kind === "note") continue;
+      const point = anchorPoints.get(entity.id);
+      if (point) points.push(point);
+    }
+    return points;
+  }, [entities, anchorPoints]);
+  const stableTackPoints = useSameItems(tackPoints);
+
   const anchorOf = useCallback(
     (id: string) => anchorPointsRef.current.get(id) ?? null,
     [],
@@ -1990,8 +2012,12 @@ export function BoardScreen({
                     <EdgePicker
                       seed={selectedImage.edgeSeed}
                       edge={selectedImage.edge}
+                      frame={selectedImage.frame ?? "none"}
                       anchor={edgePickerAnchor}
                       onPick={(style) => setImageEdge(selectedImage.id, style)}
+                      onFrame={(frame) =>
+                        setImageFrame(selectedImage.id, frame)
+                      }
                     />
                   ) : null}
 
@@ -2097,6 +2123,7 @@ export function BoardScreen({
                 zoom={camera.zoom}
                 livePathRef={livePathRef}
                 drawing={dragFrom !== null}
+                tacks={stableTackPoints}
               />
               {drawableStrings.map((drawn) => {
                 const link = stringsById.get(drawn.id);

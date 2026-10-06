@@ -742,12 +742,10 @@ describe("App — placing pins", () => {
     });
     fireEvent.pointerUp(canvas, { pointerId: 21, clientX: 520, clientY: 260 });
 
-    const yarn = container.querySelectorAll('svg[aria-hidden="true"] g');
+    const yarn = container.querySelectorAll('[data-testid="yarn"]');
     expect(yarn.length).toBeGreaterThan(0);
 
-    const strands = container.querySelectorAll(
-      'svg[aria-hidden="true"] g path',
-    );
+    const strands = container.querySelectorAll('[data-testid="yarn"] path');
     expect(strands.length).toBeGreaterThan(0);
     // The shadow is a pass of its own, so the string is the pass in the yarn's colour.
     expect(
@@ -755,16 +753,15 @@ describe("App — placing pins", () => {
     ).toContain(YARN_COLOR);
 
     const group = container.querySelector(
-      'svg[aria-hidden="true"] g',
+      '[data-testid="yarn"]',
     ) as SVGGElement;
     expect(group.style.opacity).toBe("");
   });
 
   function yarnControlY(container: HTMLElement): number {
     const d =
-      container
-        .querySelector('svg[aria-hidden="true"] g path')
-        ?.getAttribute("d") ?? "";
+      container.querySelector('[data-testid="yarn"] path')?.getAttribute("d") ??
+      "";
     const match = d.match(/Q [\d.-]+ ([\d.-]+)/);
     return match ? Number(match[1]) : Number.NaN;
   }
@@ -866,15 +863,11 @@ describe("App — placing pins", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByTestId("yarn-bead")).toBeNull();
-    expect(container.querySelectorAll('svg[aria-hidden="true"] g').length).toBe(
-      1,
-    );
+    expect(container.querySelectorAll('[data-testid="yarn"]').length).toBe(1);
 
     fireEvent.click(canvas, { clientX: 410, clientY: apexY });
     fireEvent.keyDown(document, { key: "Delete" });
-    expect(container.querySelectorAll('svg[aria-hidden="true"] g').length).toBe(
-      0,
-    );
+    expect(container.querySelectorAll('[data-testid="yarn"]').length).toBe(0);
     expect(container.querySelectorAll("button[data-pin-id]").length).toBe(2);
   });
 
@@ -905,9 +898,7 @@ describe("App — placing pins", () => {
     document.body.appendChild(field);
     try {
       fireEvent.keyDown(field, { key: "Backspace" });
-      expect(
-        container.querySelectorAll('svg[aria-hidden="true"] g').length,
-      ).toBe(1);
+      expect(container.querySelectorAll('[data-testid="yarn"]').length).toBe(1);
     } finally {
       field.remove();
     }
@@ -1859,7 +1850,9 @@ describe("App — the demo board", () => {
     expect(container.querySelectorAll("button[data-pin-id]").length).toBe(8);
     expect(container.querySelectorAll("[data-image-id]").length).toBe(4);
     expect(
-      screen.getByTestId("string-layer").querySelectorAll("g").length,
+      screen
+        .getByTestId("string-layer")
+        .querySelectorAll('[data-testid="yarn"]').length,
     ).toBe(12);
   });
 
@@ -1902,12 +1895,27 @@ describe("App — the demo board", () => {
 
   it("ties yarn to a page, not only to pins", () => {
     render(<App seed={demoBoard()} />);
-    const yarn = screen.getByTestId("string-layer").querySelectorAll("g");
+    const yarn = screen
+      .getByTestId("string-layer")
+      .querySelectorAll('[data-testid="yarn"]');
     expect(yarn.length).toBe(12);
 
     for (const group of yarn) {
       expect(group.querySelectorAll("path").length).toBeGreaterThan(0);
     }
+  });
+
+  it("cuts the yarn away under every tack, so the tacks read as on top", () => {
+    const board = demoBoard();
+    render(<App seed={board} />);
+    const holes = screen
+      .getByTestId("string-layer")
+      .querySelectorAll("mask circle");
+    const tacked = board.entities.filter(
+      (entity) => entity.kind === "image" || entity.kind === "article",
+    );
+    // Every picture and page has its own tack; the pins' tacks add to that.
+    expect(holes.length).toBeGreaterThan(tacked.length);
   });
 
   it("does not count a tack in the cork as an anchored pin", () => {

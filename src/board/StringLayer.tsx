@@ -1,8 +1,9 @@
 // `pointer-events-none` throughout, or the yarn on top would swallow clicks meant for the pins
 // underneath; the grabbable sag handle is rendered separately by the board.
 
-import { memo, useMemo, type Ref } from "react";
+import { memo, useId, useMemo, type Ref } from "react";
 
+import { TACK_RADIUS } from "../model/kinds";
 import { STRING_HALO_PX } from "./tuning";
 import type { DrawableString } from "./view";
 import { seedFromKey, yarnStrands, type YarnStyle } from "./yarn-style";
@@ -20,7 +21,13 @@ export interface StringLayerProps {
   // string off React's render path.
   livePathRef: Ref<SVGPathElement>;
   drawing: boolean;
+  /** Tack centres. The tacks sit in rotated sheets and cards, stacking contexts no
+   * z-index can lift over this layer, so the yarn is cut away beneath them instead. */
+  tacks: readonly Point[];
 }
+
+// Far past any board; the mask hides whatever falls outside it.
+const MASK_EXTENT = 1e6;
 
 export const StringLayer = memo(function StringLayer({
   strings,
@@ -31,7 +38,9 @@ export const StringLayer = memo(function StringLayer({
   zoom,
   livePathRef,
   drawing,
+  tacks,
 }: StringLayerProps) {
+  const maskId = `tack-holes-${useId()}`;
   return (
     <svg
       data-testid="string-layer"
@@ -40,37 +49,64 @@ export const StringLayer = memo(function StringLayer({
       height={1}
       aria-hidden="true"
     >
-      {strings.map((string) => {
-        const halo = selected.has(string.id)
-          ? "selected"
-          : hovered === string.id
-            ? "hovered"
-            : null;
-        return (
-          <StringRow
-            key={string.id}
-            id={string.id}
-            from={string.from}
-            to={string.to}
-            slack={string.slack}
-            halo={halo}
-            // Zero without a halo, so a zoom leaves unhighlighted rows alone.
-            haloWidth={halo ? STRING_HALO_PX / (zoom || 1) : 0}
-            style={style}
-            shadow={shadow}
+      <mask
+        id={maskId}
+        maskUnits="userSpaceOnUse"
+        x={-MASK_EXTENT}
+        y={-MASK_EXTENT}
+        width={MASK_EXTENT * 2}
+        height={MASK_EXTENT * 2}
+      >
+        <rect
+          x={-MASK_EXTENT}
+          y={-MASK_EXTENT}
+          width={MASK_EXTENT * 2}
+          height={MASK_EXTENT * 2}
+          fill="white"
+        />
+        {tacks.map((tack, index) => (
+          <circle
+            key={index}
+            cx={tack.x}
+            cy={tack.y}
+            r={TACK_RADIUS}
+            fill="black"
           />
-        );
-      })}
+        ))}
+      </mask>
+      <g mask={`url(#${maskId})`}>
+        {strings.map((string) => {
+          const halo = selected.has(string.id)
+            ? "selected"
+            : hovered === string.id
+              ? "hovered"
+              : null;
+          return (
+            <StringRow
+              key={string.id}
+              id={string.id}
+              from={string.from}
+              to={string.to}
+              slack={string.slack}
+              halo={halo}
+              // Zero without a halo, so a zoom leaves unhighlighted rows alone.
+              haloWidth={halo ? STRING_HALO_PX / (zoom || 1) : 0}
+              style={style}
+              shadow={shadow}
+            />
+          );
+        })}
 
-      <path
-        ref={livePathRef}
-        data-testid="live-yarn"
-        fill="none"
-        stroke={YARN_COLOR}
-        strokeWidth={2.5}
-        strokeLinecap="round"
-        opacity={drawing ? 0.95 : 0}
-      />
+        <path
+          ref={livePathRef}
+          data-testid="live-yarn"
+          fill="none"
+          stroke={YARN_COLOR}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          opacity={drawing ? 0.95 : 0}
+        />
+      </g>
     </svg>
   );
 });
@@ -102,7 +138,7 @@ const StringRow = memo(function StringRow({
   );
 
   return (
-    <g>
+    <g data-testid="yarn">
       {halo ? (
         <path
           data-testid="yarn-halo"
