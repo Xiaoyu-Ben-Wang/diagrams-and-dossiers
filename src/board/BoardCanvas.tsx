@@ -76,6 +76,8 @@ function releasePointer(element: Element, pointerId: number): void {
 // Trackpad pinch arrives as a wheel event with ctrlKey set and much smaller deltas.
 const WHEEL_INTENSITY = 0.0015;
 const PINCH_INTENSITY = 0.01;
+// Firefox reports a mouse wheel in lines; the rest of the code thinks in pixels.
+const LINE_PX = 16;
 
 interface PanState {
   pointerId: number;
@@ -171,10 +173,25 @@ export function BoardCanvas({
         y: event.clientY - bounds.top,
       };
 
-      const intensity = event.ctrlKey ? PINCH_INTENSITY : WHEEL_INTENSITY;
-      const factor = Math.exp(-event.deltaY * intensity);
+      const unit =
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? LINE_PX
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? bounds.height
+            : 1;
+      const deltaX = event.deltaX * unit;
+      const deltaY = event.deltaY * unit;
 
       markInteractingRef.current();
+
+      // A pinch sets ctrlKey; plain scrolling, a two-finger drag on a trackpad, pans.
+      if (!event.ctrlKey && !event.metaKey) {
+        changeRef.current(panBy(cameraRef.current, -deltaX, -deltaY));
+        return;
+      }
+
+      const intensity = event.ctrlKey ? PINCH_INTENSITY : WHEEL_INTENSITY;
+      const factor = Math.exp(-deltaY * intensity);
       changeRef.current(
         zoomAt(cameraRef.current, cursor, cameraRef.current.zoom * factor),
       );

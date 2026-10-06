@@ -75,24 +75,76 @@ describe("BoardCanvas", () => {
   });
 });
 
-describe("zoom", () => {
-  it("zooms out on a downward wheel", () => {
+describe("scroll", () => {
+  it("pans on a two-finger drag instead of zooming", () => {
     const onCamera = vi.fn();
     render(<Harness onCamera={onCamera} />);
     stubBox();
 
-    fireEvent.wheel(viewport(), { deltaY: 200, clientX: 400, clientY: 300 });
+    fireEvent.wheel(viewport(), { deltaX: 30, deltaY: 50 });
+
+    expect(onCamera.mock.calls[0][0]).toEqual({ x: 30, y: 50, zoom: 1 });
+  });
+
+  it("pans in board units at the current zoom", () => {
+    const onCamera = vi.fn();
+    render(<Harness initial={{ x: 0, y: 0, zoom: 2 }} onCamera={onCamera} />);
+    stubBox();
+
+    fireEvent.wheel(viewport(), { deltaX: 40, deltaY: 0 });
+
+    expect(onCamera.mock.calls[0][0]).toEqual({ x: 20, y: 0, zoom: 2 });
+  });
+
+  it("reads a line-mode wheel as pixels", () => {
+    const onCamera = vi.fn();
+    render(<Harness onCamera={onCamera} />);
+    stubBox();
+
+    fireEvent.wheel(viewport(), { deltaY: 3, deltaMode: 1 });
+
+    expect(onCamera.mock.calls[0][0].y).toBe(48);
+  });
+
+  it("zooms on a modified mouse wheel", () => {
+    const onCamera = vi.fn();
+    render(<Harness onCamera={onCamera} />);
+    stubBox();
+
+    fireEvent.wheel(viewport(), { deltaY: -200, metaKey: true });
+
+    expect(onCamera.mock.calls[0][0].zoom).toBeGreaterThan(1);
+  });
+});
+
+describe("zoom", () => {
+  it("zooms out on a downward pinch", () => {
+    const onCamera = vi.fn();
+    render(<Harness onCamera={onCamera} />);
+    stubBox();
+
+    fireEvent.wheel(viewport(), {
+      deltaY: 200,
+      clientX: 400,
+      clientY: 300,
+      ctrlKey: true,
+    });
 
     expect(onCamera).toHaveBeenCalled();
     expect(onCamera.mock.calls[0][0].zoom).toBeLessThan(1);
   });
 
-  it("zooms in on an upward wheel", () => {
+  it("zooms in on an upward pinch", () => {
     const onCamera = vi.fn();
     render(<Harness onCamera={onCamera} />);
     stubBox();
 
-    fireEvent.wheel(viewport(), { deltaY: -200, clientX: 400, clientY: 300 });
+    fireEvent.wheel(viewport(), {
+      deltaY: -200,
+      clientX: 400,
+      clientY: 300,
+      ctrlKey: true,
+    });
 
     expect(onCamera.mock.calls[0][0].zoom).toBeGreaterThan(1);
   });
@@ -102,7 +154,12 @@ describe("zoom", () => {
     render(<Harness onCamera={onCamera} />);
     stubBox();
 
-    fireEvent.wheel(viewport(), { deltaY: -200, clientX: 700, clientY: 100 });
+    fireEvent.wheel(viewport(), {
+      deltaY: -200,
+      clientX: 700,
+      clientY: 100,
+      ctrlKey: true,
+    });
     const camera: Camera = onCamera.mock.calls[0][0];
 
     const before = { x: 700 / 1 + 0, y: 100 / 1 + 0 };
@@ -119,7 +176,12 @@ describe("zoom", () => {
     render(<Harness onCamera={onCamera} />);
     stubBox();
 
-    fireEvent.wheel(viewport(), { deltaY: 100000, clientX: 400, clientY: 300 });
+    fireEvent.wheel(viewport(), {
+      deltaY: 100000,
+      clientX: 400,
+      clientY: 300,
+      ctrlKey: true,
+    });
     expect(onCamera.mock.calls[0][0].zoom).toBeGreaterThanOrEqual(0.2);
   });
 

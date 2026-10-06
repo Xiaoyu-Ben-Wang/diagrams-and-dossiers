@@ -2139,7 +2139,8 @@ export function BoardScreen({
             {strings.length === 1 ? "" : "s"}
           </span>
           <span className="ml-auto hidden lg:inline text-sm">
-            Scroll to zoom · right/middle-drag to pan · right-click for options
+            Scroll or right/middle-drag to pan · pinch or ⌘/Ctrl-scroll to zoom
+            · right-click for options
           </span>
         </div>
       </footer>
