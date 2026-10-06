@@ -2,7 +2,13 @@ import type { BoardState } from "../board/store";
 import { POST_IT_COLORS } from "../board/tuning";
 import { DEFAULT_SLACK, YARN_COLOR } from "../board/yarn";
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
-import { newArticle, newFreePin, newImage, newNote } from "../model/create";
+import {
+  newArticle,
+  newFreePin,
+  newImage,
+  newNote,
+  withImageFrame,
+} from "../model/create";
 import type { BoardEntity, StringLink } from "../model/types";
 import { COIN_RUBBING, MARSH_MAP, TORN_LEAF } from "./demo-pictures";
 // `?inline` keeps a data: URL: a board file rejects a plain asset path.
@@ -313,16 +319,19 @@ export function demoBoard(): BoardState {
   // Off on his own, well clear of the case: the joke only works if he is not
   // standing in the middle of it.
   const cat = used(
-    newImage(
-      POINTS.cat,
-      catSrc,
-      { width: 240, height: 280 },
-      {
-        title: "The DM's cat (how did he get here?)",
-        alt: "A cream cat staring straight down the lens",
-        edge: "clean",
-        bodyMd: "Nobody remembers letting him in.",
-      },
+    withImageFrame(
+      newImage(
+        POINTS.cat,
+        catSrc,
+        { width: 240, height: 280 },
+        {
+          title: "The DM's cat (how did he get here?)",
+          alt: "A cream cat staring straight down the lens",
+          edge: "clean",
+          bodyMd: "Nobody remembers letting him in.",
+        },
+      ),
+      "polaroid",
     ),
     { rotation: 5 },
   );

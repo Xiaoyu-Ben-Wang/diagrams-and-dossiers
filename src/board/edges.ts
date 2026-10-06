@@ -9,7 +9,6 @@ export const EDGE_STYLES = [
   "scalloped",
   "burnt",
   "torn",
-
   "scorched",
   "frayed",
   "nibbled",
@@ -37,15 +36,7 @@ export const EDGE_FAMILIES = [
   },
   {
     id: "noise",
-    styles: [
-      "burnt",
-      "torn",
-
-      "scorched",
-      "frayed",
-      "nibbled",
-      "chipped",
-    ],
+    styles: ["burnt", "torn", "scorched", "frayed", "nibbled", "chipped"],
   },
 ] as const satisfies readonly { id: string; styles: readonly EdgeStyle[] }[];
 
@@ -182,10 +173,6 @@ function rough(x: number, seed: number): number {
   const coarse = valueNoise(x, seed);
   const fine = valueNoise(x * OCTAVE_RATIO, seed ^ 0x5bf03635);
   return 0.5 + 0.5 * ((coarse + OCTAVE_WEIGHT * fine) / (1 + OCTAVE_WEIGHT));
-}
-
-function swell(x: number, seed: number): number {
-  return 0.5 + 0.5 * valueNoise(x, seed);
 }
 
 /** Integer cell of valueNoise returns the raw lattice hash, so it doubles as an RNG. */
