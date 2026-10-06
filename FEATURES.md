@@ -7,8 +7,8 @@ This is a working queue, not a roadmap: `docs/architecture.md` §12 is the plan 
 candidate list. What lives here is the specific things a person asked for, with enough context
 that whoever picks one up does not have to reconstruct the conversation.
 
-Move an item out when it is done. If it turns out to be a bad idea, say why in the commit rather
-than deleting it silently — the next person will wonder.
+Move an item out when it is done. If it turns out to be a bad idea, write why under **Explicitly
+rejected** below rather than deleting it silently — the next person will wonder.
 
 ---
 
@@ -18,11 +18,9 @@ Numbering continues from the archive rather than restarting, so an item number s
 thing across both files. The queue was cleared on 5 October 2026; earlier items are in
 `docs/feature-queue-archive-2026-10-05.md`.
 
-Nothing is waiting. Items 20–23 were finished on 5 October 2026 and taken out; each
-commit carries the decision that went into it, including the alternatives it was chosen
-over. What was asked for while those were being built — the demo board on its own
-address, a saved camera, a stored lean on a post-it, a live preview of the note hands —
-went in with them rather than through this file.
+Nothing is waiting. Items 20–23 were finished on 5 October 2026 and taken out. What was asked for
+while those were being built — the demo board on its own address, a saved camera, a stored lean on
+a post-it — went in with them rather than through this file.
 
 ---
 

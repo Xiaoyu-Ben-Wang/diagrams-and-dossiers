@@ -32,10 +32,11 @@ conversation. Move an item out when it is done.
 - **A failing probe is as likely to be the probe.** Off-screen coordinates, a cached canvas rect
   that went stale when the editor opened, and pressing a circular element's bounding-box corner
   have each cost more time than the bug being chased. Check the harness before the code.
-- **Comments are for what the code cannot say.** One or two lines, only where deleting them
-  would let somebody break something without noticing: a browser or jsdom quirk, a value pinned
-  in another file, an ordering that matters. No history, no rationale essays, no restating the
-  code. The decision and the alternative it was chosen over belong in the commit message,
-  which is where they can be read without opening the file.
+- **Barely any comments.** Prefer none; well-named code should carry the meaning. Leave one only
+  when asked, or when deleting it would let somebody break something without noticing — a browser
+  or jsdom quirk, a value pinned in another file, an ordering that matters. No history, no
+  rationale, no restating the code, no rejected alternatives. When in doubt, leave it out.
+- **Commit messages are one sentence, maximum.** No body, no bullets, no multi-paragraph
+  explanation. The diff is the detail.
 - **Do not add a dependency without a reason that survives being written down.** Four runtime
   dependencies; `FEATURES.md` records what was considered and rejected, and why.
