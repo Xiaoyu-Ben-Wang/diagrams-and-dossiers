@@ -7,8 +7,7 @@ import { PREFERENCES_PANEL_ID, PreferencesPanel } from './PreferencesPanel'
 import { DEFAULT_PREFERENCES, getPreferences, resetPreferences, setPreferences, usePreferences } from './preferences'
 
 afterEach(() => {
-  // Wrapped because the store reset can notify components still mounted from
-  // the test body; unwrapped it produces React act warnings.
+  // Wrapped because the reset can notify still-mounted components; unwrapped is an act warning.
   act(() => {
     resetPreferences()
   })
@@ -33,12 +32,12 @@ function panel(
       onClearBoard={onClearBoard}
       onExportBoard={onExportBoard}
       onImportBoard={onImportBoard}
+      onExportImage={vi.fn()}
     />,
   )
   return { onClose, onClearBoard, onExportBoard, onImportBoard }
 }
 
-/** A trigger with the aria wiring the integrator is told to give the real one. */
 function Harness() {
   const [open, setOpen] = useState(false)
   return (
@@ -52,6 +51,7 @@ function Harness() {
         onClearBoard={vi.fn()}
         onExportBoard={vi.fn()}
         onImportBoard={vi.fn(async () => null)}
+        onExportImage={vi.fn()}
       />
     </>
   )
@@ -103,6 +103,7 @@ describe('PreferencesPanel dialog behaviour', () => {
         onClearBoard={vi.fn()}
         onExportBoard={vi.fn()}
         onImportBoard={vi.fn(async () => null)}
+        onExportImage={vi.fn()}
       />,
     )
 
@@ -179,8 +180,6 @@ describe('PreferencesPanel clearing the board', () => {
     armClear()
 
     expect(onClearBoard).not.toHaveBeenCalled()
-    // The armed control is gone, so a stray repeat click has nothing to hit;
-    // the only destructive control now present is disabled.
     expect(screen.queryByRole('button', { name: 'Clear board…' })).toBeNull()
     expect(finalClearButton().disabled).toBe(true)
   })
@@ -207,7 +206,6 @@ describe('PreferencesPanel clearing the board', () => {
     fireEvent.change(typedConfirmation(), { target: { value: 'clear' } })
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    // Back to the first gate with nothing remembered from the armed attempt.
     expect(screen.getByRole('button', { name: 'Clear board…' })).not.toBeNull()
     expect(screen.queryByLabelText(/type clear to confirm/i)).toBeNull()
   })
@@ -227,21 +225,13 @@ describe('PreferencesPanel clearing the board', () => {
     fireEvent.click(finalClearButton())
 
     expect(onClearBoard).toHaveBeenCalledTimes(1)
-    // Success drops back to the first gate, so a second firing needs the whole
-    // two-step ritual again rather than another click on a live button.
     expect(screen.getByRole('button', { name: 'Clear board…' })).not.toBeNull()
     expect(screen.queryByRole('button', { name: /^Clear board$/ })).toBeNull()
   })
 })
 
 describe('PreferencesPanel board files', () => {
-  /**
-   * A file input the picker would have filled in.
-   *
-   * Awaited, because the panel's load is a promise: the state it sets when the
-   * board answers lands after the event handler has returned, and a change
-   * outside `act` is a React warning rather than a failing assertion.
-   */
+  /** Awaited: the panel sets state after the handler returns, which act must cover. */
   async function choose(input: HTMLElement, file: File): Promise<void> {
     Object.defineProperty(input, 'files', { value: [file], configurable: true })
     await act(async () => {
@@ -250,8 +240,6 @@ describe('PreferencesPanel board files', () => {
   }
 
   it('will not load a file until the import has been armed', () => {
-    // Loading a file replaces the board and there is no undo, so the button
-    // asks first — the same two-step shape as clearing it.
     const { onImportBoard } = panel()
 
     expect(screen.queryByLabelText(/choose a board file/i)).toBeNull()
@@ -272,7 +260,6 @@ describe('PreferencesPanel board files', () => {
   })
 
   it('shows why a file was refused, and stays armed to try another', async () => {
-    // A refusal nobody can see is indistinguishable from a broken button.
     const onImportBoard = vi.fn(async () => 'That is JSON, but it is not a case board.')
     panel({ onImportBoard })
     fireEvent.click(screen.getByRole('button', { name: 'Import board…' }))
@@ -288,7 +275,6 @@ describe('PreferencesPanel board files', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import board…' }))
     await choose(screen.getByLabelText(/choose a board file/i), new File(['{}'], 'x.json'))
 
-    // The confirmation is spent, and the section is back to its resting state.
     expect(screen.queryByLabelText(/choose a board file/i)).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
   })

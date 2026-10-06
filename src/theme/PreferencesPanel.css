@@ -1,13 +1,3 @@
-/*
- * The preferences drawer's chrome.
- *
- * Kept next to the component rather than in index.css: the drawer's rules —
- * mount animation, swatches, the danger zone — are nobody else's business, and
- * index.css is shared with every other layer of the board. It reads the same
- * tokens as the rest of the app, so changing a preference re-paints the drawer
- * along with everything else.
- */
-
 .prefs-backdrop {
   position: fixed;
   inset: 0;
@@ -129,8 +119,6 @@
     background-color 120ms ease;
 }
 
-/* Hover is the weaker version of chosen, so the two never read alike: the
-   highlighted row of a radio group should not look like the answer. */
 .prefs-option:hover:not([data-selected='true']) {
   border-color: color-mix(in srgb, var(--color-brass) 55%, transparent);
   background: color-mix(in srgb, var(--color-brass) 6%, transparent);
@@ -146,8 +134,7 @@
   outline-offset: 1px;
 }
 
-/* Visually hidden but still focusable, so the native group semantics and
-   arrow-key navigation survive. */
+/* Visually hidden but focusable: the native group semantics and arrow keys depend on it. */
 .prefs-radio {
   position: absolute;
   width: 1px;
@@ -267,7 +254,6 @@
   margin-top: 0.55rem;
 }
 
-/* Importing a board file: armed first, because it replaces everything. */
 .prefs-import {
   margin-top: 0.5rem;
   padding: 0.6rem;
@@ -281,9 +267,7 @@
   margin-bottom: 0.5rem;
 }
 
-/* Left as the browser draws it: a file input is the one control worth not
-   restyling, because it is the only one that carries the operating system's
-   own "choose a file" affordance and its own accessibility behaviour. */
+/* Left as the browser draws it: it carries the OS chooser affordance and its own a11y. */
 .prefs-file-input {
   display: block;
   width: 100%;

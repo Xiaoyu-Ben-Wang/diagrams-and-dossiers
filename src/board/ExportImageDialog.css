@@ -1,0 +1,261 @@
+/* The image export's dialog, over a darkened board. */
+
+.export-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(20 12 6 / 0.62);
+  backdrop-filter: blur(1.5px);
+}
+
+.export-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(92vw, 380px);
+  max-height: min(88vh, 760px);
+  overflow-y: auto;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--color-parchment-edge);
+  border-radius: 5px;
+  background: var(--color-parchment-100);
+  color: var(--color-ink);
+  box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.75);
+}
+
+.export-dialog:focus {
+  outline: none;
+}
+
+.export-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.export-head h2 {
+  margin: 0;
+  font-family: ui-serif, Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.export-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--color-ink-soft);
+  cursor: pointer;
+}
+
+.export-close:hover {
+  background: rgb(46 31 20 / 0.08);
+  color: var(--color-ink);
+}
+
+/* The real thing at a small scale: the same pipeline Download runs, so it
+   cannot promise a picture the file does not deliver. */
+.export-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 104px;
+  overflow: hidden;
+  border: 1px solid var(--color-parchment-edge);
+  border-radius: 3px;
+  background-color: var(--color-parchment-200);
+}
+
+.export-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.export-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-section h3 {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+}
+
+.export-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.export-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.export-swatch-chip {
+  width: 30px;
+  height: 22px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 35%, transparent);
+  border-radius: 3px;
+}
+
+/* Transparency is not a colour, so it is drawn as the thing it means. */
+.export-swatch-chip[data-transparent='true'] {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #d8d2c4 25%, transparent 25% 75%, #d8d2c4 75%),
+    linear-gradient(45deg, #d8d2c4 25%, transparent 25% 75%, #d8d2c4 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 4px 4px;
+}
+
+.export-swatch-label {
+  font-size: 9.5px;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
+.export-swatch[data-selected='true'] .export-swatch-chip,
+.export-swatch[data-selected='true'] input[type='color'] {
+  box-shadow: 0 0 0 2px var(--color-brass);
+}
+
+.export-swatch-custom input[type='color'] {
+  width: 30px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 35%, transparent);
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+}
+
+.export-scales,
+.export-patterns {
+  display: flex;
+  gap: 4px;
+}
+
+.export-pattern {
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 22%, transparent);
+  border-radius: 3px;
+  background: var(--color-parchment-200);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.export-pattern[data-selected='true'] {
+  border-color: var(--color-brass);
+  background: color-mix(in srgb, var(--color-brass) 32%, var(--color-parchment-100));
+}
+
+.export-scale {
+  min-width: 44px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 22%, transparent);
+  border-radius: 3px;
+  background: var(--color-parchment-200);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.export-scale:hover {
+  background: var(--color-parchment-300);
+}
+
+.export-scale[data-selected='true'] {
+  border-color: var(--color-brass);
+  background: color-mix(in srgb, var(--color-brass) 32%, var(--color-parchment-100));
+}
+
+.export-size {
+  margin: 0;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.export-note {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+}
+
+.export-error {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-wax) 16%, transparent);
+  color: var(--color-wax);
+  font-size: 11px;
+}
+
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.export-button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 22%, transparent);
+  border-radius: 3px;
+  background: var(--color-parchment-200);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.export-button:hover:not(:disabled) {
+  background: var(--color-parchment-300);
+}
+
+.export-button-primary {
+  border-color: color-mix(in srgb, var(--color-brass) 70%, var(--color-ink));
+  background: var(--color-brass);
+  color: #2b2109;
+  font-weight: 600;
+}
+
+.export-button-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-brass) 85%, #fff);
+}
+
+.export-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

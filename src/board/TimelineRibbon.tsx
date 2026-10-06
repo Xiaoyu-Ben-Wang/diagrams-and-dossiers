@@ -1,21 +1,3 @@
-/**
- * The chronology ribbon.
- *
- * Deliberately compact — one strip, roughly forty pixels tall. The board is the
- * point of the app and the ribbon is a control for moving through it, so it gets
- * the smallest footprint that still works: the date readout sits inside the tape
- * rather than in a row of its own, and the section heading is an aria-label
- * instead of a visible title.
- *
- * Styled as a strip of adding-machine tape with punched edges and brass ticks —
- * one tick per session cluster, not per entry, so a busy game night doesn't turn
- * the ribbon into a solid bar.
- *
- * Presentational and controlled: it reports a time and the board decides what
- * that means. Keeping the interpretation outside means the ribbon has no opinion
- * about zoom, culling, or which items exist.
- */
-
 import { useCallback, useRef } from 'react'
 
 import { positionOf, timeAt, type Cluster, type Timeline } from './timeline'
@@ -23,7 +5,6 @@ import { positionOf, timeAt, type Cluster, type Timeline } from './timeline'
 export interface TimelineRibbonProps {
   timeline: Timeline
   clusters: Cluster[]
-  /** Current scrub position in epoch ms. */
   cursor: number
   onScrub: (time: number) => void
   playing: boolean
@@ -94,7 +75,6 @@ export function TimelineRibbon({
   const cursorPosition = positionOf(cursor, timeline)
   const empty = timeline.placed.length === 0
 
-  /** The cluster the cursor currently sits in, for the in-tape readout. */
   const current = clusters.find((cluster) => cluster.start <= cursor)
   const currentEntry = current
     ? timeline.placed[Math.min(current.to, timeline.placed.length - 1)]
@@ -135,8 +115,6 @@ export function TimelineRibbon({
         tabIndex={disabled ? -1 : 0}
         onKeyDown={(event) => {
           if (disabled || empty) return
-          // Arrow keys step a cluster at a time — the natural unit for a
-          // campaign, and far more useful than a fixed time delta.
           const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
           if (step === 0) return
           event.preventDefault()
@@ -144,7 +122,6 @@ export function TimelineRibbon({
           onScrub(clusters[Math.min(clusters.length - 1, Math.max(0, index + step))].start)
         }}
       >
-        {/* Session ticks — one per cluster, so a twenty-event session is one mark. */}
         {clusters.map((cluster, index) => (
           <span
             key={`${cluster.start}-${index}`}
@@ -175,8 +152,6 @@ export function TimelineRibbon({
           }}
         />
 
-        {/* The readout lives inside the tape rather than in its own row, which is
-            where most of the height saving comes from. */}
         <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-[10px] text-ink-soft/80">
           {empty ? 'Pin something to start the chronology' : (currentEntry?.dateLabel ?? '')}
         </span>

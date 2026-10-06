@@ -19,7 +19,6 @@ const WIDTH = 320
 const HEIGHT = 240
 const BOX_AREA = WIDTH * HEIGHT
 
-/** Boxes with different aspect ratios: a square, a landscape photo, a strip. */
 const BOXES = [
   { w: 320, h: 240 },
   { w: 180, h: 180 },
@@ -33,13 +32,6 @@ interface Vertex {
   y: number
 }
 
-/**
- * Pull the vertices back out of the emitted clip-path.
- *
- * Every geometric invariant below is checked on these numbers rather than on
- * the string, which is what makes "the crop never leaves the box" a statement
- * about the shape and not about its spelling.
- */
 function vertices(clip: string): Vertex[] {
   const body = clip.slice('polygon('.length, -1)
   return body.split(',').map((pair) => {
@@ -48,11 +40,7 @@ function vertices(clip: string): Vertex[] {
   })
 }
 
-/**
- * Shoelace area, signed. The walk is clockwise on screen, so a healthy shape
- * has a positive area: a negative one means the outline inverted and the pin
- * would be showing its own background through itself.
- */
+// Signed: the walk is clockwise, so a positive area means the outline did not invert.
 function signedArea(points: readonly Vertex[]): number {
   let sum = 0
   for (let i = 0; i < points.length; i++) {
@@ -76,7 +64,6 @@ function onSegment(a: Vertex, b: Vertex, p: Vertex): boolean {
   )
 }
 
-/** Overlap of two collinear segments along the first one's direction, 0..1. */
 function projectionOverlap(a: Vertex, b: Vertex, c: Vertex, d: Vertex): number {
   const dx = b.x - a.x
   const dy = b.y - a.y
@@ -88,13 +75,7 @@ function projectionOverlap(a: Vertex, b: Vertex, c: Vertex, d: Vertex): number {
   return Math.min(1, Math.max(c0, c1)) - Math.max(0, Math.min(c0, c1))
 }
 
-/**
- * Whether two segments cross or overlap.
- *
- * A shared endpoint is not a crossing — the walk's own corners do that by
- * construction — so the collinear branches only fire on a real overlap, which
- * is the signature of an outline that has folded back through itself.
- */
+// A shared endpoint is not a crossing — the walk's own corners do that by construction.
 function segmentsCross(a: Vertex, b: Vertex, c: Vertex, d: Vertex): boolean {
   const d1 = cross(c, d, a)
   const d2 = cross(c, d, b)
@@ -125,19 +106,10 @@ function selfIntersections(points: readonly Vertex[]): number {
   return crossings
 }
 
-/** The plain rectangle a box of this size should clip to. */
 function expectedBox(w: number, h: number): string {
   return `polygon(0px 0px, ${w}px 0px, ${w}px ${h}px, 0px ${h}px)`
 }
 
-/**
- * Every geometric invariant a crop must hold, in one place.
- *
- * A crop is only allowed to remove material from the inside of the box: it may
- * not push a vertex outside the box (the element would tear a hole in the
- * layout it is painted into), may not invert (the shape would render as its own
- * complement), and may not eat so much that the pin is unreadable.
- */
 function assertSaneCrop(
   style: EdgeStyle,
   w: number,
@@ -164,8 +136,7 @@ function assertSaneCrop(
 
   const area = signedArea(points)
   expect(area).toBeGreaterThan(0)
-  // A fifth of the box may be nibbled away at the extreme; below 70% it stops
-  // being a cropped pin and starts being a damaged one.
+  // 70% is the readable floor: below it a cropped pin reads as a damaged one.
   expect(area).toBeGreaterThanOrEqual(0.7 * w * h)
   expect(area).toBeLessThanOrEqual(w * h * 1.0001)
 
@@ -177,9 +148,6 @@ describe('EDGE_STYLES', () => {
     for (const required of ['clean', 'burnt', 'stamped', 'torn']) {
       expect(EDGE_STYLES).toContain(required)
     }
-    // Three invented styles is the floor; each has to be a different kind of
-    // damage rather than a louder noise, which the distinctness test below is
-    // the closest a test can come to checking.
     expect(EDGE_STYLES.length).toBeGreaterThanOrEqual(7)
     for (const style of EDGE_STYLES) {
       const clip = edgeClipPath(style, WIDTH, HEIGHT, 1)
@@ -189,8 +157,6 @@ describe('EDGE_STYLES', () => {
   })
 
   it('gives every style a different path for one seed', () => {
-    // If two styles ever coincide they are the same style with two names, and a
-    // settings pane offering them is lying to the user.
     for (const seed of [1, 12, 999]) {
       const paths = EDGE_STYLES.map((style) => edgeClipPath(style, WIDTH, HEIGHT, seed))
       expect(new Set(paths).size).toBe(EDGE_STYLES.length)
@@ -217,8 +183,6 @@ describe('EDGE_STYLES', () => {
 
 describe('clean', () => {
   it('returns the plain full-box rectangle, byte-stable at every seed', () => {
-    // Clean is the "no crop" member: it exists so the settings pane can offer
-    // an off position without every caller special-casing undefined.
     expect(edgeClipPath('clean', WIDTH, HEIGHT, 1)).toBe(expectedBox(WIDTH, HEIGHT))
     expect(edgeClipPath('clean', WIDTH, HEIGHT, 999)).toBe(expectedBox(WIDTH, HEIGHT))
     expect(edgeClipPath('clean', WIDTH, HEIGHT, 1)).toBe(expectedBox(WIDTH, HEIGHT))
@@ -241,7 +205,6 @@ describe('clean', () => {
   })
 
   it('is the identity for a zero depth in every other style too', () => {
-    // Depth zero means "no bites", whatever shape the profile would have drawn.
     for (const style of EDGE_STYLES) {
       expect(edgeClipPath(style, WIDTH, HEIGHT, 8, { depth: 0 })).toBe(expectedBox(WIDTH, HEIGHT))
     }
@@ -256,9 +219,6 @@ describe('determinism', () => {
   })
 
   it('recomputes the identical path after the cache is cleared', () => {
-    // Without this the determinism could be the memo table rather than the
-    // maths — a generator seeded from a counter or from Math.random() would
-    // still pass the test above.
     for (const style of EDGE_STYLES) {
       const first = edgeClipPath(style, WIDTH, HEIGHT, 42, { jitter: 0.6 })
       clearEdgeCache()
@@ -268,18 +228,14 @@ describe('determinism', () => {
 
   it('re-cracks the edge for every seed, so two pins of one style never match', () => {
     for (const style of EDGE_STYLES) {
-      if (style === 'clean') continue // clean is seed-invariant by definition
+      if (style === 'clean') continue
       const paths = new Set(SEEDS.map((seed) => edgeClipPath(style, WIDTH, HEIGHT, seed)))
       expect(paths.size).toBeGreaterThan(1)
-      // Not merely two: the seed has to reach every part of the profile, or
-      // most of the board's edges drift back into being copies of each other.
       expect(paths.size).toBeGreaterThanOrEqual(SEEDS.length * 0.75)
     }
   })
 
   it('seeds an edge from a pin id, so identical notes still differ', () => {
-    // The intended wiring: same id, same edge forever; different ids, different
-    // damage. seedFromKey is re-exported so callers do not need a second scheme.
     const first = edgeClipPath('torn', WIDTH, HEIGHT, seedFromKey('pin:a'))
     const second = edgeClipPath('torn', WIDTH, HEIGHT, seedFromKey('pin:b'))
     expect(first).not.toBe(second)
@@ -287,8 +243,6 @@ describe('determinism', () => {
   })
 
   it('responds to every option it documents', () => {
-    // A resolve bug that dropped a field would otherwise be invisible: the
-    // paths would just quietly stop varying.
     const base = edgeClipPath('burnt', WIDTH, HEIGHT, 3)
     expect(edgeClipPath('burnt', WIDTH, HEIGHT, 3, { depth: MAX_DEPTH_RATIO })).not.toBe(base)
     expect(edgeClipPath('burnt', WIDTH, HEIGHT, 3, { frequency: 12 })).not.toBe(base)
@@ -332,8 +286,6 @@ describe('bounds', () => {
   })
 
   it('never lets a crop eat more than a third of its box', () => {
-    // The ceiling on depth exists so this can be asserted rather than hoped
-    // for: four sides at the maximum still leave 74% of a square standing.
     const worstCase: EdgeOptions = { depth: MAX_DEPTH_RATIO, jitter: 1 }
     for (const style of EDGE_STYLES) {
       const points = vertices(edgeClipPath(style, 240, 240, 6, worstCase))
@@ -342,9 +294,7 @@ describe('bounds', () => {
   })
 
   it('never folds the outline onto itself', () => {
-    // A self-intersection would clip the pin into wedges, and its shoelace area
-    // would no longer be the area the user sees — the invariant the whole
-    // module is built around.
+    // A self-intersection would clip the pin into wedges and break its area.
     for (const style of EDGE_STYLES) {
       for (const seed of [0, 3]) {
         const points = vertices(edgeClipPath(style, WIDTH, HEIGHT, seed, { jitter: 1 }))
@@ -354,9 +304,7 @@ describe('bounds', () => {
   })
 
   it('tracks the box it was given, so a resized pin does not crop the old shape', () => {
-    // The shape has to reach nearly to every side of the box it was handed. It
-    // may stop short by at most the deepest bite plus the corner inset — an
-    // edge that is entirely burnt genuinely pulls its whole side in that far.
+    // A side may fall short by at most the deepest bite plus the corner inset.
     const w = 500
     const h = 300
     const reach = 1.05 * MAX_DEPTH_RATIO * Math.min(w, h)
@@ -372,9 +320,7 @@ describe('bounds', () => {
 
 describe('robustness', () => {
   it('survives non-finite, negative and zero sizes without emitting NaN', () => {
-    // A pin measured as 0x0 on its first frame, or a width read from an
-    // unparsed string, must not throw and must not write a clip path the
-    // browser refuses to parse — either would blank the pin.
+    // A 0x0 first frame must not throw or emit a clip path the browser rejects.
     const sizes = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -40, 0, 0.001]
     for (const style of EDGE_STYLES) {
       for (const w of sizes) {
@@ -395,8 +341,7 @@ describe('robustness', () => {
   })
 
   it('treats a non-finite option exactly as if it were absent', () => {
-    // An emptied number box yields NaN. Clamping alone passes NaN through, which
-    // is how "NaN" ends up inside a clip path.
+    // An emptied number box yields NaN; clamping alone passes it into the clip path.
     const broken: EdgeOptions = {
       depth: Number.NaN,
       frequency: Number.NaN,
@@ -447,7 +392,6 @@ describe('the cache', () => {
     expect(edgeClipPath('burnt', WIDTH, HEIGHT, 5)).toBe(first)
     expect(edgeCacheSize()).toBe(1)
 
-    // A new seed, a new size and a changed option must each miss.
     edgeClipPath('burnt', WIDTH, HEIGHT, 6)
     edgeClipPath('burnt', WIDTH, HEIGHT + 1, 5)
     edgeClipPath('burnt', WIDTH, HEIGHT, 5, { jitter: 0.5, depth: 0.04 })
@@ -459,7 +403,6 @@ describe('the cache', () => {
     for (let i = 0; i < EDGE_CACHE_LIMIT + 25; i++) edgeClipPath('deckled', 40, 30, i)
     expect(edgeCacheSize()).toBeLessThanOrEqual(EDGE_CACHE_LIMIT)
 
-    // Eviction is oldest-first, so the most recent edges are the ones kept.
     const newest = edgeClipPath('deckled', 40, 30, EDGE_CACHE_LIMIT + 24)
     clearEdgeCache()
     expect(edgeClipPath('deckled', 40, 30, EDGE_CACHE_LIMIT + 24)).toBe(newest)
@@ -468,20 +411,14 @@ describe('the cache', () => {
 
 describe('the two families', () => {
   it('sorts every style into exactly one of them, in the order they are shown', () => {
-    // The flat tuple is what everything else iterates and what a saved file is
-    // validated against; the families are only the order and the split. Holding
-    // them equal means a new style cannot arrive without being put in one.
     expect(EDGE_FAMILIES.flatMap((family) => family.styles)).toEqual([...EDGE_STYLES])
   })
 
   it('puts the styles that repeat a motif on the left of the split', () => {
-    // Not a matter of taste: `jitter` is documented as "zero is the regular
-    // ideal", and the presets fall either side of a gap — 0, 0.15 and 0.35 for
-    // the patterned ones, 0.6 and up for the noisy ones.
     const [pattern, noise] = EDGE_FAMILIES
 
     for (const style of pattern.styles) {
-      expect(EDGE_PRESETS[style].jitter, style).toBeLessThanOrEqual(0.35)
+      expect(EDGE_PRESETS[style].jitter, style).toBe(0)
     }
     for (const style of noise.styles) {
       expect(EDGE_PRESETS[style].jitter, style).toBeGreaterThanOrEqual(0.6)

@@ -1,13 +1,5 @@
 @import 'tailwindcss';
 
-/*
- * "The Candlelit Case Room" — design tokens.
- *
- * Cork, parchment, iron-gall ink, brass, wax. Textures are built from plain CSS
- * gradients rather than SVG filters: `feTurbulence` re-rasterizes on every frame
- * it's animated, and a full-board paper filter is the single biggest perf trap
- * in this design. Gradients composite for free.
- */
 @theme {
   --color-cork-900: #2e1f14;
   --color-cork-700: #4a3320;
@@ -18,6 +10,9 @@
   --color-parchment-200: #efe3c8;
   --color-parchment-300: #e3d2ae;
   --color-parchment-edge: #c9b48a;
+
+  --color-folder: #c9a561;
+  --color-folder-paper: #f7f4ea;
 
   --color-ink: #241a12;
   --color-ink-soft: #4a382a;
@@ -30,15 +25,10 @@
   --color-yarn-gold: #b8912f;
   --color-yarn-violet: #5b3a72;
 
-  /* What the chrome — headings, body copy, hints — is painted in.
-     Deliberately NOT the parchment ramp: that ramp is also every sheet's
-     background, so a light theme flips it dark and reused as chrome text it
-     would vanish. These two are the dark-theme defaults; `applyPreferences`
-     overwrites them per theme. */
+  /* Not the parchment ramp: a light theme flips it dark and chrome text would vanish. */
   --color-board-ink: #f7efdd;
   --color-board-ink-soft: #e3d2ae;
 
-  /* The board's own surface colour. Overwritten by the surface preference. */
   --board-surface: var(--color-cork-500);
 }
 
@@ -51,21 +41,13 @@ body,
 body {
   margin: 0;
   background: var(--color-cork-900);
-  /* The board's own ink, not the paper ramp. The parchment ramp is also every
-     sheet's background, so a light theme flips it dark — reusing it for body
-     text would make the chrome invisible against a pale board. */
+  /* Board ink, not the parchment ramp: a light theme flips that dark and body text would vanish. */
   color: var(--color-board-ink, var(--color-parchment-100));
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* The board surface: layered radial gradients at coprime sizes so the grain
-   never tiles visibly, over whatever colour the surface preference supplies.
-   Gradients only — no blur, no filter — so it costs one paint and nothing per
-   frame.
-
-   The grain is neutral (pure black and white at low alpha) rather than cork-
-   coloured, which is what lets leather, felt and slate share it. */
+/* Gradients only, at coprime sizes so the grain never tiles visibly. */
 .app-shell,
 .cork {
   background-color: var(--board-surface, var(--color-cork-500));
@@ -81,22 +63,12 @@ body {
     100% 100%;
 }
 
-/* The board viewport paints a FLAT surface, deliberately.
- *
- * The cork grain above is a fixed-size dot pattern that does not move with the
- * camera. Letting it show through here put a static field of dots underneath the
- * scaling grid — two dot layers at different scales, which reads as a rendering
- * fault rather than as texture. The grid is the board's only pattern; the grain
- * belongs to the chrome around it.
- *
- * The board still has texture from the ambient dust and the candle vignette,
- * both of which are camera-aware. */
+/* Flat: the fixed-size cork grain would show as a second dot layer under the scaling grid. */
 .board-canvas {
   background-color: var(--board-surface, var(--color-cork-500));
   background-image: none;
 }
 
-/* A lit room needs less candle than a dark one. */
 :root[data-theme='light'] .app-shell,
 :root[data-theme='light'] .cork {
   background-image:
@@ -105,8 +77,9 @@ body {
     radial-gradient(circle at 43% 87%, rgb(0 0 0 / 0.08) 0 1.2px, transparent 1.8px);
 }
 
-/* A post-it catches a bit more light than the board it sits on. */
 .post-it {
+  /* Fallback only: without it a note from a file that never carried a colour is transparent. */
+    background-color: var(--color-parchment-200);
   box-shadow:
     0 1px 0 rgb(255 255 255 / 0.5) inset,
     0 8px 18px -6px rgb(0 0 0 / 0.5);
@@ -119,14 +92,7 @@ body {
   transform: rotate(0.8deg);
 }
 
-/* Parchment: warm vertical falloff plus a soft vignette at the edges. */
-/* The sheet is grabbed by its body, so the paper itself says so — the words
-   inside keep their own text cursor, since a click there still places a caret.
-   While a drag is running the whole sheet says `grabbing` and stops selecting:
-   the press that grabs a page begins a text selection on the way, because
-   nothing knows it is a drag until it has travelled, and this is what stops it
-   dragging a paragraph along with the sheet. `data-dragging` rather than
-   `:active`, which is also true of a click that never moved. */
+/* Must stay `cursor: grab`: the words keep a text cursor, and `data-dragging` stops a press selecting text. */
 .parchment {
   cursor: grab;
   background-color: var(--color-parchment-100);
@@ -144,12 +110,79 @@ body {
   cursor: grabbing;
 }
 
+.paper-fold {
+  /* Relative, but not a stacking context: the `z-index: -1` children must paint under the panel. */
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  /* Square at the top-left, where the caret sits: a radius there cuts a seam. */
+  border-radius: 0 3px 3px 3px;
+  background-color: var(--color-folder);
+  background-image: linear-gradient(
+    to bottom,
+    transparent calc(100% - 7px),
+    rgb(0 0 0 / 0.1) calc(100% - 7px),
+    rgb(0 0 0 / 0.1) calc(100% - 6px),
+    transparent calc(100% - 6px)
+  );
+  box-shadow: 0 -6px 10px -8px rgb(0 0 0 / 0.4) inset;
+  cursor: pointer;
+}
+
+.paper-fold::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: -8px;
+  left: 14px;
+  right: -7px;
+  bottom: 10px;
+  border-radius: 1px;
+  background-color: var(--color-folder-paper);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+/* Folder-coloured sheet hides sub-pixel slivers at fractional zoom where parchment would show. */
+.parchment[data-collapsed='true'] {
+  background-color: var(--color-folder);
+}
+
+/* Above the folder, which is drawn after the pin and would otherwise cover it. */
+.paper-pin {
+  z-index: 1;
+}
+
+.parchment[data-collapsed='true'] .paper-disclosure,
+.parchment[data-collapsed='true'] .paper-tab {
+  top: -24px;
+  height: 25px;
+  background-color: var(--color-folder);
+  color: var(--color-ink);
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.16) inset;
+}
+
+.parchment[data-collapsed='true'] .paper-tab {
+  left: calc(2rem - 1px);
+  display: flex;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.parchment[data-collapsed='true'] .paper-tab:hover,
+.parchment[data-collapsed='true'] .paper-disclosure:hover {
+  background-color: #d8b877;
+}
+
+/* No `:hover`: `filter`/`opacity`/`transform` here makes a stacking context and the `z-index: -1` layer paints above the panel. */
 .parchment[data-dragging='true'],
 .parchment[data-dragging='true'] .article {
   user-select: none;
 }
 
-/* A brass tack: small, shiny, casting a tight shadow onto the paper. */
 .tack {
   background:
     radial-gradient(circle at 32% 28%, #f4e2a1, var(--color-brass) 45%, #7a5f12 100%);
@@ -157,10 +190,7 @@ body {
     0 2px 3px rgb(0 0 0 / 0.45),
     0 0 0 1px rgb(0 0 0 / 0.25),
     0 0 10px rgb(201 162 39 / 0.35);
-  /* Brightness and scale rather than another box-shadow: the three status
-     rules below are box-shadows, and a hover that replaced one would hide
-     whether a tack is repaired or orphaned exactly while it is being pointed
-     at. Unless it is selected, whose ring is the one thing that outranks it. */
+  /* Brightness/scale, not box-shadow: the status rules are box-shadows and would be hidden on hover. */
   transition:
     transform 130ms ease,
     filter 130ms ease;
@@ -187,12 +217,6 @@ body {
     0 0 12px rgb(140 47 30 / 0.55);
 }
 
-/* The page's disclosure caret.
-   Its own control since the tab stopped pretending to be a menu: it rolls the
-   page up and does nothing else. Both states answer the pointer — the first
-   version of this only styled the unselected one, so the caret went inert at
-   exactly the moment it was most likely to be reached for, straight after the
-   page was clicked open. */
 .paper-disclosure {
   background: color-mix(in srgb, var(--color-parchment-200) 85%, transparent);
   color: var(--color-ink-soft);
@@ -216,9 +240,7 @@ body {
   background: var(--color-brass);
 }
 
-/* The glyph grows under the pointer — the same trick the sag handle uses, and
-   for the same reason: transform rather than font-size, so a caret cannot
-   resize the tab it is sitting in. */
+/* Transform rather than font-size, so the glyph cannot resize the tab it sits in. */
 .paper-disclosure-glyph {
   display: block;
   transition: transform 130ms ease;
@@ -228,32 +250,18 @@ body {
   transform: scale(1.25);
 }
 
-/* The tag on a tack that has something written on it.
-   It replaces a brass ring that used to sit around those tacks, which said
-   only *that* there was something to read — the words themselves were in the
-   hover card, so finding out what a pin said meant hovering over every pin
-   until one of them answered. A tag says it, on the board, which is what a tag
-   is for. The name of the game is the same as it always was: a board of fifty
-   pins should not hide the half-dozen somebody bothered to write on. */
 .pin-tag {
   position: absolute;
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Hung from the pin's centre rather than from a corner, so it stays under
-     the tack whatever the tag's width turns out to be. */
+  /* Centred under the tack whatever the tag's width turns out to be. */
   transform: translateX(-50%);
-  /* The tag is a grab handle now, so it is a target — which costs the board
-     the presses it swallows, and the comment on `Tack` says why that is worth
-     it. The cord stays transparent: it is a hairline, and a hairline that ate
-     clicks would be a mystery. So the hit area is the card, which is the part
-     that looks like something you could pick up. */
+  /* Only the card takes presses; the cord is a hairline and stays transparent. */
   pointer-events: none;
   z-index: 18;
 }
 
-/* The string it hangs by. Dark enough to read against cork, wool and paper
-   alike, none of which are the same colour. */
 .pin-tag__cord {
   width: 1px;
   height: 9px;
@@ -262,14 +270,11 @@ body {
 
 .pin-tag__card {
   position: relative;
-  /* The one part of the tag that takes a press: the whole thing drags the pin
-     it belongs to, and a click on it opens the pin's editor. See `Tack`. */
   pointer-events: auto;
   cursor: grab;
   touch-action: none;
   width: max-content;
   max-width: 148px;
-  /* Room at the top for the hole and the cut corners. */
   padding: 10px 9px 6px;
   background: var(--color-parchment-100);
   color: var(--color-ink);
@@ -277,13 +282,8 @@ body {
   font-size: 10px;
   line-height: 1.35;
   text-align: left;
-  /* The luggage-tag cut: the top two corners taken off at 45 degrees. The
-     whole silhouette rather than two little triangles pasted over a rectangle
-     — the paper is one piece, and its shadow has to follow the cut. */
   clip-path: polygon(7px 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%, 0 7px);
-  /* drop-shadow and not box-shadow: `clip-path` above cuts a box-shadow off
-     along with the corners it is meant to follow. This one is applied to the
-     clipped shape. */
+  /* `drop-shadow`, not `box-shadow`: the clip-path cuts a box-shadow off at the corners. */
   filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.5));
 }
 
@@ -291,10 +291,7 @@ body {
   cursor: grabbing;
 }
 
-/* The punched hole. A ring rather than a filled disc, because what is behind
-   the tag is the board, and the board is five different colours — a hole
-   painted the colour of cork is a hole painted the wrong colour on leather,
-   felt, slate and the whiteboard. */
+/* A ring, not a filled disc: the board behind it is five different colours. */
 .pin-tag__hole {
   position: absolute;
   top: 3px;
@@ -337,11 +334,8 @@ body {
   background: var(--color-brass);
 }
 
-/* The handle that adjusts a selected string's sag. No chrome: it is a control,
-   and dressing it as board hardware made it read as another object to click.
-   The glyph carries the meaning; this is just the target around it. */
 .yarn-bead {
-  /* Above the string notes: see `.string-note`. */
+  /* Above the string notes. */
   z-index: 26;
   cursor: ns-resize;
   background: none;
@@ -349,10 +343,7 @@ body {
   padding: 0;
 }
 
-/* The target is the whole box plus a small fringe — the glyph is only 20px, and
-   the point of a handle is that it is easy to catch. Kept small rather than
-   generous: a note hung on the string sits just above the rope, and a handle
-   that reached 8px further would swallow the click meant for the note. */
+/* The box plus a small fringe; a bigger target would swallow the note's click. */
 .yarn-bead::after {
   content: '';
   position: absolute;
@@ -366,9 +357,7 @@ body {
   transition: transform 120ms ease;
 }
 
-/* Grows on hover and while held, so it is obvious it responds before it is
-   grabbed. transform rather than width, so the mark never leaves the point on
-   the curve that it is marking. */
+/* Transform, not width, so the mark never drifts off the point it marks. */
 .yarn-bead:hover .yarn-bead-glyph,
 .yarn-bead:focus-visible .yarn-bead-glyph {
   transform: scale(1.22);
@@ -380,8 +369,6 @@ body {
   border-radius: 9999px;
 }
 
-/* The chronology ribbon: a strip of adding-machine tape with punched holes
-   along both edges. Two repeating radial gradients, no filters. */
 .tape {
   background-color: var(--color-parchment-200);
   background-image:
@@ -397,7 +384,6 @@ body {
     0 2px 8px rgb(0 0 0 / 0.35);
 }
 
-/* The mark the pin leaves on the text it's anchored to. */
 .anchor-mark {
   border-radius: 2px;
   background: rgb(201 162 39 / 0.22);
@@ -419,8 +405,6 @@ body {
   box-shadow: 0 0 0 3px rgb(201 162 39 / 0.12);
 }
 
-/* Prose styling for rendered markdown, kept modest — the article should read
-   like it was typed on the parchment, not dropped in from a design system. */
 .article {
   font-family: ui-serif, Georgia, 'Times New Roman', serif;
   line-height: 1.72;
@@ -479,12 +463,6 @@ body {
   font-style: italic;
   color: var(--color-ink-soft);
 }
-/* A mention: the name of another page or picture, in the prose.
-   Dotted rather than solid, and brass rather than the wax red the browser gives
-   a link: it points somewhere on this board, and a solid underline reads as
-   "leaves the page". The missing form keeps its place and its text — see
-   `markdown/mentions.ts` for why the markup never depends on resolution — and
-   only loses the colour that promises somewhere to go. */
 .article a.mention {
   color: inherit;
   text-decoration: underline dotted;
@@ -508,14 +486,7 @@ body {
   text-decoration-style: dotted;
 }
 
-/* The mention list, hung under the caret.
-   `left` and `top` are set inline: a textarea reports no caret rectangle, so
-   `textarea-caret.ts` measures one with a mirror div and `placePopup` turns it
-   into a corner of this box. Until that measurement lands the list is hidden,
-   since the alternative is one frame at the panel's top-left corner.
-   The width is capped against the pane as well as in px, because the pane is
-   the thing that clips: it is `overflow-hidden`, so a list wider than it would
-   be cut off rather than spilled. */
+/* Hidden until `placePopup` sets its corner; width capped against the clipping pane. */
 .mention-list {
   position: absolute;
   visibility: hidden;
@@ -554,8 +525,6 @@ body {
   background: color-mix(in srgb, var(--color-brass) 26%, transparent);
 }
 
-/* Which kind it is, said once and quietly: the two are the same to a link, but
-   not to the person looking for one of them. */
 .mention-option-kind {
   flex-shrink: 0;
   font-size: 8.5px;
@@ -602,17 +571,6 @@ body {
   font-weight: 600;
 }
 
-/* ---------------------------------------------------------------------------
-   Affordances
-   ---------------------------------------------------------------------------
-   The interaction states below all existed in the DOM and drew nothing, because
-   none of these classes ever had a rule. A board where selection, the rubber
-   band and the grab strips are all invisible is one you cannot learn by looking
-   at it — you have to already know the gestures.
-   --------------------------------------------------------------------------- */
-
-/* The rubber band. Geometry was already being computed every frame; this is
-   the part that makes it a thing you can see. */
 .marquee {
   position: absolute;
   z-index: 30;
@@ -623,7 +581,6 @@ body {
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.15);
 }
 
-/* A grab strip. */
 .drag-bar {
   cursor: grab;
 }
@@ -632,9 +589,6 @@ body {
   cursor: grabbing;
 }
 
-/* On a post-it it is the only thing saying "this moves", so it gets a faint
-   dotted band that firms up under the pointer. The paper's is a labelled brass
-   tab already; dots on top of it would only muddy it. */
 .post-it .drag-bar {
   background-image: radial-gradient(circle, currentColor 1px, transparent 1.2px);
   background-size: 7px 7px;
@@ -648,16 +602,7 @@ body {
   opacity: 0.7;
 }
 
-/* ---------------------------------------------------------------------------
-   A photograph pinned up
-   ---------------------------------------------------------------------------
-   The shadow is offset downward and the sheet is turned by a `transform` the
-   component supplies, so the light reads as coming from above whatever angle
-   the picture hangs at. */
-
-/* No shadow here: this element is a plain rectangle, and anything it draws is
-   a rectangle. The picture's shadow belongs to `.image-shadow`, which knows the
-   cropped silhouette. */
+/* No shadow here: it would be a plain rectangle; the cropped shadow is on `.image-shadow`. */
 .image-card {
   cursor: grab;
 }
@@ -666,11 +611,6 @@ body {
   cursor: grabbing;
 }
 
-/* The selection rim is a `drop-shadow` on the wrapper rather than an outline
-   here, so it follows the crop. Nothing to draw on the card itself. */
-
-/* The handle that swings the picture, and the stem tying it to the pin. Both
-   ride inside the rotated sheet, so they stay at its head as it turns. */
 .image-rotate {
   width: 22px;
   height: 22px;
@@ -732,11 +672,7 @@ body {
   pointer-events: none;
 }
 
-/* Full-bleed boxes so the crop and the drop-shadow measure the same shape.
-   The frame is the clipped one; the wrapper carries the shadow, because a
-   `box-shadow` is drawn from the rectangle and would sit under a torn edge as
-   a rectangle. The inset vignette stays on the frame, where the clip does
-   apply to it — it darkens the picture toward its own edges. */
+/* The wrapper carries the shadow: a box-shadow would be a rectangle under a torn edge. */
 .image-shadow,
 .image-frame {
   width: 100%;
@@ -748,9 +684,6 @@ body {
   background: rgb(0 0 0 / 0.2);
 }
 
-/* A close button, wherever one is offered. Small, faint, and only loud on
-   hover — it sits on things you are reading, and chrome that competes with the
-   writing is chrome that has to go. */
 .post-it-close,
 .sheet-close {
   display: flex;
@@ -789,8 +722,6 @@ body {
   outline-offset: 1px;
 }
 
-/* On the page it has to read against parchment, so it is a small brass disc
-   rather than a bare glyph. */
 .sheet-close {
   position: absolute;
   width: 20px;
@@ -804,7 +735,6 @@ body {
   transform: scale(1.12);
 }
 
-/* The note's corner. Only on a selected note, like a picture's. */
 .post-it-resize {
   width: 14px;
   height: 14px;
@@ -824,8 +754,6 @@ body {
   transform: scale(1.25);
 }
 
-/* The page's edge. A grab strip rather than a corner: a page is resized by its
-   width, and its height is whatever the text takes. */
 .article-resize {
   width: 10px;
   height: 28px;
@@ -840,8 +768,7 @@ body {
     filter 120ms ease;
 }
 
-/* The grip is already translated to sit on the page's edge, so the hover has
-   to keep that translation or the control jumps to the middle of the sheet. */
+/* Keep the translate: without it the grip jumps to the middle of the sheet. */
 .article-resize:hover {
   transform: translateY(-50%) scaleX(1.5);
   filter: brightness(1.2);
@@ -853,23 +780,12 @@ body {
   border-radius: 3px;
 }
 
-/* ---------------------------------------------------------------------------
-   The supplies in the corner: post-its and loose tacks
-   ---------------------------------------------------------------------------
-   A pad is a small sheet of parchment with the object drawn on it and its name
-   under it. The sheet behind is offset a little, so it reads as a stack rather
-   than as a button — and the offset is on the sheet *behind*, which is what
-   makes the top one look like the one you would take. */
-
 .palette {
   position: absolute;
   left: 16px;
-  /* Clear of the footer strip along the bottom of the board. */
+  /* Clear of the footer strip. */
   bottom: 54px;
-  /* Above everything on the cork, and below anything transient. The border bar
-     is wide enough to reach this corner when a picture is selected near the
-     bottom-left, and a menu standing over chrome is correct where chrome
-     standing over a menu is a swatch that cannot be clicked. */
+  /* Above the board, below transient chrome; the border bar reaches this corner. */
   z-index: 28;
   display: flex;
   align-items: flex-end;
@@ -899,7 +815,6 @@ body {
   transition: transform 120ms ease;
 }
 
-/* The sheet underneath, showing at the edge. */
 .palette-pad::before {
   content: '';
   position: absolute;
@@ -939,7 +854,6 @@ body {
   height: 22px;
 }
 
-/* A tack, drawn the way the board draws one. */
 .palette-glyph-tack {
   display: block;
   width: 13px;
@@ -951,7 +865,6 @@ body {
     0 0 0 1px rgb(0 0 0 / 0.2);
 }
 
-/* A post-it, drawn the way the board draws one. */
 .palette-glyph-note {
   display: block;
   width: 22px;
@@ -963,8 +876,6 @@ body {
     0 1px 3px rgb(0 0 0 / 0.4);
 }
 
-/* What is under the pointer while carrying. Centred on it, because that is
-   where the thing will land. */
 .palette-ghost-note,
 .palette-ghost-tack {
   position: fixed;
@@ -993,40 +904,14 @@ body {
     0 0 0 1px rgb(0 0 0 / 0.25);
 }
 
-/* ---------------------------------------------------------------------------
-   A note hung on a string
-   ---------------------------------------------------------------------------
-   The same paper as a post-it, because it is the same kind of thing — the
-   difference is that it is tied to a line rather than stuck to the cork. Its
-   bottom-centre is the point it hangs from, so the translation puts that
-   point exactly on the wool. */
-
 .string-note {
   position: absolute;
-  /* Sized to its words, not to the space available beside it.
-     The world layer is a zero-sized box that everything on the board is
-     positioned inside, so an absolutely positioned note that is left to
-     shrink-to-fit is measured against a containing block 0px wide — and the
-     available width comes out as `0 - left`, which is negative for every note
-     anchored right of the board origin. A shrink-to-fit box clamps a negative
-     available width to the minimum, so those notes collapsed to the card's
-     46px floor and `overflow-wrap: anywhere` broke words mid-word: a label
-     reading "the leaves" drew as "the / leave / s". Notes anchored left of the
-     origin got a positive `0 - left` and looked fine, which is why a board
-     with one label near the margin never showed it.
-     `max-content` takes the containing block out of the sum; the card's own
-     `max-width` is what still wraps a long note. */
+  /* max-content, not shrink-to-fit: the zero-sized world layer makes a shrink-to-fit note collapse. */
   width: max-content;
-  /* Under the sag handle: a note defaults to halfway along the rope, which is
-     exactly where that handle sits, and the handle is a control while the note
-     is content — so the control wins. */
+  /* Below the sag handle, which sits halfway along the rope where a default note lands. */
   z-index: 21;
-  /* Anchored by the point it hangs from, not by a corner. */
   transform: translate(-50%, -100%);
-  /* The gap that keeps the card clear of that handle. The padding is inside the
-     anchor, so the pin still sits exactly on the wool while the card rides
-     above it — without this the handle's target covers the card's middle, and a
-     note left at the halfway point could be neither clicked nor dragged. */
+  /* Padding is inside the anchor, so the pin stays on the wool while the card clears the handle. */
   padding-bottom: 8px;
   touch-action: none;
 }
@@ -1063,12 +948,10 @@ body {
 
 .string-note-text {
   display: block;
-  /* Long notes wrap rather than stretching the card across the board. */
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
-/* The invitation, shown only on a selected string. */
 .string-note-prompt {
   color: color-mix(in srgb, var(--color-ink) 40%, transparent);
   font-style: italic;
@@ -1092,7 +975,6 @@ body {
   font-style: italic;
 }
 
-/* The pin, at the bottom tip where a tag's hole would be. */
 .string-note-pin {
   position: absolute;
   left: 50%;
@@ -1107,7 +989,6 @@ body {
   pointer-events: none;
 }
 
-/* The bar of edge treatments on a selected picture. */
 .edge-picker {
   display: flex;
   gap: 2px;
@@ -1117,13 +998,10 @@ body {
   background: rgb(20 13 8 / 0.92);
   box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.7);
   cursor: default;
-  /* Above the sheen and the yarn, so it is never the thing behind something. */
+  /* Above the sheen and the yarn. */
   z-index: 30;
 }
 
-/* The break between the patterned crops and the noisy ones. A hairline rather
-   than a label: the swatches already say which is which, and a caption across a
-   row of ten little pictures would be most of the control. */
 .edge-picker-split {
   align-self: stretch;
   width: 1px;
@@ -1141,11 +1019,7 @@ body {
   border: 1px solid transparent;
   border-radius: 4px;
   background: none;
-  /* Parchment, not a board-ink token. The bar is near-black in *every* theme,
-     while `--color-board-ink-soft` flips to a dark value on a light board — so
-     naming the board's ink here gave ten swatches and ten unreadable labels
-     the moment somebody switched to the light theme. The bar is a control that
-     chose its own ground; its text has to be chosen against that ground. */
+  /* Parchment, not a board-ink token: the bar is near-black in every theme. */
   color: color-mix(in srgb, var(--color-parchment-200) 72%, transparent);
   cursor: pointer;
   transition:
@@ -1166,9 +1040,6 @@ body {
   background: rgb(201 180 138 / 0.18);
 }
 
-/* The swatch is parchment, so what it shows is the *crop* rather than the
-   picture — the colours of the thing being cropped would say nothing about
-   which edge this is. */
 .edge-swatch-face {
   display: block;
   background: var(--color-parchment-200);
@@ -1186,8 +1057,7 @@ body {
   outline-offset: 1px;
 }
 
-/* Selection. Declared after the tack's own status shadows so it wins on the
-   tie: both selectors are two classes, so source order decides. */
+/* After the status shadows: both selectors are two classes, so source order decides the tie. */
 .tack.is-selected {
   box-shadow:
     0 0 0 2px var(--color-brass),
@@ -1200,8 +1070,7 @@ body {
   outline-offset: 3px;
 }
 
-/* Repeatedly-animated entrance for a freshly placed pin. Transform and opacity
-   only, so it stays on the compositor. */
+/* Transform and opacity only, so it stays on the compositor. */
 @keyframes tack-in {
   0% {
     transform: scale(2.2) translateY(-2px);
@@ -1226,9 +1095,6 @@ body {
     animation: none;
   }
 
-  /* Every hover above that moves something says so by moving it. The colour
-     changes stay — those are feedback rather than motion, and a control that
-     acknowledges the pointer only by changing shade is still legible. */
   .tack:hover,
   .image-rotate:hover,
   .image-resize:hover,
@@ -1244,13 +1110,6 @@ body {
   }
 }
 
-/* The caption under a selected picture: what it is called, and what it is a
-   picture of. A form rather than a label, because a dropped photograph arrives
-   with a filename and nothing else — this is where it gets the name a mention
-   can use.
-
-   It hangs below the picture and counter-rotates to stay upright (see
-   `ImageCard`), so its own type never sits at the picture's angle. */
 .image-caption {
   display: flex;
   flex-direction: column;
@@ -1262,8 +1121,7 @@ body {
   box-shadow:
     0 1px 0 rgb(255 255 255 / 0.5) inset,
     0 10px 20px -10px rgb(0 0 0 / 0.6);
-  /* Not the card's grab cursor: this is text, and the drag it would otherwise
-     start is stopped at the element. */
+  /* `default`, not grab: this is text, and the drag is stopped at the element. */
   cursor: default;
   color: var(--color-ink);
 }
@@ -1307,16 +1165,49 @@ body {
   background: color-mix(in srgb, var(--color-brass) 8%, transparent);
 }
 
-/* The type controls on a selected note: smaller, larger, and back to normal.
-   Sized to the note rather than to the app — a 168px square has no room for
-   full-size buttons, and these ride over the paper's own colour so they read as
-   part of it rather than as chrome sitting on top. */
+.post-it-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 2px;
+  flex: none;
+}
+
+.post-it-colors {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* The hairline is load-bearing: a pale swatch on a pale note is otherwise invisible. */
+.post-it-color {
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 30%, transparent);
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    transform 110ms ease,
+    box-shadow 110ms ease;
+}
+
+.post-it-color:hover {
+  transform: scale(1.15);
+}
+
+.post-it-color[data-selected='true'] {
+  box-shadow:
+    0 0 0 1px var(--color-parchment-100),
+    0 0 0 2px color-mix(in srgb, var(--color-ink) 55%, transparent);
+}
 .post-it-fonts {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 2px;
-  margin-top: 2px;
   flex: none;
 }
 
@@ -1349,8 +1240,6 @@ body {
   cursor: default;
 }
 
-/* The two As differ by size alone, which is the convention and needs no dashes
-   beside them. */
 .post-it-font-a {
   font-weight: 600;
   line-height: 1;

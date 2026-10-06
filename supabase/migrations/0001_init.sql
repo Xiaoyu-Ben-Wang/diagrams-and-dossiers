@@ -1,30 +1,11 @@
--- The Case Board — initial schema, access model, and RLS.
+-- Never add `ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY`: it fails
+-- with `42501 ...`, aborting the transaction and skipping every later statement.
 --
--- Design notes that matter, in order of how expensive they'd be to get wrong:
---
---  1. Invite tokens are a DOOR, not a credential. Redeeming one writes a real
---     `members` row; every request after that is authorized by RLS against that
---     row. Authorization therefore lives in exactly one place instead of being
---     re-implemented at every call site.
---
---  2. Never add `ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY` here.
---     It already has RLS, the `realtime` schema is locked down, and the attempt
---     fails with `42501 must be owner of table messages` — which aborts the
---     entire transaction and silently skips every statement after it, including
---     the policies you were trying to add.
---
---  3. `security definer` functions pin `search_path = ''` and fully qualify
---     every reference. Without that, a caller can shadow `public.members` with
---     their own table and the function will happily read it.
+-- `security definer` functions pin `search_path = ''`: without it a caller can
+-- shadow `public.members` with their own table.
 
 create extension if not exists pgcrypto with schema extensions;
 
--- ---------------------------------------------------------------------------
--- Tokens
--- ---------------------------------------------------------------------------
-
--- 16 random bytes, base64url, no padding. 128 bits is not guessable, and the
--- URL-safe alphabet means a link can be pasted anywhere without escaping.
 create or replace function public.generate_token()
 returns text
 language sql
@@ -33,12 +14,8 @@ as $$
   select translate(rtrim(encode(extensions.gen_random_bytes(16), 'base64'), '='), '+/', '-_')
 $$;
 
--- ---------------------------------------------------------------------------
--- Tables
--- ---------------------------------------------------------------------------
-
--- One row per anonymous auth user. `can_create_boards` is what the creator
--- invite grants; without it you can join boards but not mint your own.
+-- `can_create_boards` is granted only by creator invites; without it you can
+-- join boards but not mint your own.
 create table public.profiles (
   user_id            uuid primary key references auth.users (id) on delete cascade,
   display_name       text,
@@ -46,8 +23,8 @@ create table public.profiles (
   created_at         timestamptz not null default now()
 );
 
--- Each token column is an independent link. NULL disables that link without
--- disturbing the others — so you can revoke edit access and leave viewing up.
+-- Each token column is an independent link: NULL disables that link without
+-- disturbing the others.
 create table public.boards (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,
@@ -75,9 +52,8 @@ create table public.members (
   primary key (board_id, user_id)
 );
 
--- Soft per-person revocation. Cooperative, not enforced: someone determined can
--- clear browser storage and rejoin. Rotating the link is the real remedy. This
--- stops accidents and casual re-entry, which is what a trust group needs.
+-- Soft, cooperative revocation: someone determined can clear storage and rejoin;
+-- rotating the link is the real remedy.
 create table public.board_blocks (
   board_id   uuid not null references public.boards (id) on delete cascade,
   user_id    uuid not null references auth.users (id) on delete cascade,
@@ -113,9 +89,8 @@ create table public.articles (
 
 create index articles_board_idx on public.articles (board_id);
 
--- A "thing on the board". Its location is EITHER a free board position OR a
--- text anchor inside an article — the CHECK below enforces that, because a row
--- with both is a bug that would be painful to debug later.
+-- A thing on the board is located EITHER by a board position OR by a text
+-- anchor, never both.
 create table public.items (
   id             uuid primary key default gen_random_uuid(),
   board_id       uuid not null references public.boards (id) on delete cascade,
@@ -172,7 +147,6 @@ create table public.groups (
 
 create index groups_board_idx on public.groups (board_id);
 
--- Many-to-many: an item can sit in "The Heist" and "Session 12" at once.
 create table public.group_items (
   group_id uuid not null references public.groups (id) on delete cascade,
   item_id  uuid not null references public.items (id) on delete cascade,
@@ -195,15 +169,8 @@ create table public.strings (
 
 create index strings_board_idx on public.strings (board_id);
 
--- ---------------------------------------------------------------------------
--- Access helpers
---
--- All `security definer` with `search_path = ''`: they must run with the
--- definer's rights (to read `members` regardless of the caller's policy) and
--- cannot be tricked into reading a shadowed table. Execute is revoked from
--- PUBLIC below — otherwise anyone could call them directly.
--- ---------------------------------------------------------------------------
-
+-- Run with the definer's rights (to read `members` past the caller's policy);
+-- execute is revoked from PUBLIC below so only authenticated callers may use them.
 create or replace function public.is_member(b uuid)
 returns boolean
 language sql
@@ -254,10 +221,6 @@ grant execute on function public.is_member(uuid) to authenticated;
 grant execute on function public.is_editor(uuid) to authenticated;
 grant execute on function public.is_dm(uuid)     to authenticated;
 
--- ---------------------------------------------------------------------------
--- Row level security
--- ---------------------------------------------------------------------------
-
 alter table public.profiles        enable row level security;
 alter table public.boards          enable row level security;
 alter table public.members         enable row level security;
@@ -269,9 +232,8 @@ alter table public.groups          enable row level security;
 alter table public.group_items     enable row level security;
 alter table public.strings         enable row level security;
 
--- Profiles: you see and edit only your own. `can_create_boards` is deliberately
--- NOT updatable by the client — only the redemption RPC may grant it, or anyone
--- could self-promote.
+-- `can_create_boards` is deliberately not client-updatable: only the redemption
+-- RPC may grant it, or anyone could self-promote.
 create policy profiles_select_own on public.profiles
   for select to authenticated using (user_id = (select auth.uid()));
 
@@ -280,7 +242,6 @@ create policy profiles_update_own on public.profiles
   using (user_id = (select auth.uid()))
   with check (user_id = (select auth.uid()));
 
--- Boards: any member may read. Only the owner may modify.
 create policy boards_select_member on public.boards
   for select to authenticated using (public.is_member(id));
 
@@ -289,21 +250,18 @@ create policy boards_update_owner on public.boards
   using (owner_id = (select auth.uid()))
   with check (owner_id = (select auth.uid()));
 
--- Members: visible to fellow members (needed for attribution and presence).
--- There is deliberately NO insert policy — joining happens only through the
--- join_board RPC, so the role can't be chosen by the client.
+-- There is deliberately NO insert policy: joining happens only through the
+-- join_board RPC, so the role cannot be chosen by the client.
 create policy members_select_fellow on public.members
   for select to authenticated using (public.is_member(board_id));
 
 create policy members_delete_dm on public.members
   for delete to authenticated using (public.is_dm(board_id));
 
--- Blocks and creator invites are server-side concerns only. No policies at all
--- means no client access, which is exactly right.
+-- No policies at all means no client access.
 create policy creator_invites_no_client on public.creator_invites
   for select to authenticated using (false);
 
--- Articles
 create policy articles_select on public.articles
   for select to authenticated
   using (
@@ -324,7 +282,6 @@ create policy articles_update on public.articles
 create policy articles_delete on public.articles
   for delete to authenticated using (public.is_editor(board_id));
 
--- Items
 create policy items_select on public.items
   for select to authenticated
   using (
@@ -345,7 +302,6 @@ create policy items_update on public.items
 create policy items_delete on public.items
   for delete to authenticated using (public.is_editor(board_id));
 
--- Groups
 create policy groups_select on public.groups
   for select to authenticated
   using (public.is_member(board_id) and (visibility = 'shared' or public.is_dm(board_id)));
@@ -362,7 +318,6 @@ create policy groups_update on public.groups
 create policy groups_delete on public.groups
   for delete to authenticated using (public.is_editor(board_id));
 
--- Group membership inherits the group's board.
 create policy group_items_select on public.group_items
   for select to authenticated
   using (exists (
@@ -380,7 +335,6 @@ create policy group_items_write on public.group_items
     select 1 from public.groups g where g.id = group_id and public.is_editor(g.board_id)
   ));
 
--- Strings
 create policy strings_select on public.strings
   for select to authenticated
   using (public.is_member(board_id) and (visibility = 'shared' or public.is_dm(board_id)));
@@ -397,15 +351,8 @@ create policy strings_update on public.strings
 create policy strings_delete on public.strings
   for delete to authenticated using (public.is_editor(board_id));
 
--- ---------------------------------------------------------------------------
--- Integrity triggers
---
--- RLS lets a member UPDATE any column on rows they can write. These close two
--- holes that policies alone cannot:
---   * moving a row to another board, or forging authorship
---   * pinning `version` so optimistic concurrency never triggers
--- ---------------------------------------------------------------------------
-
+-- Policies alone cannot stop a member moving a row to another board, forging
+-- authorship, or pinning `version` so concurrency never triggers.
 create or replace function public.enforce_item_invariants()
 returns trigger
 language plpgsql
@@ -418,9 +365,8 @@ begin
     raise exception 'immutable column on items';
   end if;
 
-  -- Version is owned by the database, not the client. If the client could set
-  -- it, it could write version = 1 forever and defeat every concurrency check.
-  -- Callers do optimistic concurrency by filtering on the version they read.
+  -- Version is owned by the database: a client that could set it would defeat
+  -- optimistic concurrency. Callers filter on the version they read.
   new.version := old.version + 1;
   new.updated_at := now();
   return new;
@@ -465,11 +411,6 @@ create trigger strings_invariants
   before update on public.strings
   for each row execute function public.enforce_string_invariants();
 
--- ---------------------------------------------------------------------------
--- RPCs — the only way in
--- ---------------------------------------------------------------------------
-
-/** Redeem a creator invite: grants the right to create boards. */
 create or replace function public.redeem_creator_invite(p_token text, p_display_name text)
 returns void
 language plpgsql
@@ -498,7 +439,6 @@ begin
 end;
 $$;
 
-/** Create a board and mint its three links. Returns the tokens once. */
 create or replace function public.create_board(p_name text, p_slug text)
 returns table (board_id uuid, view_token text, edit_token text, dm_token text)
 language plpgsql
@@ -534,13 +474,8 @@ begin
 end;
 $$;
 
-/**
- * Redeem a board link.
- *
- * The token maps to both a board and the role it grants, so the caller cannot
- * choose their own privilege — the link decides. Re-redeeming an existing link
- * never downgrades an owner.
- */
+-- The token decides the role, so the caller cannot choose privilege; re-redeeming
+-- an existing link never downgrades an owner.
 create or replace function public.join_board(p_token text, p_display_name text default null)
 returns table (board_id uuid, role text)
 language plpgsql

@@ -1,22 +1,3 @@
-/**
- * A post-it on the board.
- *
- * The body is edited in place — a post-it is a thing you scribble on, so
- * opening a dialog to do it would be a step backwards — and the header is the
- * grab handle, so dragging never fights with selecting text inside the note.
- *
- * Its size is its own rather than the board's: a note is as big as what is
- * written on it, so the corner drags. Freely, not proportionally — unlike a
- * photograph, there is no shape a note is supposed to be, and a note stretched
- * to fit a sentence is the point.
- *
- * Laid out as a column — header, then body filling what is left — rather than
- * with a computed height for the textarea. The body's height is whatever is
- * over once the header and the padding have taken theirs, which is a thing
- * flex knows and arithmetic has to be told again every time the padding
- * changes.
- */
-
 import { RotateCcw, X } from 'lucide-react'
 
 import {
@@ -27,11 +8,11 @@ import {
   stepFontScale,
 } from '../../model/kinds'
 import type { NoteEntity } from '../../model/types'
+import { POST_IT_COLORS } from '../tuning'
 import { useBoardDrag } from '../useBoardDrag'
 import { useResizeDrag } from '../useResizeDrag'
 import type { Point } from '../yarn'
 
-/** How small and how large a note may be dragged, in board px. */
 const MIN_WIDTH = 96
 const MIN_HEIGHT = 80
 const MAX_EDGE = 900
@@ -40,13 +21,13 @@ export interface PostItProps {
   note: NoteEntity
   zoom: number
   selected: boolean
-  /** A viewport point in board space, for measuring the corner drag. */
   toBoard: (clientX: number, clientY: number) => Point
   onSelect: (id: string) => void
   onDrag: (id: string, delta: Point) => void
   onChange: (id: string, body: string) => void
   onResize: (id: string, size: { width: number; height: number }) => void
   onSetFontScale: (id: string, scale: number) => void
+  onSetColor: (id: string, color: string) => void
   onRemove: (id: string) => void
 }
 
@@ -60,6 +41,7 @@ export function PostIt({
   onChange,
   onResize,
   onSetFontScale,
+  onSetColor,
   onRemove,
 }: PostItProps) {
   const drag = useBoardDrag({
@@ -71,10 +53,8 @@ export function PostIt({
     size: { width: note.width, height: note.height },
     toBoard,
     sizeAt: (pointer) => {
-      // Measured from the note's own corner in board space, which is correct
-      // here only because a note is never rotated. A tilted sheet would have to
-      // turn the pointer back through its own angle first, the way a picture
-      // does.
+      // Measured from the corner in board space; correct only because a note is never rotated —
+      // a tilted one would have to un-rotate the pointer first, as a picture does.
       return {
         width: clamp(pointer.x - note.board.x, MIN_WIDTH, MAX_EDGE),
         height: clamp(pointer.y - note.board.y, MIN_HEIGHT, MAX_EDGE),
@@ -88,11 +68,8 @@ export function PostIt({
       data-entity-id={note.id}
       data-post-it-id={note.id}
       data-board-entity="note"
-      // Selecting on the press, not on a tap: the resize corner is only drawn
-      // on a selected note, so a tap that travelled would move a note and never
-      // select it, and there would be no way to reach the corner at all.
-      // Nothing calls preventDefault, so a press in the body still lands in the
-      // textarea and puts the caret where it was aimed.
+      // Select on the press, not a tap: the resize corner is only drawn on a selected note, so
+      // a tap that travelled could move it and never select it, never reaching the corner.
       onPointerDown={() => onSelect(note.id)}
       className={`post-it absolute flex flex-col rounded-sm p-2 ${
         selected ? 'is-selected' : ''
@@ -105,9 +82,6 @@ export function PostIt({
         background: note.color,
       }}
     >
-      {/* The header is the grab handle, so dragging never fights with selecting
-          text inside the note. The close button rides on it rather than in the
-          corner, where it would sit under the resize handle. */}
       <div className="mb-1 flex h-3 shrink-0 items-center gap-1">
         <div
           {...drag}
@@ -131,20 +105,31 @@ export function PostIt({
         onChange={(event) => onChange(note.id, event.target.value)}
         placeholder="Write something…"
         className="min-h-0 w-full flex-1 resize-none bg-transparent leading-snug text-ink outline-none placeholder:text-ink-soft/40"
-        // A multiple of the note's base size rather than a size of its own, so
-        // the writing on two notes is comparable and retuning the base does not
-        // leave every resized note behind.
         style={{ fontSize: NOTE_FONT_SIZE * note.fontScale }}
         aria-label="Post-it note"
       />
 
-      {/* The type controls, on the selected note only — an unselected board is
-          a board of things to read, not a control panel, which is the same
-          argument the resize corner makes. Below the writing rather than in the
-          header, because the header is the grab handle and buttons in it would
-          be buttons you start dragging by mistake. */}
       {selected ? (
-        <div className="post-it-fonts">
+        <div className="post-it-tools">
+          <div className="post-it-colors">
+            {POST_IT_COLORS.map(({ name, color }) => (
+              <button
+                key={color}
+                type="button"
+                data-testid={`post-it-color-${name.toLowerCase()}`}
+                aria-label={`${name} note`}
+                aria-pressed={note.color === color}
+                title={name}
+                className="post-it-color"
+                data-selected={note.color === color}
+                style={{ background: color }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => onSetColor(note.id, color)}
+              />
+            ))}
+          </div>
+
+          <div className="post-it-fonts">
           <button
             type="button"
             data-testid="post-it-font-down"
@@ -185,12 +170,10 @@ export function PostIt({
           >
             <RotateCcw size={11} strokeWidth={2.4} aria-hidden="true" />
           </button>
+          </div>
         </div>
       ) : null}
 
-      {/* The corner. Drawn only while the note is selected, like a picture's —
-          an unselected board is a board of things to read, not a control
-          panel. */}
       {selected ? (
         <button
           type="button"

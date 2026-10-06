@@ -1,20 +1,3 @@
-/**
- * The board surface: an infinite canvas you navigate like Miro.
- *
- *   scroll          zoom, anchored at the cursor
- *   right or middle drag   pan
- *   right-click (no drag)  context — edit the pin under the cursor
- *
- * The camera lives in the parent rather than here, because other things drive
- * it too — the timeline flies it to a moment, and a future "fit to selection"
- * will want it. This component owns only the *interaction* and the transform.
- *
- * The whole world is one CSS transform on a single element. That's what keeps
- * zoom free: text inside an article never re-lays-out, it's just scaled. It is
- * also what keeps text anchors stable, since paper-space coordinates don't
- * change when the camera moves.
- */
-
 import {
   useCallback,
   useEffect,
@@ -39,7 +22,6 @@ import type { Point } from './yarn'
 export interface BoardContextTarget {
   clientX: number
   clientY: number
-  /** What was under the cursor when the right button went down. */
   target: EventTarget | null
 }
 
@@ -48,108 +30,30 @@ export interface BoardCanvasProps {
   onCameraChange: (next: Camera) => void
   children: ReactNode
   className?: string
-  /** Fired on a right-click that did not turn into a drag. */
   onContextTarget?: (target: BoardContextTarget) => void
-  /**
-   * Files dropped onto the board.
-   *
-   * The drop is claimed on the board itself rather than on a wrapper so the
-   * whole surface is a target, and so a drop that lands on a pin or a post-it
-   * still reaches it — a child that swallows the event would make a small part
-   * of the board mysteriously refuse pictures.
-   */
   onFileDrop?: (event: React.DragEvent<HTMLDivElement>) => void
-  /** Asked whether the drag under way is one the board will accept. */
   onFileDragOver?: (event: React.DragEvent<HTMLDivElement>) => void
-  /**
-   * Board-space rects to frame once, the first time they become available.
-   * Used to open on the article rather than on empty cork. It fires once only —
-   * re-framing whenever the content changed would yank the view out from under
-   * someone mid-edit.
-   */
   fitTo?: Rect[]
-  /**
-   * Rendered over everything, in *viewport* space — chrome that belongs to the
-   * board rather than to the cork, and so must not pan away with it.
-   */
   overlay?: ReactNode
-  /**
-   * Rendered behind the world, in *viewport* space, and handed the measured
-   * viewport size.
-   *
-   * A render prop rather than a plain child, because backdrops like the grid
-   * need the viewport dimensions and the transform — and putting them inside the
-   * world would mean scaling a huge element instead of drawing crisply at screen
-   * resolution. It's called on every render, so it must be cheap.
-   */
   backdrop?: (viewport: Viewport) => ReactNode
-  /**
-   * A left-click that landed on bare board rather than on anything in it.
-   * Reported in viewport coordinates; the caller converts to board space, since
-   * only it knows what should be created there.
-   *
-   * Modifier state comes along because the canvas has no business deciding what
-   * a click means — whether it places a pin or does nothing is the application's
-   * call, and it changes with the tool.
-   */
   onBackgroundClick?: (click: { point: Point; ctrlKey: boolean; metaKey: boolean }) => void
-  /** Switches the cursor to a crosshair, so the active tool is visible. */
   pinMode?: boolean
-  /**
-   * Report a rubber-band selection as it is dragged, in viewport coordinates,
-   * and null when it ends. Left-dragging bare board selects; it is the same
-   * button that pans, separated by which one is held.
-   */
   onMarquee?: (rect: Rect | null) => void
-  /**
-   * A middle-drag that started on something rather than on bare board, reported
-   * as the element under the press plus the board-space delta to move it by.
-   *
-   * Middle-drag is the camera's gesture, and it stays the camera's gesture over
-   * empty cork — but pressing it on a thing and having the whole board slide
-   * away is never what was meant. The canvas reports the element rather than an
-   * id because it has no idea what its children are; the caller resolves it,
-   * exactly as it does for `onContextTarget`.
-   */
   onEntityDrag?: (element: Element, delta: Point) => void
-  /**
-   * Where the pointer is over bare canvas, in viewport coordinates, and null
-   * when it leaves.
-   *
-   * Reported per move rather than as an enter/leave pair because the things a
-   * caller wants to know about — a yarn under the cursor — are not elements and
-   * so never get an enter event of their own. The caller hit-tests the point.
-   */
   onHover?: (point: Point | null) => void
-  /**
-   * The cursor to use over empty board, when no pan or tool has a better claim.
-   *
-   * A plain string rather than a closed set: the canvas has no idea what is
-   * under the pointer, and enumerating the cursors it might be asked for would
-   * put the application's vocabulary in the canvas.
-   */
   idleCursor?: string
 }
 
-/**
- * `DRAG_THRESHOLD` and `CLICK_SLOP` come from `useBoardDrag`: the band and the
- * objects dragged on the board are told apart from a click by the same rule, and
- * two copies of it is how they stop agreeing.
- */
+// From `useBoardDrag`: the band and objects dragged on the board are told apart from a
+// click by the same rule, and two copies of it is how they stop agreeing.
 
-/**
- * Capture the pointer if the environment supports it.
- *
- * `setPointerCapture` throws if the pointer isn't active — and isn't implemented
- * at all outside a browser. Neither is worth failing a drag over: capture is a
- * refinement that keeps a fast drag from escaping the viewport, not a
- * requirement for panning to work.
- */
+// `setPointerCapture` throws if the pointer isn't active, and isn't implemented
+// outside a browser.
 function capturePointer(element: Element, pointerId: number): void {
   try {
     element.setPointerCapture(pointerId)
   } catch {
-    // No capture; the drag still tracks while the pointer is over the board.
+    // Capture is a refinement, not a requirement for panning.
   }
 }
 
@@ -161,10 +65,7 @@ function releasePointer(element: Element, pointerId: number): void {
   }
 }
 
-/**
- * Wheel sensitivity. Trackpad pinch arrives as a wheel event with ctrlKey set
- * and much smaller deltas, so it needs a steeper multiplier to feel the same.
- */
+// Trackpad pinch arrives as a wheel event with ctrlKey set and much smaller deltas.
 const WHEEL_INTENSITY = 0.0015
 const PINCH_INTENSITY = 0.01
 
@@ -198,18 +99,10 @@ export function BoardCanvas({
   const viewportRef = useRef<HTMLDivElement>(null)
   const panRef = useRef<PanState | null>(null)
 
-  /**
-   * Set when a press became a rubber band, so the click that the browser fires
-   * afterwards is not mistaken for one.
-   *
-   * Without this, swiping a band across the board selected everything and then
-   * immediately deselected it: the trailing click reached the bare-board
-   * handler, which is where "a plain click on cork clears the selection" lives.
-   * The band looked like it did nothing at all.
-   */
+  // The browser fires a click after a rubber-band drag; without this it reaches the
+  // bare-board handler and clears the selection the band just made.
   const suppressClickRef = useRef<{ x: number; y: number } | null>(null)
 
-  /** A middle-press that landed on an entity rather than on bare board. */
   const entityRef = useRef<{
     pointerId: number
     lastX: number
@@ -219,20 +112,11 @@ export function BoardCanvas({
   const hasFittedRef = useRef(false)
   const [viewport, setViewport] = useState<Viewport>({ width: 0, height: 0 })
 
-  /**
-   * Whether a pan or zoom is in flight, so `will-change` can be on only then.
-   *
-   * A permanent `will-change: transform` promotes the world to its own
-   * composited layer, and the browser then rasterizes that layer once and
-   * *scales the bitmap* as you zoom — which is exactly what makes text and
-   * cards go soft. Dropping the hint once motion settles lets it re-rasterize
-   * crisply at the new scale, and costs nothing perceptible because nothing is
-   * moving while it happens.
-   */
+  // A permanent `will-change: transform` makes the browser rasterize the layer once and
+  // scale the bitmap as you zoom, so text and cards go soft; set it only while moving.
   const [interacting, setInteracting] = useState(false)
   const settleTimer = useRef(0)
 
-  /** The live rubber band, in viewport coordinates. */
   const [marquee, setMarquee] = useState<Rect | null>(null)
   const marqueeRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null)
 
@@ -244,8 +128,6 @@ export function BoardCanvas({
 
   useEffect(() => () => window.clearTimeout(settleTimer.current), [])
 
-  // The wheel listener reads the camera through a ref so it doesn't have to be
-  // torn down and rebuilt on every frame of a zoom.
   const cameraRef = useRef(camera)
   cameraRef.current = camera
 
@@ -265,9 +147,8 @@ export function BoardCanvas({
     const viewport = viewportRef.current
     if (!viewport) return
 
-    // Registered natively and non-passive: React's synthetic wheel listener is
-    // passive, so `preventDefault` there is ignored and the page scrolls behind
-    // the zoom.
+    // Native and non-passive: React's synthetic wheel listener is passive, so
+    // `preventDefault` there is ignored and the page scrolls behind the zoom.
     const handleWheel = (event: WheelEvent): void => {
       event.preventDefault()
 
@@ -285,9 +166,6 @@ export function BoardCanvas({
     return () => viewport.removeEventListener('wheel', handleWheel)
   }, [])
 
-  // Track the viewport size for the backdrop and for fit-bounds. Only stored in
-  // state when it actually changes, so a backdrop that reads it doesn't cause a
-  // render loop.
   useEffect(() => {
     const element = viewportRef.current
     if (!element) return
@@ -307,9 +185,6 @@ export function BoardCanvas({
     return () => observer.disconnect()
   }, [])
 
-  // Frame the content the first time we know how big it is. Guarded so it
-  // happens exactly once: someone who has panned somewhere deliberately should
-  // not be dragged back because the article grew a line.
   useLayoutEffect(() => {
     if (hasFittedRef.current || !fitTo || fitTo.length === 0) return
 
@@ -328,9 +203,8 @@ export function BoardCanvas({
 
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      // Left on bare board starts a rubber-band selection. Objects inside the
-      // board stop the event themselves, so anything reaching here with button
-      // 0 is empty cork.
+      // Left on bare board starts a rubber-band selection; objects inside the board
+      // stop the event themselves, so button 0 here is empty cork.
       if (event.button === 0) {
         if (!onMarquee || event.target !== event.currentTarget) return
         const bounds = event.currentTarget.getBoundingClientRect()
@@ -343,16 +217,12 @@ export function BoardCanvas({
         return
       }
 
-      // Button 1 is middle, 2 is right. Right-drag and middle-drag pan.
       if (event.button !== 1 && event.button !== 2) return
 
       event.preventDefault()
 
-      // Middle-drag on an entity moves that entity; middle-drag on bare board
-      // still pans. Checked before the pan starts so the two never both run —
-      // an entity that slid away while the camera also moved would be
-      // impossible to place. Right-drag is left alone: on a pin it is the
-      // gesture that opens the editor.
+      // Middle-drag on an entity moves it, on bare board pans; checked before the pan
+      // starts so the two never both run. Right-drag is left to the pin's editor.
       const entity =
         event.button === 1 && onEntityDrag
           ? ((event.target as Element | null)?.closest?.('[data-board-entity]') ?? null)
@@ -397,7 +267,6 @@ export function BoardCanvas({
         return
       }
 
-      // Nothing is being dragged, so this is a look rather than a move.
       if (!entityRef.current && !panRef.current && !marqueeRef.current && onHoverRef.current) {
         const bounds = event.currentTarget.getBoundingClientRect()
         onHoverRef.current({
@@ -413,8 +282,7 @@ export function BoardCanvas({
         entity.lastX = event.clientX
         entity.lastY = event.clientY
 
-        // Board space, so the thing under the cursor keeps up with it whatever
-        // the zoom — the pointer deltas are screen px.
+        // Pointer deltas are screen px; divide by zoom so the entity keeps up with the cursor.
         const zoom = cameraRef.current.zoom || 1
         onEntityDragRef.current?.(entity.element, { x: dx / zoom, y: dy / zoom })
         return
@@ -426,8 +294,7 @@ export function BoardCanvas({
       const dx = event.clientX - pan.lastX
       const dy = event.clientY - pan.lastY
 
-      // Accumulate absolute travel, so a slow drag still counts as a drag even if
-      // no single step exceeded the threshold.
+      // Accumulate travel, so a slow drag still counts even if no single step exceeded it.
       pan.travel += Math.abs(dx) + Math.abs(dy)
       pan.lastX = event.clientX
       pan.lastY = event.clientY
@@ -447,10 +314,8 @@ export function BoardCanvas({
         releasePointer(event.currentTarget, event.pointerId)
         onMarquee?.(null)
 
-        // A press that travelled is a band, not a click — and the browser is
-        // about to send a click regardless. Swallow exactly that one. The band
-        // start is viewport-local, so bring the release point into the same
-        // frame before measuring.
+        // A travelling press is a band, not a click, but the browser still sends one;
+        // swallow exactly that. The band start is viewport-local, so measure in that frame.
         const bounds = event.currentTarget.getBoundingClientRect()
         const travel =
           Math.abs(event.clientX - bounds.left - band.startX) +
@@ -477,9 +342,7 @@ export function BoardCanvas({
       panRef.current = null
       releasePointer(event.currentTarget, event.pointerId)
 
-      // A right press that never became a drag is a context click. This is why
-      // the travel is tracked rather than acted on immediately: right-drag pans,
-      // right-click edits, and they share a button.
+      // Right-drag pans and right-click edits share a button, so travel decides which.
       if (pan.button === 2 && pan.travel < DRAG_THRESHOLD && onContextTarget) {
         onContextTarget({
           clientX: event.clientX,
@@ -491,20 +354,10 @@ export function BoardCanvas({
     [onContextTarget, onMarquee],
   )
 
-  /**
-   * Bare-board clicks.
-   *
-   * The world wrapper is absolutely positioned and sized by its children, so a
-   * click outside the paper lands on the viewport itself. Comparing target to
-   * currentTarget is therefore enough to tell "empty board" from 'something in
-   * it' without hit-testing every object.
-   */
+  // The world wrapper is sized by its children, so a click outside the paper lands on
+  // the viewport itself and `target === currentTarget` means empty board.
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
-      // The browser sends a click after a drag, landing where the drag ended.
-      // That one is not a click and must not reach the bare-board handler, or
-      // it clears the selection the band just made. A later click somewhere
-      // else is a genuine new gesture, so the position has to match.
       const swallowed = suppressClickRef.current
       if (swallowed) {
         suppressClickRef.current = null
@@ -554,13 +407,11 @@ export function BoardCanvas({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
-      // Leaving is a look ending, not a gesture ending — say so, or the cursor
-      // and any highlight keep pointing at something no longer under the mouse.
       onPointerLeave={() => onHoverRef.current?.(null)}
       onClick={handleClick}
       onDrop={onFileDrop}
       onDragOver={onFileDragOver}
-      // The browser menu would otherwise fire on every right-drag release.
+      // Otherwise the browser menu fires on every right-drag release.
       onContextMenu={(event) => event.preventDefault()}
       style={{
         touchAction: 'none',
@@ -568,15 +419,13 @@ export function BoardCanvas({
       }}
       data-testid="board-canvas"
     >
-      {/* Rendered even before the first measurement lands. Guarding on a
-          non-zero viewport would flash a bare board on every mount, and a
-          backdrop that renders nothing at zero size is harmless. */}
       {backdrop?.(viewport)}
 
       <div
+        data-testid="board-world"
         style={{
-          // translate then scale, so a board point p lands at (p - camera) * zoom
-          // — the same transform `camera.ts` models.
+          // translate then scale, so a board point p lands at (p - camera) * zoom — the
+          // same transform `camera.ts` models.
           transform: `translate3d(${-camera.x * camera.zoom}px, ${-camera.y * camera.zoom}px, 0) scale(${camera.zoom})`,
           transformOrigin: '0 0',
           willChange: interacting ? 'transform' : 'auto',
@@ -608,7 +457,6 @@ export function BoardCanvas({
   )
 }
 
-/** A small scale indicator, and a way back to 100%. */
 function ZoomReadout({
   camera,
   onCameraChange,

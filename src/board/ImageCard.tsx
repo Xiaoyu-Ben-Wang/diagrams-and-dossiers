@@ -1,21 +1,5 @@
-/**
- * A picture pinned to the board.
- *
- * It hangs from the tack at its top-centre and swings about it, which is why
- * the rotation is a CSS `transform-origin` of `50% 0` rather than a transform
- * worked out per frame: the browser turns the bitmap, the layout never moves,
- * and the numbers `kinds.ts` reports for hit-testing come from the same pivot
- * by the same maths in `pivot.ts`.
- *
- * The sheet is drawn at `board`, which is its top-left *before* it is turned.
- * Everything that needs to know where the picture ended up — the marquee, yarn
- * attaching to the tack, zoom-to-fit — goes through `bounds` and `anchorPoint`
- * in the registry, so this component only has to draw it.
- *
- * Nothing but the pin is drawn until the picture is selected: an unselected
- * board is a board of things to look at, and a handle on every sheet at once is
- * a control panel.
- */
+// The rotation is a CSS `transform-origin` of `50% 0`, the top-centre pin; `kinds.ts` reports
+// hit-testing numbers from the same pivot by the same maths in `pivot.ts`.
 
 import { useCallback } from 'react'
 
@@ -31,79 +15,36 @@ export interface ImageCardProps {
   id: string
   src: string
   alt?: string
-  /** Top-left of the sheet before it is turned, in board space. */
   x: number
   y: number
   width: number
   height: number
-  /** Degrees of swing about the top-centre pin, within ±45. */
   rotation: number
   fit: 'cover' | 'contain'
-  /** How the border is damaged, from `board/edges.ts`. */
   edge: EdgeStyle
-  /** The seed that damage was generated from. */
   edgeSeed: number
   selected: boolean
-  /** Screen px per board px. Deltas arrive scaled and must be divided out. */
   zoom: number
-  /**
-   * A viewport point in board space.
-   *
-   * Passed in rather than derived here because the card is itself rotated, so
-   * its own bounding rect is an axis-aligned box that has nothing to do with
-   * where its contents are — the one measurement that would be easy to reach
-   * for and quietly wrong. The camera knows the real answer.
-   */
+  // Passed in, not derived: the card is rotated, so its own bounding rect is axis-aligned and
+  // says nothing about where its contents are.
   toBoard: (clientX: number, clientY: number) => Point
 
   onMove: (id: string, delta: Point) => void
   onRotate: (id: string, degrees: number) => void
   onResize: (id: string, size: { width: number; height: number }) => void
-  /** Start a string at this picture's pin, as a tack does. */
   onStartYarn: (event: React.PointerEvent) => void
   onSelect: (id: string) => void
 }
 
-/**
- * The picture's shadow.
- *
- * Two passes: a soft one offset downward as if the light is above the board,
- * and a tight one with no offset, which darkens the last couple of pixels
- * either side of the cut and is what makes a torn edge read as torn rather
- * than merely cut out.
- */
-const SHADOW = 'drop-shadow(0 6px 9px rgb(0 0 0 / 0.55)) drop-shadow(0 1px 2px rgb(0 0 0 / 0.5))'
+// Exported for the image export: a picture's selection rim is an inline filter on top of this
+// one, so a clone cannot be cleaned up by stripping a class.
+export const SHADOW = 'drop-shadow(0 6px 9px rgb(0 0 0 / 0.55)) drop-shadow(0 1px 2px rgb(0 0 0 / 0.5))'
 
-/**
- * How far below the sheet the rotate handle hangs, in board px.
- *
- * At the foot rather than at the head. The head is where the pin is, and a
- * control drawn beside a pin reads as part of it — the two overlap, and the one
- * you can drag is not the one that looks like a handle. A sheet also swings
- * about its pin, so its foot is the end that travels furthest: the same pull
- * moves it further and reads as a lever rather than as a nudge.
- */
 const HANDLE_DROP = 16
 
-/**
- * How small and how large a picture may be dragged, in board px.
- *
- * A floor because a picture dragged to nothing is a picture you cannot click to
- * get back; a ceiling generous enough to fill the view, because making one
- * large is a reasonable thing to want.
- */
 export const MIN_EDGE = 48
 export const MAX_EDGE = 1600
 
-/**
- * How big a picture is while a corner is dragged.
- *
- * Measured in the sheet's own upright frame rather than the board's, by turning
- * the pointer back through the tilt. A tilted picture dragged by its corner
- * would otherwise grow along the board's axes and shear away from the hand.
- * The width drives and the height follows, so the proportions a photograph
- * arrived with are the proportions it keeps.
- */
 export function sizeFor(
   pivot: Point,
   pointer: Point,
@@ -114,11 +55,8 @@ export function sizeFor(
   const dx = local.x - pivot.x
   const dy = local.y - pivot.y
 
-  // Projected onto the diagonal the corner started on, so the drag scales the
-  // picture instead of shearing it. Measuring the offset on one axis alone —
-  // or, worse, its absolute value — means dragging the corner *past* the pin
-  // reads as a positive distance and the picture grows when it is pulled in.
-  // This is signed, so it shrinks through zero and clamps there.
+  // Projected onto the diagonal the corner started on, and signed, so the drag scales the
+  // picture rather than shearing it and shrinks through zero instead of growing when pulled in.
   const ux = start.width / 2
   const uy = start.height
   const scale = (dx * ux + dy * uy) / (ux * ux + uy * uy)
@@ -153,8 +91,6 @@ export function ImageCard({
 }: ImageCardProps) {
   const pivot = { x: x + width / 2, y }
 
-  // The stored seed, not one derived from the id: the crop is generated, and
-  // generating it again is what "a fresh look each time you pick it up" means.
   const clipPath = edgeClipPath(edge, width, height, edgeSeed)
 
   const drag = useBoardDrag({
@@ -162,15 +98,6 @@ export function ImageCard({
     onDrag: (delta) => onMove(id, delta),
   })
 
-  /**
-   * Selecting on the press rather than on a tap.
-   *
-   * A tap is a press that never travelled, so selecting there alone would mean
-   * a picture could be dragged around all day without ever becoming the thing
-   * that is selected — and since the rotate handle is only drawn on a selected
-   * sheet, there would be no way to swing one without first letting go and
-   * clicking it again. Pressing to select is also what every canvas does.
-   */
   const handlePointerDown = useCallback(
     (event: React.PointerEvent) => {
       if (event.button !== 0) return
@@ -185,13 +112,8 @@ export function ImageCard({
     tilt: rotation,
     toBoard,
     onRotate: (degrees) => onRotate(id, degrees),
-    // A picture hung straight is a picture, not a mistake to be corrected by
-    // dragging it back a degree at a time.
     onReset: () => onRotate(id, 0),
   })
-  // The size maths is this component's own — a picture keeps the proportions
-  // it arrived with, driven along its own diagonal — while the pointer
-  // plumbing is the shared hook's.
   const resizeProps = useResizeDrag({
     size: { width, height },
     toBoard,
@@ -210,11 +132,6 @@ export function ImageCard({
     <div
       data-entity-id={id}
       data-image-id={id}
-      // What the board's middle-drag looks for to decide whether a press that
-      // started here moves this thing or pans the board. Every other kind
-      // carries it; the picture was the one that did not, so a middle-drag on
-      // one panned the cork instead of moving the picture — the one gesture
-      // that is supposed to work on every kind alike.
       data-board-entity="image"
       className={`image-card absolute ${selected ? 'is-selected' : ''}`}
       style={{
@@ -222,8 +139,6 @@ export function ImageCard({
         top: y,
         width,
         height,
-        // The pin. Where yarn attaches, what the marquee encloses and what the
-        // rotate handle turns about are all measured from this one point.
         transformOrigin: '50% 0',
         transform: `rotate(${clampTilt(rotation)}deg)`,
         touchAction: 'none',
@@ -233,27 +148,9 @@ export function ImageCard({
       onPointerUp={drag.onPointerUp}
       onPointerCancel={drag.onPointerCancel}
     >
-      {/* The picture and its damaged border.
-          Two elements, and the nesting is the point.
-
-          The `clip-path` lives on the inner box rather than on the card,
-          because a clip on the card would take the pin and the handle with it —
-          the two things that must stay whole for the picture to be grabbable
-          and swingable.
-
-          The shadow lives on the outer wrapper as a `drop-shadow` filter,
-          because a `box-shadow` is drawn from the element's rectangle and
-          cannot know about the crop: a torn photograph sat on a perfectly
-          rectangular shadow, which is the one thing that gives away that the
-          edge is a mask rather than damage. `drop-shadow` applies to the
-          *rendered result*, so it follows whatever silhouette the clip cut. It
-          is a static filter — applied when the picture is painted, not
-          animated — so the rule in docs/architecture.md about never animating
-          a filter does not bite.
-
-          The selection rim rides the same filter for the same reason: an
-          `outline` is a rectangle, and a brass box drawn around a torn edge
-          looks like a bug. */}
+      {/* The clip is on the inner box, or it would take the pin and the handle with it; the
+          shadow is on the outer wrapper as a `drop-shadow` so it follows the clipped
+          silhouette rather than the rectangle. */}
       <div
         className="image-shadow"
         style={{
@@ -273,19 +170,8 @@ export function ImageCard({
         </div>
       </div>
 
-      {/* The tack holding it up, drawn where the registry says the anchor is —
-          so a string tied to this picture visibly ends on its pin rather than
-          at the sheet's corner.
-
-          A button, not a decoration: this is the one part of a picture that is
-          the pin rather than the paper, so it is where a string starts, the
-          same gesture a tack takes.
-
-          `IMAGE_PIN_INSET` down from the top edge rather than on it, so the
-          whole tack is over the picture instead of half of it hanging in the
-          air — and it is measured from the same number `model/kinds.ts` uses
-          for the anchor, because a pin that is drawn in one place and reported
-          in another is a string that misses the tack it is tied to. */}
+      {/* `IMAGE_PIN_INSET` from the top edge, the same number `model/kinds.ts` uses for the
+          anchor — a pin drawn in one place and reported in another is a string that misses its tack. */}
       <button
         type="button"
         data-testid="image-pin"

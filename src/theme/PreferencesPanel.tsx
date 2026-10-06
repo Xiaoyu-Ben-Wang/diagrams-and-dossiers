@@ -1,15 +1,3 @@
-/**
- * The preferences drawer.
- *
- * Slides in over the board's right edge and changes the room the board is read
- * in. It owns no board data: the one destructive control here asks twice and
- * then calls onClearBoard(), and only the board decides what that means.
- *
- * The trigger lives in the app chrome and owns `aria-expanded`, since only it
- * knows whether the drawer is showing; the drawer itself owns `aria-modal`,
- * Escape and focus, because it is the thing holding focus.
- */
-
 import { useEffect, useRef, useState } from 'react'
 
 import {
@@ -44,11 +32,6 @@ const YARN_OPTIONS: readonly ChoiceOption<YarnStyle>[] = [
   { value: 'realistic', label: 'Realistic', hint: 'Fibre, fuzz and noise' },
 ]
 
-/**
- * A label, or one per theme where the surface is a different material in each.
- * The whiteboard is the only one: it is a whiteboard in the light and the
- * blackboard beside it in the dark.
- */
 const SURFACE_LABELS: Record<BoardSurface, string | Record<ThemeMode, string>> = {
   cork: 'Cork',
   leather: 'Dark leather',
@@ -57,12 +40,14 @@ const SURFACE_LABELS: Record<BoardSurface, string | Record<ThemeMode, string>> =
   whiteboard: { light: 'Whiteboard', dark: 'Blackboard' },
 }
 
-function surfaceLabel(surface: BoardSurface, theme: ThemeMode): string {
+// Exported so the image export offers the board's surfaces by the names the panel uses;
+// a second list of labels is a second list to drift.
+export function surfaceLabel(surface: BoardSurface, theme: ThemeMode): string {
   const label = SURFACE_LABELS[surface]
   return typeof label === 'string' ? label : label[theme]
 }
 
-/** Native radio inputs keep arrow-key navigation and the group semantics for free. */
+// Native radios keep arrow-key navigation and group semantics for free.
 function ChoiceGroup<T extends string>({
   legend,
   name,
@@ -109,15 +94,6 @@ function ChoiceGroup<T extends string>({
 
 const CLEAR_WORD = 'clear'
 
-/**
- * Two gates before anything destructive happens.
- *
- * The second gate is a typed word, not a timed reveal and not a second click:
- * a stray double-click lands on whichever control sits nearest the first, and
- * shortening a delay only narrows the window it can happen in. A word cannot
- * be typed by accident, and the final button stays disabled until it matches,
- * so the only route to onClearBoard() is deliberate.
- */
 function DangerZone({ onClearBoard }: { onClearBoard: () => void }) {
   const [armed, setArmed] = useState(false)
   const [confirmation, setConfirmation] = useState('')
@@ -176,23 +152,13 @@ function DangerZone({ onClearBoard }: { onClearBoard: () => void }) {
   )
 }
 
-/**
- * Saving a board to a file, and loading one back.
- *
- * The import half is armed like the danger zone, for the same reason: loading a
- * file replaces everything on the board, and there is no undo to reach for
- * (`docs/feature-queue-archive-2026-10-05.md` #15). The file picker is not itself the confirmation — it is
- * one click away from the button that opens it, and a person who has just
- * clicked "import" has not thereby decided to lose the board they had.
- *
- * The panel owns the error text and none of the board: it asks, the board
- * answers with a reason or with nothing.
- */
 function BoardFileSection({
   onExportBoard,
   onImportBoard,
+  onExportImage,
 }: {
   onExportBoard: () => void
+  onExportImage: () => void
   onImportBoard: (file: File) => Promise<string | null>
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -204,9 +170,7 @@ function BoardFileSection({
     void onImportBoard(file).then((reason) => {
       setProblem(reason)
       if (!reason) setArmed(false)
-      // Cleared so that choosing the same file twice fires `change` twice —
-      // otherwise a failed load followed by a fixed file of the same name does
-      // nothing at all, which reads as the button being broken.
+      // Cleared so re-choosing the same file fires `change` again after a failed load.
       if (inputRef.current) inputRef.current.value = ''
     })
   }
@@ -220,6 +184,14 @@ function BoardFileSection({
       <div className="prefs-danger-actions">
         <button type="button" className="prefs-button" onClick={onExportBoard}>
           Export board…
+        </button>
+        <button
+          type="button"
+          className="prefs-button"
+          data-testid="export-image"
+          onClick={onExportImage}
+        >
+          Export image…
         </button>
         <button
           type="button"
@@ -265,11 +237,10 @@ function BoardFileSection({
 export interface PreferencesPanelProps {
   open: boolean
   onClose: () => void
-  /** Ask the board to wipe itself. The panel never clears anything directly. */
   onClearBoard: () => void
-  /** Ask the board to hand itself over as a file. */
   onExportBoard: () => void
-  /** Ask the board to load a file. Resolves to why it could not, or to null. */
+  onExportImage: () => void
+  /** Resolves to why it could not load, or null. */
   onImportBoard: (file: File) => Promise<string | null>
 }
 
@@ -283,8 +254,7 @@ function keepFocusInside(event: KeyboardEvent, container: HTMLElement | null): v
   const last = focusable[focusable.length - 1]
   if (!first || !last) return
 
-  // Tab from the dialog container itself (which holds the initial focus) would
-  // otherwise step straight out of the drawer.
+  // Tab from the dialog container itself would otherwise step out of the drawer.
   if (document.activeElement === container) {
     event.preventDefault()
     ;(event.shiftKey ? last : first).focus()
@@ -305,13 +275,13 @@ export function PreferencesPanel({
   onClearBoard,
   onExportBoard,
   onImportBoard,
+  onExportImage,
 }: PreferencesPanelProps) {
   const preferences = usePreferences()
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreFocusRef = useRef<HTMLElement | null>(null)
 
-  // Kept in a ref so an inline arrow from the parent cannot re-run the effect
-  // on every render — that would re-focus the drawer mid-keystroke.
+  // In a ref so an inline arrow cannot re-run the effect and re-focus mid-keystroke.
   const onCloseRef = useRef(onClose)
   useEffect(() => {
     onCloseRef.current = onClose
@@ -335,14 +305,12 @@ export function PreferencesPanel({
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      // The drawer is opened from a button; closing hands the keyboard back
-      // rather than dropping focus onto <body>.
+      // Hands the keyboard back to the opening button rather than dropping it onto <body>.
       restoreFocusRef.current?.focus()
     }
   }, [open])
 
-  // Unmounting on close resets the danger-zone confirmation with it: an armed
-  // "clear" must never survive a visit to another panel.
+  // Unmounting resets the danger-zone confirmation; an armed "clear" must not survive.
   if (!open) return null
 
   const surfaceOptions: readonly ChoiceOption<BoardSurface>[] = SURFACES.map((surface) => ({
@@ -405,7 +373,11 @@ export function PreferencesPanel({
             <p className="prefs-hint">Puts theme, surface and yarn back to their defaults. Your board is untouched.</p>
           </div>
 
-          <BoardFileSection onExportBoard={onExportBoard} onImportBoard={onImportBoard} />
+          <BoardFileSection
+            onExportBoard={onExportBoard}
+            onImportBoard={onImportBoard}
+            onExportImage={onExportImage}
+          />
 
           <DangerZone onClearBoard={onClearBoard} />
         </div>

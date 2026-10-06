@@ -1,26 +1,5 @@
-/**
- * The note hanging on a string.
- *
- * A board of red wool says which things are connected and nothing about why.
- * This is the label that answers that: a small card strung on the line, sitting
- * where it was slid to and following both ends wherever they are dragged —
- * because its position is stored as a *place along the rope* rather than a
- * point on the board, so it cannot be left behind by one.
- *
- * Shaped like the post-its, deliberately: same paper, same small pin. It is the
- * same kind of thing, attached to a line instead of to the cork. The pin is
- * drawn at the point it hangs from, which is the bottom tip of the card, where
- * a tag's hole would be.
- *
- * Two gestures, told apart by travel the way every other drag on this board is:
- * a press that moves slides the note along the string, a press that does not
- * opens it for writing.
- *
- * The slide projects the pointer onto the curve rather than applying a delta.
- * That is what keeps the note *on* the rope — a delta can be accumulated off
- * the end of it, or across to the other side of the sag, and the note would
- * then be hanging beside the string rather than on it.
- */
+// The slide projects the pointer onto the curve rather than applying a delta, which would
+// accumulate off the end of the rope and leave the note hanging beside the string.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -30,21 +9,11 @@ import { distanceToYarn, pointOnYarn, type Point } from './yarn'
 
 export interface StringNoteProps {
   link: StringLink
-  /** Both ends of the string, in board space. */
   from: Point
   to: Point
-  /** Whether the string under it is selected, which invites adding a note. */
   selected: boolean
-  /**
-   * A viewport point in board space.
-   *
-   * Needed because the slide projects the pointer onto the curve, and the
-   * pointer arrives in viewport coordinates.
-   */
   toBoard: (clientX: number, clientY: number) => Point
-  /** Slide it to a new place along the rope, 0..1. */
   onSlide: (t: number) => void
-  /** Write on it. An empty string removes it. */
   onWrite: (text: string) => void
 }
 
@@ -64,14 +33,8 @@ export function StringNote({
   const text = link.label ?? ''
   const at = pointOnYarn(from, to, link.labelAt, link.slack)
 
-  /**
-   * The press in progress, and how far it has travelled.
-   *
-   * Kept here rather than taken from `useBoardDrag` because the slide needs the
-   * pointer's *position*, not a delta — the hook reports movement, and there is
-   * no way to recover an absolute point from accumulated deltas without
-   * drifting a little on every frame.
-   */
+  // The slide needs the pointer's position, not a delta, so the press is tracked here rather
+  // than with `useBoardDrag`.
   const pressRef = useRef<{ pointerId: number; x: number; y: number; travel: number } | null>(null)
 
   const onPointerDown = useCallback((event: React.PointerEvent) => {
@@ -111,7 +74,6 @@ export function StringNote({
     if (!press || press.pointerId !== event.pointerId) return
     pressRef.current = null
 
-    // A press that never travelled is a click, and a click opens the note.
     if (press.travel < DRAG_THRESHOLD) {
       setDraft(text)
       setEditing(true)
@@ -127,8 +89,6 @@ export function StringNote({
     onWrite(draft.trim())
   }, [draft, onWrite])
 
-  // A string with no note only grows one while it is selected, so an unselected
-  // board is not covered in invitations.
   if (!text && !selected && !editing) return null
 
   return (
@@ -167,8 +127,8 @@ export function StringNote({
                 setDraft(text)
                 setEditing(false)
               }
-              // The board listens on the document for Delete and Backspace;
-              // typing in here is writing, not deleting.
+              // The board listens on the document for Delete and Backspace; typing in here is
+              // writing, not deleting.
               event.stopPropagation()
             }}
           />
@@ -179,24 +139,12 @@ export function StringNote({
         )}
       </div>
 
-      {/* The pin it hangs from, at the bottom tip — where a tag's hole is. */}
       <span aria-hidden="true" className="string-note-pin" />
     </div>
   )
 }
 
-/**
- * Where along a string a board point falls, as a fraction.
- *
- * Sampling the curve rather than solving it. The nearest point on a quadratic
- * has a closed form, but deriving it is a cubic and this is feeding a drag
- * where a pixel of disagreement is invisible — and the board already samples
- * this exact curve at this exact resolution to hit-test a click on the wool, so
- * the two agree by construction rather than by both being right.
- */
 export function tAt(from: Point, to: Point, point: Point, slack: number): number {
-  // No rope, so no "along" it: every place on it is the same place, and the
-  // sampler's tie-breaking would otherwise decide this by accident.
   if (Math.hypot(to.x - from.x, to.y - from.y) === 0) return 0.5
 
   const { t } = distanceToYarn(from, to, point, slack)

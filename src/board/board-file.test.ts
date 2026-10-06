@@ -11,7 +11,6 @@ import {
   serializeBoard,
 } from './board-file'
 
-/** A minimal board: one page, one note, one string between them. */
 function tinyBoard(): BoardState {
   return {
     entities: [
@@ -75,7 +74,6 @@ function tinyBoard(): BoardState {
   }
 }
 
-/** The envelope with its board replaced, for the refusals below. */
 function fileWith(board: unknown, overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
     format: BOARD_FILE_FORMAT,
@@ -86,7 +84,6 @@ function fileWith(board: unknown, overrides: Record<string, unknown> = {}): stri
   })
 }
 
-/** The reason a file was refused, or a failure if it was not. */
 function refusal(text: string): string {
   const result = parseBoardFile(text)
   if (result.ok) throw new Error('expected the file to be refused, and it was read')
@@ -95,8 +92,6 @@ function refusal(text: string): string {
 
 describe('a board file', () => {
   it('round-trips the demo board unchanged', () => {
-    // The load-bearing test: what a person exports and loads back must be the
-    // board they exported, not a board that resembles it.
     const original = demoBoard()
     const result = parseBoardFile(serializeBoard(original))
 
@@ -122,8 +117,6 @@ describe('a board file', () => {
   })
 
   it('keeps fields it does not know about out of the board', () => {
-    // Forward compatibility: a file written by a later build carries fields
-    // this one has never heard of, and it must still load rather than refuse.
     const board = tinyBoard()
     const withUnknown = {
       ...board,
@@ -185,8 +178,7 @@ describe('refusing a file', () => {
   })
 
   it('refuses a string tied to something that is not in the file', () => {
-    // A dangling end is drawn to the board's origin, so this is not a cosmetic
-    // problem: it is a line from a note to nowhere.
+    // A dangling end is drawn to the board's origin, so this is not cosmetic.
     const board = tinyBoard()
     const broken = { ...board, strings: [{ ...board.strings[0], to: 'nobody' }] }
 
@@ -243,9 +235,17 @@ describe('refusing a file', () => {
     expect(result.board.entities[1]).toMatchObject({ fontScale: 1.75 })
   })
 
+  it('carries the colour of a note', () => {
+    const board = tinyBoard()
+    const painted = { ...board.entities[1], color: '#cfd6bd' }
+    const result = parseBoardFile(fileWith({ ...board, entities: [board.entities[0], painted] }))
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.board.entities[1]).toMatchObject({ color: '#cfd6bd' })
+  })
+
   it('gives a note its normal size when the file predates the setting', () => {
-    // Every board exported before notes could be resized. A missing size is not
-    // a reason to refuse somebody's board.
     const board = tinyBoard()
     const older: Record<string, unknown> = { ...board.entities[1] }
     delete older.fontScale

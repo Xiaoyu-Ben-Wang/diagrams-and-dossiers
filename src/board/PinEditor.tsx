@@ -1,29 +1,15 @@
-/**
- * The note card behind a pin.
- *
- * Opens on right-click, anchored near where the click landed. It's a popover
- * rather than a modal: you're editing one note on a board you're still looking
- * at, and covering the board to do it loses the context that made you want to
- * edit the note in the first place.
- */
-
 import { useEffect, useRef } from 'react'
 
 export interface PinEditorProps {
-  /** The words this pin is anchored to. Read-only — edit the article to change them. */
   quote: string
-  /** Whether the pin still resolves, or has gone cold. */
   status: 'exact' | 'repaired' | 'orphaned'
-  /** What the pin's tag reads. Free text — the campaign's calendar is its own. */
   dateLabel: string
   body: string
-  /** Where to place it, in viewport coordinates. */
   x: number
   y: number
   onChange: (body: string) => void
   onDateChange: (dateLabel: string) => void
   onDelete: () => void
-  /** Hand the pin over to the board to be repositioned. */
   onMove: () => void
   onClose: () => void
 }
@@ -46,18 +32,13 @@ export function PinEditor({
 }: PinEditorProps) {
   const cardRef = useRef<HTMLDivElement>(null)
 
-  // Focus the textarea so you can start typing immediately — the point of
-  // right-clicking a pin is usually to write on it.
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     textareaRef.current?.focus()
-    // Put the caret at the end rather than selecting everything, so an
-    // accidental keystroke appends instead of destroying the note.
     const length = textareaRef.current?.value.length ?? 0
     textareaRef.current?.setSelectionRange(length, length)
   }, [])
 
-  // Dismiss on outside click or Escape.
   useEffect(() => {
     const onPointerDown = (event: PointerEvent): void => {
       if (!cardRef.current?.contains(event.target as Node)) onClose()
@@ -79,8 +60,6 @@ export function PinEditor({
     }
   }, [onClose])
 
-  // Keep the card on screen: a pin near the right or bottom edge would
-  // otherwise open an editor half out of view.
   const left = Math.min(x, window.innerWidth - WIDTH - 12)
   const top = Math.min(y, window.innerHeight - ESTIMATED_HEIGHT - 12)
 
@@ -108,9 +87,6 @@ export function PinEditor({
                       : 'var(--color-brass)',
               }}
             />
-            {/* A field, not a caption. It reads as one — a wash and a radius —
-                because the whole point of moving it out of the header's prose
-                is that it is the one part of this line you can change. */}
             <input
               type="text"
               value={dateLabel}
