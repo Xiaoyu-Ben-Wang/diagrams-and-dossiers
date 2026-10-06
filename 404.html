@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Diagrams &amp; Dossiers</title>
+    <script>
+      // GitHub Pages has no SPA rewrite and ignores public/_redirects, so a pasted
+      // or reloaded /diagrams-and-dossiers/b/<id> is answered with this file instead
+      // of the app. Park the requested path where the router can pick it up, then
+      // send the browser to the app's own address so it boots.
+      (function () {
+        var full = location.pathname + location.search + location.hash;
+        // Public files are copied verbatim, so this cannot read import.meta.env.
+        // A project site puts the app in the first path segment. Keep the key in
+        // step with DEEP_LINK_KEY in src/app/router.ts.
+        var base = "/" + location.pathname.split("/")[1] + "/";
+        try {
+          sessionStorage.setItem("case-board:deep-link", full);
+        } catch (error) {
+          // Private windows block it; the app then opens the last board instead.
+        }
+        location.replace(base);
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Opening Diagrams &amp; Dossiers…</p>
+  </body>
+</html>

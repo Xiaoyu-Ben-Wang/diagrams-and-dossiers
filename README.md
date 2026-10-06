@@ -1,7 +1,7 @@
 # The demo site
 
 This branch is the built board, served by GitHub Pages at
-<https://xiaoyu-ben-wang.github.io/dossiers-and-diagrams/>. It is generated,
+<https://xiaoyu-ben-wang.github.io/diagrams-and-dossiers/>. It is generated,
 not edited: nothing here is a source file.
 
 ## Publishing an update
@@ -9,7 +9,7 @@ not edited: nothing here is a source file.
 From the source branch, with the working tree in the state you want to publish:
 
 ```
-npm run build -- --base=/dossiers-and-diagrams/
+npm run build -- --base=/diagrams-and-dossiers/
 cp -r dist/* /path/to/a/checkout/of/this/branch/
 touch .nojekyll && git add -A && git commit -m "Demo: <what changed>" && git push
 ```
@@ -28,6 +28,6 @@ of a branch deploy.
 ## The base path
 
 The site is served from a subpath, so the build carries
-`--base=/dossiers-and-diagrams/`. The router reads that base back off
+`--base=/diagrams-and-dossiers/`. The router reads that base back off
 `import.meta.env.BASE_URL` (`src/app/router.ts`), which is what lets the board
-be found at `/dossiers-and-diagrams/` rather than at `/`.
+be found at `/diagrams-and-dossiers/` rather than at `/`.
