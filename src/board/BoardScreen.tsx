@@ -86,6 +86,7 @@ import {
   unionRect,
   type Camera,
   type Rect,
+  type Viewport,
 } from "./camera";
 import {
   distance,
@@ -402,17 +403,18 @@ export function BoardScreen({
    * The content's box, plus the tether. Read through a ref, not captured, because
    * the point of it is that moving an item moves the limit.
    */
+  // The canvas reports its size as it changes, so a pan never has to measure it.
+  const viewportSizeRef = useRef<Viewport>({ width: 0, height: 0 });
+  const handleViewportChange = useCallback((viewport: Viewport) => {
+    viewportSizeRef.current = viewport;
+  }, []);
+
   const tether = useCallback((next: Camera): Camera => {
-    const box = document
-      .querySelector('[data-testid="board-canvas"]')
-      ?.getBoundingClientRect();
-    if (!box || box.width === 0 || box.height === 0) return next;
+    const viewport = viewportSizeRef.current;
+    if (viewport.width === 0 || viewport.height === 0) return next;
     const content = contentRectRef.current;
     if (!content) return next;
-    return clampCameraToContent(next, content, {
-      width: box.width,
-      height: box.height,
-    });
+    return clampCameraToContent(next, content, viewport);
   }, []);
 
   const commitCamera = useCallback(
@@ -1803,6 +1805,9 @@ export function BoardScreen({
   const byIdRef = useRef(byId);
   byIdRef.current = byId;
 
+  // A group whose pins are all unchanged keeps its array, so moving one pin
+  // re-renders only the sheet it sits on.
+  const anchoredByArticleRef = useRef(new Map<string, PinView[]>());
   const anchoredByArticle = useMemo(() => {
     const grouped = new Map<string, PinView[]>();
     for (const pin of pins) {
@@ -1811,6 +1816,18 @@ export function BoardScreen({
       if (group) group.push(pin);
       else grouped.set(pin.articleId, [pin]);
     }
+    const previous = anchoredByArticleRef.current;
+    for (const [articleId, group] of grouped) {
+      const before = previous.get(articleId);
+      if (
+        before &&
+        before.length === group.length &&
+        before.every((pin, index) => pin === group[index])
+      ) {
+        grouped.set(articleId, before);
+      }
+    }
+    anchoredByArticleRef.current = grouped;
     return grouped;
   }, [pins]);
   const freePins = useMemo(() => pins.filter((pin) => pin.board), [pins]);
@@ -1938,6 +1955,7 @@ export function BoardScreen({
               idleCursor={hoveredString ? "pointer" : "default"}
               camera={camera}
               onCameraChange={commitCamera}
+              onViewportChange={handleViewportChange}
               onContextTarget={handleContextTarget}
               onFileDrop={handleFileDrop}
               onFileDragOver={handleDragOver}

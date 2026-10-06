@@ -39,6 +39,7 @@ export interface BoardCanvasProps {
   onRecentre?: () => void;
   overlay?: ReactNode;
   backdrop?: (viewport: Viewport) => ReactNode;
+  onViewportChange?: (viewport: Viewport) => void;
   onBackgroundClick?: (click: {
     point: Point;
     ctrlKey: boolean;
@@ -97,6 +98,7 @@ export function BoardCanvas({
   onRecentre,
   overlay,
   backdrop,
+  onViewportChange,
   onBackgroundClick,
   onMarquee,
   onEntityDrag,
@@ -202,6 +204,10 @@ export function BoardCanvas({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    onViewportChange?.(viewport);
+  }, [viewport, onViewportChange]);
 
   useLayoutEffect(() => {
     if (hasFittedRef.current || !fitTo || fitTo.length === 0) return;

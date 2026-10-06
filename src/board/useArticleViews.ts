@@ -148,6 +148,14 @@ export function useArticleViews(
   return useMemo(() => ({ nodesFor, nodes, views }), [nodesFor, nodes, views])
 }
 
+interface CachedPin {
+  item: PinEntity
+  article: ArticleEntity | undefined
+  view: ArticleView | undefined
+  element: HTMLDivElement | null
+  pin: PinView | null
+}
+
 /** Never falls back to "the article"; `zoomRef` is read, not a dependency, so a zoom does not re-resolve. */
 export function usePinViews(
   placed: readonly PinEntity[],
@@ -156,87 +164,119 @@ export function usePinViews(
   zoomRef: RefObject<number>,
 ): PinView[] {
   const { views, nodes } = articleViews
+  // Reuses a pin's view while its inputs are unchanged, so dragging one pin neither
+  // re-reads every anchor's DOM rects nor hands every memoized tack a new prop.
+  const cacheRef = useRef(new Map<string, CachedPin>())
+  const previousRef = useRef<PinView[]>([])
 
   return useMemo(() => {
+    const cache = new Map<string, CachedPin>()
     const resolved: PinView[] = []
 
     for (const item of placed) {
-      const base = {
-        id: item.id,
-        body: item.bodyMd,
-        dateLabel: item.dateLabel ?? '',
-        nudge: item.nudge,
-      }
+      const anchored = isAnchoredPin(item)
+      const article = anchored ? articlesById.get(item.articleId) : undefined
+      const view = anchored ? views.get(item.articleId) : undefined
+      const element = anchored ? (nodes().get(item.articleId)?.article ?? null) : null
 
-      if (!isAnchoredPin(item)) {
-        resolved.push({
-          ...base,
-          articleId: null,
-          quote: '',
-          status: 'free',
-          detail: 'loose on the board',
-          rect: null,
-          board: item.board,
-        })
-        continue
-      }
+      const hit = cacheRef.current.get(item.id)
+      const pin =
+        hit &&
+        hit.item === item &&
+        hit.article === article &&
+        hit.view === view &&
+        hit.element === element
+          ? hit.pin
+          : resolvePin(item, article, view, element, zoomRef.current || 1)
 
-      const article = articlesById.get(item.articleId)
-      const view = views.get(item.articleId)
-      const element = nodes().get(item.articleId)?.article ?? null
-
-      if (!article) {
-        resolved.push({
-          ...base,
-          articleId: item.articleId,
-          quote: item.anchor.quote,
-          status: 'orphaned',
-          detail: 'the page it was pinned to is gone',
-          rect: null,
-          board: null,
-        })
-        continue
-      }
-
-      // Not yet measured (first frame after reload): skip, do not orphan — "not yet" is not "never".
-      if (!view || !element) continue
-
-      const result = resolveAnchor(view.projection.flat.text, item.anchor)
-
-      if (result.status === 'orphaned') {
-        resolved.push({
-          ...base,
-          articleId: item.articleId,
-          quote: item.anchor.quote,
-          status: 'orphaned',
-          detail:
-            result.reason === 'empty-quote'
-              ? 'no text to anchor to'
-              : 'the words it was pinned to are gone',
-          rect: null,
-          board: null,
-        })
-        continue
-      }
-
-      const range = flatRangeToDomRange(view.projection, result.start, result.end)
-      const rects = range ? rangeToContainerRects(range, element, zoomRef.current || 1) : []
-      const first = rects[0] ?? null
-
-      resolved.push({
-        ...base,
-        articleId: item.articleId,
-        quote: item.anchor.quote,
-        status: result.status === 'exact' ? 'exact' : 'repaired',
-        detail:
-          result.status === 'exact'
-            ? 'unchanged'
-            : `${result.reason.replace('-', ' ')} · ${Math.round(result.confidence * 100)}% context match`,
-        rect: first,
-        board: null,
-      })
+      cache.set(item.id, { item, article, view, element, pin })
+      if (pin) resolved.push(pin)
     }
 
+    cacheRef.current = cache
+    const previous = previousRef.current
+    if (
+      previous.length === resolved.length &&
+      previous.every((pin, index) => pin === resolved[index])
+    ) {
+      return previous
+    }
+    previousRef.current = resolved
     return resolved
-  }, [placed, articlesById, articleViews, views, nodes, zoomRef])
+  }, [placed, articlesById, views, nodes, zoomRef])
+}
+
+function resolvePin(
+  item: PinEntity,
+  article: ArticleEntity | undefined,
+  view: ArticleView | undefined,
+  element: HTMLDivElement | null,
+  zoom: number,
+): PinView | null {
+  const base = {
+    id: item.id,
+    body: item.bodyMd,
+    dateLabel: item.dateLabel ?? '',
+    nudge: item.nudge,
+  }
+
+  if (!isAnchoredPin(item)) {
+    return {
+      ...base,
+      articleId: null,
+      quote: '',
+      status: 'free',
+      detail: 'loose on the board',
+      rect: null,
+      board: item.board,
+    }
+  }
+
+  if (!article) {
+    return {
+      ...base,
+      articleId: item.articleId,
+      quote: item.anchor.quote,
+      status: 'orphaned',
+      detail: 'the page it was pinned to is gone',
+      rect: null,
+      board: null,
+    }
+  }
+
+  // Not yet measured (first frame after reload): skip, do not orphan — "not yet" is not "never".
+  if (!view || !element) return null
+
+  const result = resolveAnchor(view.projection.flat.text, item.anchor)
+
+  if (result.status === 'orphaned') {
+    return {
+      ...base,
+      articleId: item.articleId,
+      quote: item.anchor.quote,
+      status: 'orphaned',
+      detail:
+        result.reason === 'empty-quote'
+          ? 'no text to anchor to'
+          : 'the words it was pinned to are gone',
+      rect: null,
+      board: null,
+    }
+  }
+
+  const range = flatRangeToDomRange(view.projection, result.start, result.end)
+  const rects = range ? rangeToContainerRects(range, element, zoom) : []
+
+  return {
+    ...base,
+    articleId: item.articleId,
+    quote: item.anchor.quote,
+    status: result.status === 'exact' ? 'exact' : 'repaired',
+    detail:
+      result.status === 'exact'
+        ? 'unchanged'
+        : `${result.reason.replace('-', ' ')} · ${Math.round(result.confidence * 100)}% context match`,
+    rect: rects[0] ?? null,
+    board: null,
+  }
 }
