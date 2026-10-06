@@ -1,7 +1,7 @@
-# Dossiers & Diagrams
+# Diagrams & Dossiers
 
-A private, collaborative detective board for a D&D group — *The Case Board*, which is what the
-thing itself is called on screen and in the code. Pin notes and long-form markdown
+A private, collaborative detective board for a D&D group — *Diagrams & Dossiers*, which is what
+the thing itself is called on screen and in the code. Pin notes and long-form markdown
 articles to a shared corkboard and connect them with red yarn.
 
 The whole thing is dressed as a fantasy detective's office: cork and parchment, brass tacks, wax
@@ -69,10 +69,10 @@ runs entirely in the browser.
 ## Development
 
 ```bash
-npm install
-npm run dev        # the demo board at localhost:5173
-npm test           # 612 tests
-npm run typecheck
+pnpm install
+pnpm dev           # the demo board at localhost:5173
+pnpm test          # 912 tests
+pnpm typecheck
 ```
 
 **Navigation is Miro-shaped:**

@@ -1,4 +1,4 @@
-# Dossiers & Diagrams — Architecture
+# Diagrams & Dossiers — Architecture
 
 A private, collaborative "detective board" for a D&D group. Players pin notes and long-form
 markdown articles to a shared corkboard, connect them with colored yarn, and read the same
@@ -587,7 +587,7 @@ Deliberately excluded: `@react-spring/web`, GSAP, `markdown-it`.
 ### Layout
 
 ```
-dossiers-and-diagrams/
+diagrams-and-dossiers/
 ├─ docs/architecture.md
 ├─ supabase/migrations/*.sql
 ├─ worker/                          ← keepalive cron

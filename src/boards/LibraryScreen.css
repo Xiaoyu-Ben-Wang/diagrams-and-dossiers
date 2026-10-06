@@ -135,7 +135,7 @@
 
 .library-link-hint {
   color: color-mix(in srgb, var(--color-ink) 55%, transparent);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .library-empty {
@@ -160,7 +160,7 @@
 .library-empty-hint {
   margin: 0 0 16px;
   color: color-mix(in srgb, var(--color-ink) 60%, transparent);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 

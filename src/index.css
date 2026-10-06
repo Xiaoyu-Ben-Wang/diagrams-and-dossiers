@@ -987,9 +987,11 @@ body {
 }
 
 .string-note-card {
-  transition:
-    box-shadow 130ms ease,
-    transform 130ms ease;
+  /* The tail's containing block. Without this it resolves to .string-note, which carries 8px of
+     padding-bottom, so the tail hangs off the padding rather than the card — and the hover
+     transform below used to re-parent it only while hovering. */
+  position: relative;
+  transition: box-shadow 130ms ease;
   min-width: 46px;
   max-width: 168px;
   padding: 3px 6px 4px;
@@ -1011,16 +1013,21 @@ body {
   content: '';
   position: absolute;
   left: 50%;
-  top: 100%;
+  /* 1px of it is behind the card: butted exactly against the bottom edge, the clip-path's
+     antialiased top row blends with the card's shadow and reads as a hairline across the join.
+     The extra pixel is what keeps the point 8px below the card, on the bead. */
+  top: calc(100% - 1px);
   width: 11px;
-  height: 8px;
+  height: 9px;
   margin-left: -5.5px;
   background: var(--color-parchment-200);
   clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 
+/* The shadow deepens on hover rather than the card lifting: the bead is a sibling and stays on
+   the wool, so a 1px lift pulled the tail's point 1px off it, and a transform here would
+   re-parent the tail again. */
 .string-note-card:hover {
-  transform: translateY(-1px);
   box-shadow:
     0 1px 0 rgb(255 255 255 / 0.5) inset,
     0 5px 11px -2px rgb(0 0 0 / 0.6);
@@ -1264,7 +1271,6 @@ body {
   .post-it-close:hover,
   .sheet-close:hover,
   .edge-swatch:hover,
-  .string-note-card:hover,
   .paper-disclosure:hover .paper-disclosure-glyph,
   .yarn-bead:hover .yarn-bead-glyph {
     transform: none;

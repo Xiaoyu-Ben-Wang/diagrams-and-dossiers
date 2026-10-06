@@ -20,7 +20,7 @@ export function parseRoute(pathname: string): Route {
   return { name: "notFound", path };
 }
 
-/** Vite's BASE_URL: "/" in dev, the deploy subpath (e.g. /dossiers-and-diagrams/) on GitHub Pages. */
+/** Vite's BASE_URL: "/" in dev, the deploy subpath (e.g. /diagrams-and-dossiers/) on GitHub Pages. */
 export const BASE_PATH = normalizePath(import.meta.env.BASE_URL || "/");
 
 export function withBase(path: string, base: string = BASE_PATH): string {
@@ -63,7 +63,7 @@ export const DEEP_LINK_KEY = "case-board:deep-link";
 /**
  * Puts back the path the 404 boot page stashed, before anything reads the
  * location. Pages has no rewrite, so this is the only way a pasted
- * `/dossiers-and-diagrams/b/<id>` reaches the router at all.
+ * `/diagrams-and-dossiers/b/<id>` reaches the router at all.
  */
 export function restoreDeepLink(storage?: Storage): void {
   try {

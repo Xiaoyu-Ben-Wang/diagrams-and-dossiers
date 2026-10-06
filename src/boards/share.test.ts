@@ -5,7 +5,7 @@ import { createBoardRecord } from './board-record'
 import { copyTextToClipboard, shareUrlFor } from './share'
 
 const record = { ...createBoardRecord('Ledger', { entities: [], strings: [] }, 1), id: 'abc123' }
-const PAGES_BASE = '/dossiers-and-diagrams'
+const PAGES_BASE = '/diagrams-and-dossiers'
 
 describe('the link to a board', () => {
   it('points at the board, from the root', () => {
@@ -16,7 +16,7 @@ describe('the link to a board', () => {
 
   it('carries the subpath the app is served from', () => {
     expect(shareUrlFor(record, 'https://example.test', PAGES_BASE)).toBe(
-      'https://example.test/dossiers-and-diagrams/b/abc123',
+      'https://example.test/diagrams-and-dossiers/b/abc123',
     )
   })
 })

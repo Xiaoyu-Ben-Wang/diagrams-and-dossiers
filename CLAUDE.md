@@ -1,4 +1,4 @@
-# Working on Dossiers & Diagrams
+# Working on Diagrams & Dossiers
 
 ## Check the feature queue first
 

@@ -18,21 +18,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Before setup-node, which needs pnpm on PATH to key its cache.
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Test
-        run: npm test
+        run: pnpm test
 
       - name: Build
-        run: npx vite build
+        run: pnpm exec vite build
 
   # Added in Phase 0 once the Supabase project exists. This is the test that
   # keeps the DM layer honest: authenticate as a player and assert zero rows
@@ -46,4 +49,4 @@ jobs:
   #     - uses: supabase/setup-cli@v1
   #     - run: supabase start
   #     - run: supabase db reset
-  #     - run: npm run test:rls
+  #     - run: pnpm run test:rls

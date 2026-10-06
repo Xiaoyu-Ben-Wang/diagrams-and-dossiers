@@ -218,7 +218,7 @@ export function PaperEditor({
         />
       </div>
 
-      <p className="px-3 py-2 text-[10px] leading-relaxed text-board-ink-soft/45">
+      <p className="px-3 py-2 text-xs leading-relaxed text-board-ink-soft/45">
         Mention a page or a picture with{' '}
         <code className="font-mono">@[Name]</code>, or type{' '}
         <code className="font-mono">@</code> for the list. Click a word on the board to pin a note

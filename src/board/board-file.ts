@@ -22,7 +22,7 @@ import { NOTE_FONT_SCALE_DEFAULT, NOTE_FONT_SCALE_MAX, NOTE_FONT_SCALE_MIN } fro
 import type { BoardState } from './store'
 import type { Point } from './yarn'
 
-export const BOARD_FILE_FORMAT = 'dossiers-and-diagrams.board'
+export const BOARD_FILE_FORMAT = 'diagrams-and-dossiers.board'
 
 /** Bump only when an older reader would misunderstand the file, not merely lose a field. */
 export const BOARD_FILE_VERSION = 1

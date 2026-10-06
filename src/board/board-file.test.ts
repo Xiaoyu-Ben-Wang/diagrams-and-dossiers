@@ -112,7 +112,10 @@ describe('a board file', () => {
   it('says what it is, so a reader can tell one file from another', () => {
     const file = JSON.parse(serializeBoard(tinyBoard()))
 
-    expect(file.format).toBe(BOARD_FILE_FORMAT)
+    // The literal, not the constant: this string is written into files people
+    // keep, so changing it has to be a decision rather than a rename that
+    // follows the constant along.
+    expect(file.format).toBe('diagrams-and-dossiers.board')
     expect(file.version).toBe(BOARD_FILE_VERSION)
     expect(typeof file.exportedAt).toBe('string')
   })

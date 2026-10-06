@@ -14,8 +14,7 @@ import { ExportImageDialog, type ExportOptions } from './ExportImageDialog'
 import { SHADOW as IMAGE_SHADOW } from './ImageCard'
 import { EXPORT_DOT_TILE, backgroundFor, patternFor, planExport } from './export-image'
 import { renderBoardPng } from './export-png'
-import { YarnBead } from './entities/YarnBead'
-import { Legend } from './Legend'
+import { YarnBead } from "./entities/YarnBead";
 import { StringLayer } from './StringLayer'
 import { EdgePicker, type Box } from './EdgePicker'
 import { NoteStyleMenu } from './NoteStyleMenu'
@@ -1354,9 +1353,6 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
 
   const anchored = pins.filter((pin) => pin.rect)
   const freePins = pins.filter((pin) => pin.board)
-  const orphaned = pins.filter((pin) => pin.status === 'orphaned')
-  const repaired = pins.filter((pin) => pin.status === 'repaired').length
-  const exact = pins.filter((pin) => pin.status === 'exact').length
   const activePin = editingPin ? byId.get(editingPin.id) : null
 
   const contextEntity = contextMenu?.entityId
@@ -1412,14 +1408,14 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
             type="button"
             onClick={onBack}
             data-testid="back-to-boards"
-            className="flex items-center gap-1.5 rounded border border-parchment-edge/25 px-2.5 py-1 text-xs text-board-ink-soft transition hover:border-brass hover:text-board-ink"
+            className="flex items-center gap-1.5 rounded border border-parchment-edge/25 px-2.5 py-1 text-[13px] text-board-ink-soft transition hover:border-brass hover:text-board-ink"
           >
             <ArrowLeft size={13} strokeWidth={2.2} aria-hidden="true" />
             Boards
           </button>
         ) : null}
         {name ? (
-          <span className="truncate text-xs text-board-ink-soft" data-testid="board-name">
+          <span className="truncate text-[13px] text-board-ink-soft" data-testid="board-name">
             {name}
           </span>
         ) : null}
@@ -1429,7 +1425,7 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
         <>
           {selectedArticle && (
             <PaperEditor
-              title={selectedArticle.title?.trim() || 'Untitled sheet'}
+              title={selectedArticle.title?.trim() || "Untitled sheet"}
               value={selectedArticle.bodyMd}
               onChange={(body) => setEntityBody(selectedArticle.id, body)}
               onClose={() => setSelection(new Set())}
@@ -1460,7 +1456,7 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
                     <ImageCaption
                       x={captionAt.x}
                       y={captionAt.y}
-                      title={selectedImage.title ?? ''}
+                      title={selectedImage.title ?? ""}
                       description={selectedImage.bodyMd}
                       onTitle={(next) => setEntityTitle(selectedImage.id, next)}
                       onDescription={(next) => setEntityBody(selectedImage.id, next)}
@@ -1477,26 +1473,24 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
                   ) : null}
 
                   <BoardPalette
-                    canCreate={can(LOCAL_VIEWER, 'create')}
+                    canCreate={can(LOCAL_VIEWER, "create")}
                     onDropNote={(clientX, clientY) => {
-                    const at = worldPoint(clientX, clientY)
-                    createPostIt({
-                      x: at.x - NOTE_SIZE.width / 2,
-                      y: at.y - NOTE_SIZE.height / 2,
-                    })
-                  }}
+                      const at = worldPoint(clientX, clientY);
+                      createPostIt({
+                        x: at.x - NOTE_SIZE.width / 2,
+                        y: at.y - NOTE_SIZE.height / 2,
+                      });
+                    }}
                     onDropPin={(clientX, clientY) => createFreePin(worldPoint(clientX, clientY))}
                     onOpenNoteMenu={openStyleMenuForPad}
-                    noteMenuOpen={noteStyleMenu?.at === 'pad'}
+                    noteMenuOpen={noteStyleMenu?.at === "pad"}
                     noteStyle={preferences.noteStyle}
                     noteColor={preferences.noteColor}
                   />
 
-                  {noteStyleMenu && (noteStyleMenu.at === 'pad' ? noteStyleMenu.anchor : noteStyleAnchor) ? (
+                  {noteStyleMenu && (noteStyleMenu.at === "pad" ? noteStyleMenu.anchor : noteStyleAnchor) ? (
                     <NoteStyleMenu
-                      anchor={
-                        noteStyleMenu.at === 'pad' ? noteStyleMenu.anchor : noteStyleAnchor!
-                      }
+                      anchor={noteStyleMenu.at === "pad" ? noteStyleMenu.anchor : noteStyleAnchor!}
                       style={menuTarget.style}
                       color={menuTarget.color}
                       onPickStyle={pickStyle}
@@ -1561,11 +1555,9 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
                 onResizeNote={resizeNote}
                 onSetFontScale={setNoteFontScale}
                 onOpenStyleMenu={(id) =>
-                  setNoteStyleMenu((menu) =>
-                    menu?.at === 'note' && menu.id === id ? null : { at: 'note', id },
-                  )
+                  setNoteStyleMenu((menu) => (menu?.at === "note" && menu.id === id ? null : { at: "note", id }))
                 }
-                styleMenuNoteId={noteStyleMenu?.at === 'note' ? noteStyleMenu.id : null}
+                styleMenuNoteId={noteStyleMenu?.at === "note" ? noteStyleMenu.id : null}
                 onRemove={removeEntity}
               />
               {/* Rendered last so the yarn paints over everything; pointer-events-none
@@ -1580,8 +1572,8 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
                 drawing={dragFrom !== null}
               />
               {drawableStrings.map((drawn) => {
-                const link = strings.find((candidate) => candidate.id === drawn.id)
-                if (!link) return null
+                const link = strings.find((candidate) => candidate.id === drawn.id);
+                if (!link) return null;
                 return (
                   <StringNote
                     key={`note-${link.id}`}
@@ -1593,7 +1585,7 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
                     onSlide={(t) => slideStringNote(link.id, t)}
                     onWrite={(text) => writeStringNote(link.id, text)}
                   />
-                )
+                );
               })}
 
               {selectedString ? (
@@ -1612,18 +1604,12 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
       </main>
 
       <footer className="border-t border-parchment-edge/15 bg-cork-900/55 px-4 py-2 lg:px-6">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 pb-1 text-[10px] text-board-ink-soft/50">
-          <Legend
-            colour="var(--color-brass)"
-            label={`Anchored exactly (${exact})`}
-          />
-          <Legend colour="#d98a2b" label={`Repaired after an edit (${repaired})`} />
-          <Legend colour="var(--color-wax)" label={`Orphaned (${orphaned.length})`} />
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 pb-1 text-xs text-board-ink-soft/50">
           <span>
             {placed.length} pin{placed.length === 1 ? "" : "s"} · {strings.length} string
             {strings.length === 1 ? "" : "s"}
           </span>
-          <span className="ml-auto hidden lg:inline">
+          <span className="ml-auto hidden lg:inline text-sm">
             Scroll to zoom · right/middle-drag to pan · right-click for options
           </span>
         </div>
@@ -1633,7 +1619,7 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
         pin={
           hovered && !editingPin && !movingPin
             ? (() => {
-                const pin = byId.get(hovered.id)
+                const pin = byId.get(hovered.id);
                 return pin && pin.body.trim().length === 0
                   ? {
                       id: pin.id,
@@ -1641,7 +1627,7 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
                       body: pin.body,
                       dateLabel: pin.dateLabel,
                     }
-                  : null
+                  : null;
               })()
             : null
         }
@@ -1677,8 +1663,8 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
           onDateChange={(dateLabel) => setEntityDate(editingPin.id, dateLabel)}
           onDelete={() => removeEntity(editingPin.id)}
           onMove={() => {
-            setMovingPin(editingPin.id)
-            setEditingPin(null)
+            setMovingPin(editingPin.id);
+            setEditingPin(null);
           }}
           onClose={() => setEditingPin(null)}
         />
@@ -1693,8 +1679,8 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
         // Not stacked on the drawer: both are modal, and the drawer would sit
         // over the dialog it just opened.
         onExportImage={() => {
-          setPrefsOpen(false)
-          setExportImageOpen(true)
+          setPrefsOpen(false);
+          setExportImageOpen(true);
         }}
       />
 
@@ -1718,6 +1704,5 @@ export function BoardScreen({ board, onSave, onBack, name, onAddBoard }: BoardSc
         />
       ) : null}
     </div>
-  )
+  );
 }
-

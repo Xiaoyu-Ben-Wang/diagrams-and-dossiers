@@ -85,23 +85,23 @@ describe("routeToPath", () => {
 });
 
 describe("served from a subpath", () => {
-  const BASE = "/dossiers-and-diagrams";
+  const BASE = "/diagrams-and-dossiers";
 
   it("reads the board at the deployment\u2019s own address", () => {
-    expect(withoutBase("/dossiers-and-diagrams", BASE)).toBe("/");
-    expect(withoutBase("/dossiers-and-diagrams/", BASE)).toBe("/");
+    expect(withoutBase("/diagrams-and-dossiers", BASE)).toBe("/");
+    expect(withoutBase("/diagrams-and-dossiers/", BASE)).toBe("/");
   });
 
   it("leaves a path that is not under the base alone", () => {
     expect(withoutBase("/something-else", BASE)).toBe("/something-else");
-    expect(withoutBase("/dossiers-and-diagrams-extra", BASE)).toBe(
-      "/dossiers-and-diagrams-extra",
+    expect(withoutBase("/diagrams-and-dossiers-extra", BASE)).toBe(
+      "/diagrams-and-dossiers-extra",
     );
   });
 
   it("puts the base back when writing a path into the URL bar", () => {
-    expect(withBase("/", BASE)).toBe("/dossiers-and-diagrams/");
-    expect(withBase("/nope", BASE)).toBe("/dossiers-and-diagrams/nope");
+    expect(withBase("/", BASE)).toBe("/diagrams-and-dossiers/");
+    expect(withBase("/nope", BASE)).toBe("/diagrams-and-dossiers/nope");
   });
 
   it("is a no-op in development, where the board is at the root", () => {

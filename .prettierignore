@@ -1,0 +1,6 @@
+# Built output and lockfiles are generated, not authored.
+dist
+package-lock.json
+
+# Served verbatim by GitHub Pages, and hand-written to stay that way.
+public/404.html

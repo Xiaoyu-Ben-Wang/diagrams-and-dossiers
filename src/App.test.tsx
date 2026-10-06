@@ -54,7 +54,7 @@ function renderBoard() {
 describe('App — the board', () => {
   it('renders without throwing', () => {
     renderBoard()
-    expect(screen.getByText('The Case Board')).toBeTruthy()
+    expect(screen.getByText('Diagrams & Dossiers')).toBeTruthy()
   })
 
   it('renders markdown into real elements, not raw text', () => {
@@ -1383,9 +1383,10 @@ describe('App — the demo board', () => {
   })
 
   it('does not count a tack in the cork as an anchored pin', () => {
-    render(<App seed={demoBoard()} />)
+    const { container } = render(<App seed={demoBoard()} />)
 
-    expect(screen.getByText('Anchored exactly (0)')).toBeTruthy()
+    // The footer no longer carries a legend, so the status is read off the tacks themselves.
+    expect(container.querySelectorAll('[data-status="exact"]')).toHaveLength(0)
     expect(screen.getByText('8 pins · 12 strings')).toBeTruthy()
   })
 
