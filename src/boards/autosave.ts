@@ -6,25 +6,25 @@
 // changed — so this sees exactly the changes, and cannot write over a board that
 // has not finished loading.
 
-import type { BoardState, BoardStore } from '../board/store'
+import type { BoardState, BoardStore } from "../board/store";
 
 export interface AutosaveOptions {
-  store: Pick<BoardStore, 'subscribe' | 'get'>
-  save: (board: BoardState) => void | Promise<void>
+  store: Pick<BoardStore, "subscribe" | "get">;
+  save: (board: BoardState) => void | Promise<void>;
   /** Quiet time after the last change. */
-  delay?: number
+  delay?: number;
   /** Longest a change may sit unwritten, however continuous the writing is. */
-  maxDelay?: number
-  target?: EventTarget
+  maxDelay?: number;
+  target?: EventTarget;
 }
 
 export interface Autosave {
-  flush(): Promise<void>
-  detach(): void
+  flush(): Promise<void>;
+  detach(): void;
 }
 
-const DEFAULT_DELAY = 400
-const DEFAULT_MAX_DELAY = 2000
+const DEFAULT_DELAY = 400;
+const DEFAULT_MAX_DELAY = 2000;
 
 export function attachAutosave({
   store,
@@ -33,54 +33,57 @@ export function attachAutosave({
   maxDelay = DEFAULT_MAX_DELAY,
   target = globalThis,
 }: AutosaveOptions): Autosave {
-  let dirtySince: number | null = null
-  let timer: ReturnType<typeof setTimeout> | null = null
+  let dirtySince: number | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
 
   const flush = async (): Promise<void> => {
     if (timer !== null) {
-      clearTimeout(timer)
-      timer = null
+      clearTimeout(timer);
+      timer = null;
     }
-    if (dirtySince === null) return
-    dirtySince = null
+    if (dirtySince === null) return;
+    dirtySince = null;
     // Read at flush time, not when the change was scheduled: a burst of typing
     // then writes the last state once rather than every state.
-    await save(store.get())
-  }
+    await save(store.get());
+  };
 
   const schedule = (): void => {
-    const now = Date.now()
-    if (dirtySince === null) dirtySince = now
-    if (timer !== null) clearTimeout(timer)
+    const now = Date.now();
+    if (dirtySince === null) dirtySince = now;
+    if (timer !== null) clearTimeout(timer);
     // The ceiling is measured from the first unwritten change, so a long run of
     // typing still commits every `maxDelay` rather than never.
-    const wait = Math.max(0, Math.min(delay, maxDelay - (now - dirtySince)))
+    const wait = Math.max(0, Math.min(delay, maxDelay - (now - dirtySince)));
     timer = setTimeout(() => {
-      void flush()
-    }, wait)
-  }
+      void flush();
+    }, wait);
+  };
 
-  const unsubscribe = store.subscribe(schedule)
+  const unsubscribe = store.subscribe(schedule);
 
   const onPageHide = (): void => {
-    void flush()
-  }
+    void flush();
+  };
   const onVisibility = (): void => {
-    if (globalThis.document?.visibilityState === 'hidden') void flush()
-  }
+    if (globalThis.document?.visibilityState === "hidden") void flush();
+  };
 
-  target.addEventListener?.('pagehide', onPageHide)
-  globalThis.document?.addEventListener?.('visibilitychange', onVisibility)
+  target.addEventListener?.("pagehide", onPageHide);
+  globalThis.document?.addEventListener?.("visibilitychange", onVisibility);
 
   return {
     flush,
     detach() {
-      unsubscribe()
-      target.removeEventListener?.('pagehide', onPageHide)
-      globalThis.document?.removeEventListener?.('visibilitychange', onVisibility)
+      unsubscribe();
+      target.removeEventListener?.("pagehide", onPageHide);
+      globalThis.document?.removeEventListener?.(
+        "visibilitychange",
+        onVisibility,
+      );
       // Walking back to the library unmounts the board without unloading the
       // document, so this write completes where a page-close one might not.
-      void flush()
+      void flush();
     },
-  }
+  };
 }

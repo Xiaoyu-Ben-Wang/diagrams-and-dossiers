@@ -1,45 +1,49 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback } from "react";
 
-import type { ImageEntity, NoteEntity } from '../model/types'
-import { ImageCard } from './ImageCard'
-import { PostIt } from './entities/PostIt'
-import { Tack } from './entities/Tack'
-import type { Point } from './yarn'
-import { pinPoint, type PinView } from './view'
+import type { ImageEntity, NoteEntity } from "../model/types";
+import { ImageCard } from "./ImageCard";
+import { PostIt } from "./entities/PostIt";
+import { Tack } from "./entities/Tack";
+import type { Point } from "./yarn";
+import { pinPoint, type PinView } from "./view";
 
 export interface EntityLayerProps {
-  freePins: readonly PinView[]
-  images: readonly ImageEntity[]
-  postIts: readonly NoteEntity[]
+  freePins: readonly PinView[];
+  images: readonly ImageEntity[];
+  postIts: readonly NoteEntity[];
 
-  selection: ReadonlySet<string>
-  movingPin: string | null
-  zoom: number
+  selection: ReadonlySet<string>;
+  movingPin: string | null;
+  zoom: number;
 
-  articleToBoard: (articleId: string, local: Point) => Point | null
-  toBoard: (clientX: number, clientY: number) => Point
-  anchorOf: (id: string) => Point | null
+  articleToBoard: (articleId: string, local: Point) => Point | null;
+  toBoard: (clientX: number, clientY: number) => Point;
+  anchorOf: (id: string) => Point | null;
 
-  onStartYarn: (event: React.PointerEvent, fromId: string, origin: Point | null) => void
-  onMoveOne: (id: string, delta: Point) => void
-  onMoveEntity: (id: string, delta: Point) => void
-  onPinDrop: (id: string, clientX: number, clientY: number) => void
-  onOpenPinEditor: (id: string, clientX: number, clientY: number) => void
-  onPinHover: (pin: PinView, element: Element | null) => void
-  onRotate: (id: string, degrees: number) => void
-  onResize: (id: string, size: { width: number; height: number }) => void
-  onSelectImage: (id: string) => void
-  onSelectNote: (id: string) => void
-  onSetBody: (id: string, body: string) => void
-  onResizeNote: (id: string, size: { width: number; height: number }) => void
-  onSetFontScale: (id: string, scale: number) => void
-  onOpenStyleMenu: (id: string) => void
+  onStartYarn: (
+    event: React.PointerEvent,
+    fromId: string,
+    origin: Point | null,
+  ) => void;
+  onMoveOne: (id: string, delta: Point) => void;
+  onMoveEntity: (id: string, delta: Point) => void;
+  onPinDrop: (id: string, clientX: number, clientY: number) => void;
+  onOpenPinEditor: (id: string, clientX: number, clientY: number) => void;
+  onPinHover: (pin: PinView, element: Element | null) => void;
+  onRotate: (id: string, degrees: number) => void;
+  onResize: (id: string, size: { width: number; height: number }) => void;
+  onSelectImage: (id: string) => void;
+  onSelectNote: (id: string) => void;
+  onSetBody: (id: string, body: string) => void;
+  onResizeNote: (id: string, size: { width: number; height: number }) => void;
+  onSetFontScale: (id: string, scale: number) => void;
+  onOpenStyleMenu: (id: string) => void;
   /** The note whose style menu is open, so its trigger can say so. */
-  styleMenuNoteId: string | null
-  onRemove: (id: string) => void
+  styleMenuNoteId: string | null;
+  onRemove: (id: string) => void;
 }
 
-const TACK_RADIUS = 7
+const TACK_RADIUS = 7;
 
 export const EntityLayer = memo(function EntityLayer({
   freePins,
@@ -72,11 +76,12 @@ export const EntityLayer = memo(function EntityLayer({
     (event: React.PointerEvent, pin: PinView) =>
       onStartYarn(event, pin.id, pinPoint(pin, articleToBoard)),
     [onStartYarn, articleToBoard],
-  )
+  );
   const startImageYarn = useCallback(
-    (event: React.PointerEvent, id: string) => onStartYarn(event, id, anchorOf(id)),
+    (event: React.PointerEvent, id: string) =>
+      onStartYarn(event, id, anchorOf(id)),
     [onStartYarn, anchorOf],
-  )
+  );
 
   return (
     <>
@@ -142,5 +147,5 @@ export const EntityLayer = memo(function EntityLayer({
         />
       ))}
     </>
-  )
-})
+  );
+});

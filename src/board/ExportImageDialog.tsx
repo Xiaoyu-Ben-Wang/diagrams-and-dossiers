@@ -6,8 +6,8 @@
  * comes back as a reason, the way `importBoard` does.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Clipboard, Download, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Clipboard, Download, X } from "lucide-react";
 
 import {
   DEFAULT_EXPORT_SCALE,
@@ -19,42 +19,47 @@ import {
   type ExportBackground,
   type ExportFill,
   type ExportPattern,
-} from './export-image'
-import { copyImageToClipboard, downloadBlob } from './export-png'
-import { SURFACES, surfaceColor, type BoardSurface, type ThemeMode } from '../theme/preferences'
-import { surfaceLabel } from '../theme/PreferencesPanel'
-import './ExportImageDialog.css'
-import type { Rect } from './camera'
-import type { BoardState } from './store'
+} from "./export-image";
+import { copyImageToClipboard, downloadBlob } from "./export-png";
+import {
+  SURFACES,
+  surfaceColor,
+  type BoardSurface,
+  type ThemeMode,
+} from "../theme/preferences";
+import { surfaceLabel } from "../theme/PreferencesPanel";
+import "./ExportImageDialog.css";
+import type { Rect } from "./camera";
+import type { BoardState } from "./store";
 
 export interface ExportOptions extends ExportBackground {
-  scale: number
+  scale: number;
 }
 
 export interface ExportImageDialogProps {
-  board: BoardState
+  board: BoardState;
   /** Everything on the board, in board space. */
-  rects: readonly Rect[]
+  rects: readonly Rect[];
   /** The surface the board is on now, so the dialog opens on it. */
-  surface: BoardSurface
-  theme: ThemeMode
-  onRender: (options: ExportOptions) => Promise<Blob | string>
-  onClose: () => void
+  surface: BoardSurface;
+  theme: ThemeMode;
+  onRender: (options: ExportOptions) => Promise<Blob | string>;
+  onClose: () => void;
 }
 
 const FILLS: readonly { id: ExportFill; label: string }[] = [
-  { id: 'white', label: 'White' },
-  { id: 'black', label: 'Black' },
-  { id: 'transparent', label: 'Clear' },
-]
+  { id: "white", label: "White" },
+  { id: "black", label: "Black" },
+  { id: "transparent", label: "Clear" },
+];
 
 const PATTERNS: readonly { id: ExportPattern; label: string }[] = [
-  { id: 'plain', label: 'Plain' },
-  { id: 'dots', label: 'Dots' },
-]
+  { id: "plain", label: "Plain" },
+  { id: "dots", label: "Dots" },
+];
 
 /** How wide the preview is drawn, in output pixels. */
-const PREVIEW_WIDTH = 300
+const PREVIEW_WIDTH = 300;
 
 export function ExportImageDialog({
   board,
@@ -65,105 +70,112 @@ export function ExportImageDialog({
   onClose,
 }: ExportImageDialogProps) {
   const [background, setBackground] = useState<ExportBackground>({
-    fill: 'surface',
+    fill: "surface",
     surface,
-    custom: '#c9a561',
-    pattern: 'plain',
-  })
-  const [scale, setScale] = useState<number>(DEFAULT_EXPORT_SCALE)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
-  const [preview, setPreview] = useState<string | null>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
-  const previewUrl = useRef<string | null>(null)
+    custom: "#c9a561",
+    pattern: "plain",
+  });
+  const [scale, setScale] = useState<number>(DEFAULT_EXPORT_SCALE);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previewUrl = useRef<string | null>(null);
 
-  const plan = useMemo(() => planExport(rects, scale), [rects, scale])
-  const bounds = useMemo(() => exportBounds(rects), [rects])
-  const options: ExportOptions = { ...background, scale }
+  const plan = useMemo(() => planExport(rects, scale), [rects, scale]);
+  const bounds = useMemo(() => exportBounds(rects), [rects]);
+  const options: ExportOptions = { ...background, scale };
 
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    panelRef.current?.focus({ preventScroll: true })
-    return () => previous?.focus({ preventScroll: true })
-  }, [])
+    const previous = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus({ preventScroll: true });
+    return () => previous?.focus({ preventScroll: true });
+  }, []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
+      if (event.key !== "Escape") return;
       // The board has its own Escape handling; an open dialog is what it means
       // first.
-      event.stopPropagation()
-      onClose()
-    }
-    document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
 
   // The preview is the real pipeline at a small scale rather than a mock, so it
   // cannot drift from what Download produces. Debounced, because a change to
   // the options is usually a run of them and each costs a whole render.
   useEffect(() => {
-    if (!bounds) return
-    let live = true
+    if (!bounds) return;
+    let live = true;
     const timer = setTimeout(() => {
-      void onRender({ ...options, scale: Math.min(1, PREVIEW_WIDTH / bounds.width) }).then(
-        (result) => {
-          if (!live || typeof result === 'string') return
-          // Outside a state updater: React may replay one, and each replay
-          // would strand the URL it made.
-          if (previewUrl.current) URL.revokeObjectURL(previewUrl.current)
-          previewUrl.current = URL.createObjectURL(result)
-          setPreview(previewUrl.current)
-        },
-      )
-    }, 180)
+      void onRender({
+        ...options,
+        scale: Math.min(1, PREVIEW_WIDTH / bounds.width),
+      }).then((result) => {
+        if (!live || typeof result === "string") return;
+        // Outside a state updater: React may replay one, and each replay
+        // would strand the URL it made.
+        if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+        previewUrl.current = URL.createObjectURL(result);
+        setPreview(previewUrl.current);
+      });
+    }, 180);
     return () => {
-      live = false
-      clearTimeout(timer)
-    }
-  }, [background, bounds, onRender])
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [background, bounds, onRender]);
 
   // The last URL is still displayed when the dialog closes, so it is not the
   // effect above that can revoke it.
   useEffect(
     () => () => {
-      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current)
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
     },
     [],
-  )
+  );
 
   /** Render once, and hand the blob to `then`. A string back is a failure. */
-  const run = async (then: (blob: Blob) => Promise<void> | void): Promise<void> => {
-    if (busy || !plan) return
-    setBusy(true)
-    setError(null)
-    setCopied(false)
+  const run = async (
+    then: (blob: Blob) => Promise<void> | void,
+  ): Promise<void> => {
+    if (busy || !plan) return;
+    setBusy(true);
+    setError(null);
+    setCopied(false);
     try {
-      const result = await onRender(options)
-      if (typeof result === 'string') setError(result)
-      else await then(result)
+      const result = await onRender(options);
+      if (typeof result === "string") setError(result);
+      else await then(result);
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }
+  };
 
-  const download = (): Promise<void> => run((blob) => downloadBlob(blob, imageFileName(board)))
+  const download = (): Promise<void> =>
+    run((blob) => downloadBlob(blob, imageFileName(board)));
 
   const copy = (): Promise<void> =>
     run(async (blob) => {
-      if (await copyImageToClipboard(blob)) setCopied(true)
-      else setError('This browser would not take an image that size — download it instead.')
-    })
+      if (await copyImageToClipboard(blob)) setCopied(true);
+      else
+        setError(
+          "This browser would not take an image that size — download it instead.",
+        );
+    });
 
   const chooseSurface = (id: BoardSurface): void =>
-    setBackground((current) => ({ ...current, fill: 'surface', surface: id }))
+    setBackground((current) => ({ ...current, fill: "surface", surface: id }));
 
   return (
     <div
       className="export-scrim"
       onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
+        if (event.target === event.currentTarget) onClose();
       }}
     >
       <div
@@ -176,13 +188,20 @@ export function ExportImageDialog({
       >
         <header className="export-head">
           <h2>Export image</h2>
-          <button type="button" className="export-close" aria-label="Close" onClick={onClose}>
+          <button
+            type="button"
+            className="export-close"
+            aria-label="Close"
+            onClick={onClose}
+          >
             <X size={14} strokeWidth={2.5} aria-hidden="true" />
           </button>
         </header>
 
         <div className="export-preview" data-testid="export-preview">
-          {preview ? <img src={preview} alt="A preview of the exported image" /> : null}
+          {preview ? (
+            <img src={preview} alt="A preview of the exported image" />
+          ) : null}
         </div>
 
         <section className="export-section" aria-label="Background">
@@ -194,13 +213,22 @@ export function ExportImageDialog({
                 type="button"
                 className="export-swatch"
                 data-testid={`export-surface-${id}`}
-                data-selected={background.fill === 'surface' && background.surface === id}
-                aria-pressed={background.fill === 'surface' && background.surface === id}
+                data-selected={
+                  background.fill === "surface" && background.surface === id
+                }
+                aria-pressed={
+                  background.fill === "surface" && background.surface === id
+                }
                 title={surfaceLabel(id, theme)}
                 onClick={() => chooseSurface(id)}
               >
-                <span className="export-swatch-chip" style={{ background: surfaceColor(id, theme) }} />
-                <span className="export-swatch-label">{surfaceLabel(id, theme)}</span>
+                <span
+                  className="export-swatch-chip"
+                  style={{ background: surfaceColor(id, theme) }}
+                />
+                <span className="export-swatch-label">
+                  {surfaceLabel(id, theme)}
+                </span>
               </button>
             ))}
           </div>
@@ -215,15 +243,21 @@ export function ExportImageDialog({
                 data-selected={background.fill === id}
                 aria-pressed={background.fill === id}
                 title={label}
-                onClick={() => setBackground((current) => ({ ...current, fill: id }))}
+                onClick={() =>
+                  setBackground((current) => ({ ...current, fill: id }))
+                }
               >
                 <span
                   className="export-swatch-chip"
-                  data-transparent={id === 'transparent'}
+                  data-transparent={id === "transparent"}
                   style={
-                    id === 'transparent'
+                    id === "transparent"
                       ? undefined
-                      : { background: backgroundFor({ ...background, fill: id }, theme) ?? '#ffffff' }
+                      : {
+                          background:
+                            backgroundFor({ ...background, fill: id }, theme) ??
+                            "#ffffff",
+                        }
                   }
                 />
                 <span className="export-swatch-label">{label}</span>
@@ -232,7 +266,7 @@ export function ExportImageDialog({
 
             <label
               className="export-swatch export-swatch-custom"
-              data-selected={background.fill === 'custom'}
+              data-selected={background.fill === "custom"}
               title="Custom colour"
             >
               <input
@@ -242,7 +276,7 @@ export function ExportImageDialog({
                 onChange={(event) =>
                   setBackground((current) => ({
                     ...current,
-                    fill: 'custom',
+                    fill: "custom",
                     custom: event.target.value,
                   }))
                 }
@@ -251,7 +285,11 @@ export function ExportImageDialog({
             </label>
           </div>
 
-          <div className="export-patterns" role="group" aria-label="Background pattern">
+          <div
+            className="export-patterns"
+            role="group"
+            aria-label="Background pattern"
+          >
             {PATTERNS.map(({ id, label }) => (
               <button
                 key={id}
@@ -260,17 +298,19 @@ export function ExportImageDialog({
                 data-testid={`export-pattern-${id}`}
                 data-selected={background.pattern === id}
                 aria-pressed={background.pattern === id}
-                onClick={() => setBackground((current) => ({ ...current, pattern: id }))}
+                onClick={() =>
+                  setBackground((current) => ({ ...current, pattern: id }))
+                }
               >
                 {label}
               </button>
             ))}
           </div>
 
-          {background.fill === 'transparent' ? (
+          {background.fill === "transparent" ? (
             <p className="export-note">
-              Shadows stay in the file and read as grey on a white viewer, which is what a
-              transparent export of a board with shadows looks like.
+              Shadows stay in the file and read as grey on a white viewer, which
+              is what a transparent export of a board with shadows looks like.
             </p>
           ) : null}
         </section>
@@ -293,12 +333,14 @@ export function ExportImageDialog({
             ))}
           </div>
           <p className="export-size" data-testid="export-size">
-            {plan ? `${plan.width} × ${plan.height} pixels` : 'Nothing on the board to export yet.'}
+            {plan
+              ? `${plan.width} × ${plan.height} pixels`
+              : "Nothing on the board to export yet."}
           </p>
           {plan?.clamped ? (
             <p className="export-note" data-testid="export-clamped">
-              {scale}× is larger than this browser will draw. Exporting at {plan.scale.toFixed(2)}×
-              instead.
+              {scale}× is larger than this browser will draw. Exporting at{" "}
+              {plan.scale.toFixed(2)}× instead.
             </p>
           ) : null}
         </section>
@@ -325,7 +367,7 @@ export function ExportImageDialog({
             ) : (
               <Clipboard size={13} strokeWidth={2.2} aria-hidden="true" />
             )}
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? "Copied" : "Copy"}
           </button>
           <button
             type="button"
@@ -335,10 +377,10 @@ export function ExportImageDialog({
             onClick={() => void download()}
           >
             <Download size={13} strokeWidth={2.2} aria-hidden="true" />
-            {busy ? 'Rendering…' : 'Download PNG'}
+            {busy ? "Rendering…" : "Download PNG"}
           </button>
         </footer>
       </div>
     </div>
-  )
+  );
 }

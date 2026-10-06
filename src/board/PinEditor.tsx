@@ -1,21 +1,21 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef } from "react";
 
 export interface PinEditorProps {
-  quote: string
-  status: 'exact' | 'repaired' | 'orphaned'
-  dateLabel: string
-  body: string
-  x: number
-  y: number
-  onChange: (body: string) => void
-  onDateChange: (dateLabel: string) => void
-  onDelete: () => void
-  onMove: () => void
-  onClose: () => void
+  quote: string;
+  status: "exact" | "repaired" | "orphaned";
+  dateLabel: string;
+  body: string;
+  x: number;
+  y: number;
+  onChange: (body: string) => void;
+  onDateChange: (dateLabel: string) => void;
+  onDelete: () => void;
+  onMove: () => void;
+  onClose: () => void;
 }
 
-const WIDTH = 288
-const ESTIMATED_HEIGHT = 240
+const WIDTH = 288;
+const ESTIMATED_HEIGHT = 240;
 
 export function PinEditor({
   quote,
@@ -30,38 +30,38 @@ export function PinEditor({
   onMove,
   onClose,
 }: PinEditorProps) {
-  const cardRef = useRef<HTMLDivElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    textareaRef.current?.focus()
-    const length = textareaRef.current?.value.length ?? 0
-    textareaRef.current?.setSelectionRange(length, length)
-  }, [])
+    textareaRef.current?.focus();
+    const length = textareaRef.current?.value.length ?? 0;
+    textareaRef.current?.setSelectionRange(length, length);
+  }, []);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent): void => {
-      if (!cardRef.current?.contains(event.target as Node)) onClose()
-    }
+      if (!cardRef.current?.contains(event.target as Node)) onClose();
+    };
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
-    }
+      if (event.key === "Escape") onClose();
+    };
 
     // Deferred by a tick, or the very click that opened the editor closes it.
     const timer = window.setTimeout(() => {
-      document.addEventListener('pointerdown', onPointerDown)
-    }, 0)
-    document.addEventListener('keydown', onKeyDown)
+      document.addEventListener("pointerdown", onPointerDown);
+    }, 0);
+    document.addEventListener("keydown", onKeyDown);
 
     return () => {
-      window.clearTimeout(timer)
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [onClose])
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
 
-  const left = Math.min(x, window.innerWidth - WIDTH - 12)
-  const top = Math.min(y, window.innerHeight - ESTIMATED_HEIGHT - 12)
+  const left = Math.min(x, window.innerWidth - WIDTH - 12);
+  const top = Math.min(y, window.innerHeight - ESTIMATED_HEIGHT - 12);
 
   return (
     <div
@@ -80,11 +80,11 @@ export function PinEditor({
               className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
               style={{
                 background:
-                  status === 'orphaned'
-                    ? 'var(--color-wax)'
-                    : status === 'repaired'
-                      ? '#d98a2b'
-                      : 'var(--color-brass)',
+                  status === "orphaned"
+                    ? "var(--color-wax)"
+                    : status === "repaired"
+                      ? "#d98a2b"
+                      : "var(--color-brass)",
               }}
             />
             <input
@@ -145,5 +145,5 @@ export function PinEditor({
         </button>
       </footer>
     </div>
-  )
+  );
 }

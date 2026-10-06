@@ -1,36 +1,41 @@
 // Asked where a file goes, rather than assumed. Importing used to overwrite the
 // open board silently, which was survivable when nothing persisted and is not now.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef } from "react";
 
-import './ImportChoice.css'
+import "./ImportChoice.css";
 
 export interface ImportChoiceProps {
-  fileName: string
-  onReplace: () => void
-  onAddBoard: () => void
-  onCancel: () => void
+  fileName: string;
+  onReplace: () => void;
+  onAddBoard: () => void;
+  onCancel: () => void;
 }
 
-export function ImportChoice({ fileName, onReplace, onAddBoard, onCancel }: ImportChoiceProps) {
-  const panelRef = useRef<HTMLDivElement>(null)
+export function ImportChoice({
+  fileName,
+  onReplace,
+  onAddBoard,
+  onCancel,
+}: ImportChoiceProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    panelRef.current?.focus({ preventScroll: true })
+    panelRef.current?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
-      event.stopPropagation()
-      onCancel()
-    }
-    document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
-  }, [onCancel])
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      onCancel();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onCancel]);
 
   return (
     <div
       className="import-scrim"
       onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onCancel()
+        if (event.target === event.currentTarget) onCancel();
       }}
     >
       <div
@@ -55,7 +60,12 @@ export function ImportChoice({ fileName, onReplace, onAddBoard, onCancel }: Impo
           >
             Cancel
           </button>
-          <button type="button" className="import-button" data-testid="import-replace" onClick={onReplace}>
+          <button
+            type="button"
+            className="import-button"
+            data-testid="import-replace"
+            onClick={onReplace}
+          >
             Replace this board
           </button>
           <button
@@ -69,5 +79,5 @@ export function ImportChoice({ fileName, onReplace, onAddBoard, onCancel }: Impo
         </div>
       </div>
     </div>
-  )
+  );
 }

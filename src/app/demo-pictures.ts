@@ -1,8 +1,8 @@
 // Inline rather than files under public/: the test suite and probes have no network.
 // encodeURIComponent keeps the "#" in colours from ending the data URI as a fragment.
 function svgDataUri(width: number, height: number, body: string): string {
-  const markup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">${body}</svg>`
-  return `data:image/svg+xml,${encodeURIComponent(markup)}`
+  const markup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">${body}</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(markup)}`;
 }
 
 export const MARSH_MAP = svgDataUri(
@@ -29,7 +29,7 @@ export const MARSH_MAP = svgDataUri(
   <circle cx="246" cy="202" r="13" fill="none" stroke="#8c2f26" stroke-width="1" opacity="0.7"/>
   <text x="14" y="24" font-family="serif" font-size="11" fill="#5c5340" opacity="0.8">SALT MARSH</text>
 `,
-)
+);
 
 export const COIN_RUBBING = svgDataUri(
   220,
@@ -51,7 +51,7 @@ export const COIN_RUBBING = svgDataUri(
     <path d="M26 42l32-13M32 60l28-11M168 190l26-11M176 202l20-8"/>
   </g>
 `,
-)
+);
 
 export const TORN_LEAF = svgDataUri(
   300,
@@ -75,4 +75,4 @@ export const TORN_LEAF = svgDataUri(
   <path d="M186 88l70 6" stroke="#8c2f26" stroke-width="1.6" opacity="0.7"/>
   <path d="M232 148q14-4 26 1t20-3" stroke="#4a4334" stroke-width="1.6" fill="none" opacity="0.5" stroke-linecap="round"/>
 `,
-)
+);

@@ -1,11 +1,11 @@
 // Where an address that means nothing now lands. Before this it silently drew the
 // board, so a mistyped or stale link looked like it had worked.
 
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft } from "lucide-react";
 
 export interface NotFoundProps {
-  path: string
-  onHome: () => void
+  path: string;
+  onHome: () => void;
 }
 
 export function NotFound({ path, onHome }: NotFoundProps) {
@@ -15,9 +15,12 @@ export function NotFound({ path, onHome }: NotFoundProps) {
         className="not-found flex max-w-sm flex-col items-start gap-3 rounded border border-parchment-edge/30 bg-cork-900/55 px-5 py-4"
         data-testid="not-found"
       >
-        <h1 className="text-sm font-semibold text-board-ink">Nothing lives here</h1>
+        <h1 className="text-sm font-semibold text-board-ink">
+          Nothing lives here
+        </h1>
         <p className="text-xs text-board-ink-soft">
-          <code className="rounded bg-black/20 px-1 py-0.5">{path}</code> is not a board address.
+          <code className="rounded bg-black/20 px-1 py-0.5">{path}</code> is not
+          a board address.
         </p>
         <button
           type="button"
@@ -29,5 +32,5 @@ export function NotFound({ path, onHome }: NotFoundProps) {
         </button>
       </div>
     </div>
-  )
+  );
 }

@@ -6,35 +6,47 @@
  * See `docs/export-image.md` for the pipeline these numbers feed.
  */
 
-import { boardFileName, DEFAULT_BOARD_FILE_NAME } from './board-file'
-import { gridDotFor, surfaceColor, type BoardSurface, type ThemeMode } from '../theme/preferences'
-import type { BoardState } from './store'
-import type { Rect } from './camera'
+import { boardFileName, DEFAULT_BOARD_FILE_NAME } from "./board-file";
+import {
+  gridDotFor,
+  surfaceColor,
+  type BoardSurface,
+  type ThemeMode,
+} from "../theme/preferences";
+import type { BoardState } from "./store";
+import type { Rect } from "./camera";
 
-export type ExportFill = 'surface' | 'white' | 'black' | 'transparent' | 'custom'
+export type ExportFill =
+  "surface" | "white" | "black" | "transparent" | "custom";
 
 /** The board's own surface, or a flat colour, or nothing at all. */
-export const EXPORT_FILLS: readonly ExportFill[] = ['surface', 'white', 'black', 'transparent', 'custom']
+export const EXPORT_FILLS: readonly ExportFill[] = [
+  "surface",
+  "white",
+  "black",
+  "transparent",
+  "custom",
+];
 
 /** Whether the board's dot motif is drawn on the background. */
-export type ExportPattern = 'plain' | 'dots'
+export type ExportPattern = "plain" | "dots";
 
 export interface ExportBackground {
-  fill: ExportFill
-  surface: BoardSurface
+  fill: ExportFill;
+  surface: BoardSurface;
   /** Used when the fill is `custom`. */
-  custom: string
-  pattern: ExportPattern
+  custom: string;
+  pattern: ExportPattern;
 }
 
 /** Board px between dots, matching the grid's own spacing closely enough. */
-export const EXPORT_DOT_TILE = 24
+export const EXPORT_DOT_TILE = 24;
 
 /** Device pixels per board pixel. Independent of the screen's own DPR. */
-export const EXPORT_SCALES = [0.5, 1, 2, 3] as const
-export type ExportScale = (typeof EXPORT_SCALES)[number]
+export const EXPORT_SCALES = [0.5, 1, 2, 3] as const;
+export type ExportScale = (typeof EXPORT_SCALES)[number];
 
-export const DEFAULT_EXPORT_SCALE: ExportScale = 2
+export const DEFAULT_EXPORT_SCALE: ExportScale = 2;
 
 /**
  * Board px of margin around the board's own bounds, for shadows, pin tags and
@@ -42,7 +54,7 @@ export const DEFAULT_EXPORT_SCALE: ExportScale = 2
  * decoration on the demo board reaches 95px past the entity boxes, so the 48
  * this started at cropped the top off a tag and its yarn.
  */
-export const EXPORT_MARGIN = 128
+export const EXPORT_MARGIN = 128;
 
 /**
  * Caps on the output canvas.
@@ -51,59 +63,65 @@ export const EXPORT_MARGIN = 128
  * it. The scale is reduced to fit rather than the export being refused, so
  * `MAX_EXPORT_PIXELS` is a budget the caller is told about, not a limit.
  */
-export const MAX_EXPORT_PIXELS = 32_000_000
-export const MAX_EXPORT_EDGE = 12_000
+export const MAX_EXPORT_PIXELS = 32_000_000;
+export const MAX_EXPORT_EDGE = 12_000;
 
 export interface ExportLimits {
-  maxPixels: number
-  maxEdge: number
+  maxPixels: number;
+  maxEdge: number;
 }
 
 export const DEFAULT_EXPORT_LIMITS: ExportLimits = {
   maxPixels: MAX_EXPORT_PIXELS,
   maxEdge: MAX_EXPORT_EDGE,
-}
+};
 
 export interface ExportPlan {
-  bounds: Rect
+  bounds: Rect;
   /** Effective device px per board px, after clamping. */
-  scale: number
-  width: number
-  height: number
-  requested: number
+  scale: number;
+  width: number;
+  height: number;
+  requested: number;
   /** True when `scale` is below what was asked for. */
-  clamped: boolean
+  clamped: boolean;
 }
 
 /** The union of everything to be drawn, plus the margin. Null if there is nothing. */
-export function exportBounds(rects: readonly Rect[], margin = EXPORT_MARGIN): Rect | null {
-  if (rects.length === 0) return null
+export function exportBounds(
+  rects: readonly Rect[],
+  margin = EXPORT_MARGIN,
+): Rect | null {
+  if (rects.length === 0) return null;
 
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
   for (const rect of rects) {
-    minX = Math.min(minX, rect.x)
-    minY = Math.min(minY, rect.y)
-    maxX = Math.max(maxX, rect.x + rect.width)
-    maxY = Math.max(maxY, rect.y + rect.height)
+    minX = Math.min(minX, rect.x);
+    minY = Math.min(minY, rect.y);
+    maxX = Math.max(maxX, rect.x + rect.width);
+    maxY = Math.max(maxY, rect.y + rect.height);
   }
-  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
 
   return {
     x: minX - margin,
     y: minY - margin,
     width: maxX - minX + margin * 2,
     height: maxY - minY + margin * 2,
-  }
+  };
 }
 
-export function outputSize(bounds: Rect, scale: number): { width: number; height: number } {
+export function outputSize(
+  bounds: Rect,
+  scale: number,
+): { width: number; height: number } {
   return {
     width: Math.max(1, Math.ceil(bounds.width * scale)),
     height: Math.max(1, Math.ceil(bounds.height * scale)),
-  }
+  };
 }
 
 /**
@@ -113,13 +131,17 @@ export function outputSize(bounds: Rect, scale: number): { width: number; height
  * `outputSize` rounds up and the rounding happens after the fit: without the
  * slack, a scale that fits exactly comes back one row over the budget.
  */
-function fitScale(bounds: Rect, requested: number, limits: ExportLimits): number {
-  const width = bounds.width + 1
-  const height = bounds.height + 1
-  if (width <= 1 || height <= 1) return requested
-  const byPixels = Math.sqrt(limits.maxPixels / (width * height))
-  const byEdge = limits.maxEdge / Math.max(width, height)
-  return Math.min(requested, byPixels, byEdge)
+function fitScale(
+  bounds: Rect,
+  requested: number,
+  limits: ExportLimits,
+): number {
+  const width = bounds.width + 1;
+  const height = bounds.height + 1;
+  if (width <= 1 || height <= 1) return requested;
+  const byPixels = Math.sqrt(limits.maxPixels / (width * height));
+  const byEdge = limits.maxEdge / Math.max(width, height);
+  return Math.min(requested, byPixels, byEdge);
 }
 
 /**
@@ -136,12 +158,15 @@ export function planExport(
   limits: ExportLimits = DEFAULT_EXPORT_LIMITS,
   margin = EXPORT_MARGIN,
 ): ExportPlan | null {
-  const bounds = exportBounds(rects, margin)
-  if (!bounds) return null
+  const bounds = exportBounds(rects, margin);
+  if (!bounds) return null;
 
-  const wanted = Number.isFinite(requested) && requested > 0 ? requested : DEFAULT_EXPORT_SCALE
-  const scale = fitScale(bounds, wanted, limits)
-  const size = outputSize(bounds, scale)
+  const wanted =
+    Number.isFinite(requested) && requested > 0
+      ? requested
+      : DEFAULT_EXPORT_SCALE;
+  const scale = fitScale(bounds, wanted, limits);
+  const size = outputSize(bounds, scale);
 
   return {
     bounds,
@@ -150,29 +175,32 @@ export function planExport(
     height: size.height,
     requested: wanted,
     clamped: scale < wanted - 1e-6,
-  }
+  };
 }
 
 /** What the background paints, or null for an alpha PNG. */
-export function backgroundFor(choice: ExportBackground, theme: ThemeMode): string | null {
-  const own = surfaceColor(choice.surface, theme)
+export function backgroundFor(
+  choice: ExportBackground,
+  theme: ThemeMode,
+): string | null {
+  const own = surfaceColor(choice.surface, theme);
   switch (choice.fill) {
-    case 'transparent':
-      return null
-    case 'white':
-      return '#ffffff'
-    case 'black':
-      return '#000000'
-    case 'custom':
-      return isColour(choice.custom) ? choice.custom : own
-    case 'surface':
-      return own
+    case "transparent":
+      return null;
+    case "white":
+      return "#ffffff";
+    case "black":
+      return "#000000";
+    case "custom":
+      return isColour(choice.custom) ? choice.custom : own;
+    case "surface":
+      return own;
   }
 }
 
 /** A value an attribute or a CSS declaration can take, rather than a colour name. */
 function isColour(value: string): boolean {
-  return /^#[0-9a-f]{3,8}$/i.test(value) || /^[a-z]{3,20}$/i.test(value)
+  return /^#[0-9a-f]{3,8}$/i.test(value) || /^[a-z]{3,20}$/i.test(value);
 }
 
 /**
@@ -184,13 +212,18 @@ function isColour(value: string): boolean {
  * own corner: the live grid is viewport chrome that shifts as the camera moves,
  * and an export that moved with the camera would not be reproducible.
  */
-export function patternFor(choice: ExportBackground, theme: ThemeMode): string | null {
-  if (choice.pattern !== 'dots') return null
-  return `radial-gradient(circle at center, ${gridDotFor(choice.surface, theme)} 0 1px, transparent 1.8px)`
+export function patternFor(
+  choice: ExportBackground,
+  theme: ThemeMode,
+): string | null {
+  if (choice.pattern !== "dots") return null;
+  return `radial-gradient(circle at center, ${gridDotFor(choice.surface, theme)} 0 1px, transparent 1.8px)`;
 }
 
 /** The board's file name with a `.png` on it. */
 export function imageFileName(board: BoardState): string {
-  const json = boardFileName(board)
-  return json === DEFAULT_BOARD_FILE_NAME ? 'case-board.png' : json.replace(/\.json$/, '.png')
+  const json = boardFileName(board);
+  return json === DEFAULT_BOARD_FILE_NAME
+    ? "case-board.png"
+    : json.replace(/\.json$/, ".png");
 }

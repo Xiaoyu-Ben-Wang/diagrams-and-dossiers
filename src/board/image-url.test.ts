@@ -41,7 +41,9 @@ describe("what counts as a link", () => {
   });
 
   it("refuses a link long enough to be a payload", () => {
-    expect(isHttpImageSrc(`https://example.com/${"a".repeat(5000)}`)).toBe(false);
+    expect(isHttpImageSrc(`https://example.com/${"a".repeat(5000)}`)).toBe(
+      false,
+    );
   });
 });
 
@@ -50,9 +52,9 @@ describe("finding the link in a drop or paste", () => {
     ({ getData: (type: string) => values[type] ?? "" }) as DataTransfer;
 
   it("reads a uri list", () => {
-    expect(linkFrom(data({ "text/uri-list": "https://example.com/a.png" }))).toBe(
-      "https://example.com/a.png",
-    );
+    expect(
+      linkFrom(data({ "text/uri-list": "https://example.com/a.png" })),
+    ).toBe("https://example.com/a.png");
   });
 
   it("skips the comments a uri list may carry", () => {
@@ -70,7 +72,9 @@ describe("finding the link in a drop or paste", () => {
 
   it("ignores text that is not a link", () => {
     expect(linkFrom(data({ "text/plain": "some words" }))).toBeNull();
-    expect(linkFrom(data({ "text/plain": "data:image/png;base64,AA" }))).toBeNull();
+    expect(
+      linkFrom(data({ "text/plain": "data:image/png;base64,AA" })),
+    ).toBeNull();
   });
 
   it("has nothing for a drop that carried nothing", () => {
@@ -107,7 +111,9 @@ describe("measuring a linked picture", () => {
   it("refuses a picture that will not load", async () => {
     const restore = stubImage("error");
     try {
-      await expect(measure("https://example.com/missing.png")).rejects.toThrow();
+      await expect(
+        measure("https://example.com/missing.png"),
+      ).rejects.toThrow();
     } finally {
       restore();
     }
