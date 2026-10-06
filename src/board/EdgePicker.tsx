@@ -4,13 +4,14 @@
 import { Fragment, useLayoutEffect, useRef, useState } from "react";
 
 import { EDGE_FAMILIES, edgeClipPath, type EdgeStyle } from "./edges";
+import type { ImageFrame } from "../model/types";
 
 const EDGE_LABELS: Readonly<Record<EdgeStyle, string>> = {
   clean: "Clean",
   burnt: "Burnt",
   stamped: "Stamped",
   torn: "Torn",
-  deckled: "Deckled",
+
   scalloped: "Scalloped",
   scorched: "Scorched",
   frayed: "Frayed",
@@ -23,7 +24,7 @@ const EDGE_HINTS: Readonly<Record<EdgeStyle, string>> = {
   burnt: "Charred away, with the corners gone",
   stamped: "Perforated like a sheet of stamps",
   torn: "Ripped, with a ragged and uneven bite",
-  deckled: "The soft wavy edge of handmade paper",
+
   scalloped: "A regular scalloped trim",
   scorched: "Burnt through on one side only",
   frayed: "Fabric unravelling at the edge",
@@ -36,8 +37,10 @@ const SWATCH_HEIGHT = 34;
 export interface EdgePickerProps {
   seed: number;
   edge: EdgeStyle;
+  frame: ImageFrame;
   anchor: Box;
   onPick: (style: EdgeStyle) => void;
+  onFrame: (frame: ImageFrame) => void;
 }
 
 export interface Box {
@@ -93,7 +96,15 @@ export function placeEdgePicker(
   };
 }
 
-export function EdgePicker({ seed, edge, anchor, onPick }: EdgePickerProps) {
+export function EdgePicker({
+  seed,
+  edge,
+  frame,
+  anchor,
+  onPick,
+  onFrame,
+}: EdgePickerProps) {
+  const polaroid = frame === "polaroid";
   const barRef = useRef<HTMLDivElement | null>(null);
   const [placement, setPlacement] = useState<PickerPlacement | null>(null);
 
@@ -138,7 +149,11 @@ export function EdgePicker({ seed, edge, anchor, onPick }: EdgePickerProps) {
               type="button"
               data-testid={`edge-${style}`}
               aria-pressed={style === edge}
-              title={EDGE_HINTS[style]}
+              // The crop is kept, not cleared, so turning the polaroid off brings it back.
+              disabled={polaroid}
+              title={
+                polaroid ? "Polaroids keep a clean edge" : EDGE_HINTS[style]
+              }
               className={`edge-swatch ${style === edge ? "is-active" : ""}`}
               onClick={() => onPick(style)}
             >
@@ -161,6 +176,22 @@ export function EdgePicker({ seed, edge, anchor, onPick }: EdgePickerProps) {
           ))}
         </Fragment>
       ))}
+      <span className="edge-picker-split" aria-hidden="true" />
+      <button
+        type="button"
+        data-testid="frame-polaroid"
+        aria-pressed={polaroid}
+        title="A white instant-photo frame with the title and description written on it"
+        className={`edge-swatch ${polaroid ? "is-active" : ""}`}
+        onClick={() => onFrame(polaroid ? "none" : "polaroid")}
+      >
+        <span
+          aria-hidden="true"
+          className="edge-swatch-face edge-swatch-polaroid"
+          style={{ width: SWATCH_WIDTH - 16, height: SWATCH_HEIGHT }}
+        />
+        <span className="edge-swatch-label">Polaroid</span>
+      </button>
     </div>
   );
 }

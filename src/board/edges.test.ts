@@ -461,15 +461,16 @@ describe("the cache", () => {
   it("is bounded, so memory cannot creep as pins are moved and resized", () => {
     clearEdgeCache();
     for (let i = 0; i < EDGE_CACHE_LIMIT + 25; i++)
-      edgeClipPath("deckled", 40, 30, i);
+      edgeClipPath("frayed", 40, 30, i);
     expect(edgeCacheSize()).toBeLessThanOrEqual(EDGE_CACHE_LIMIT);
 
-    const newest = edgeClipPath("deckled", 40, 30, EDGE_CACHE_LIMIT + 24);
+      const newest = edgeClipPath("frayed", 40, 30, EDGE_CACHE_LIMIT + 24);
     clearEdgeCache();
-    expect(edgeClipPath("deckled", 40, 30, EDGE_CACHE_LIMIT + 24)).toBe(newest);
+    expect(edgeClipPath("frayed", 40, 30, EDGE_CACHE_LIMIT + 24)).toBe(
+      newest,
+    );
   });
 });
-
 describe("the two families", () => {
   it("sorts every style into exactly one of them, in the order they are shown", () => {
     expect(EDGE_FAMILIES.flatMap((family) => family.styles)).toEqual([

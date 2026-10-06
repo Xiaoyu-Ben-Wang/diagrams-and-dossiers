@@ -12,6 +12,7 @@ import {
   NOTE_FONT_DEFAULT,
   NOTE_FONT_SCALE_DEFAULT,
   NOTE_SIZE,
+  POLAROID_INSETS,
   seededTilt,
 } from "./kinds";
 import type {
@@ -20,6 +21,7 @@ import type {
   FreePin,
   ImageEntity,
   ImageFit,
+  ImageFrame,
   ItemStatus,
   NoteEntity,
   NoteFont,
@@ -170,5 +172,26 @@ export function newImage(
     rotation: 0,
     edge: edge ?? "clean",
     edgeSeed: freshEdgeSeed(),
+  };
+}
+
+/** Grows or shrinks the card by the polaroid border so the photo and the pin stay put. */
+export function withImageFrame(
+  entity: ImageEntity,
+  frame: ImageFrame,
+): ImageEntity {
+  const { frame: current, ...rest } = entity;
+  const was = current === "polaroid";
+  const now = frame === "polaroid";
+  // The key is dropped rather than set to "none", so an unframed picture saves as it always did.
+  const next: ImageEntity = now ? { ...rest, frame: "polaroid" } : rest;
+  if (was === now) return next;
+  const sign = now ? 1 : -1;
+  const { top, side, bottom } = POLAROID_INSETS;
+  return {
+    ...next,
+    board: { x: entity.board.x - sign * side, y: entity.board.y },
+    width: entity.width + sign * 2 * side,
+    height: entity.height + sign * (top + bottom),
   };
 }

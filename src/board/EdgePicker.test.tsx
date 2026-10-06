@@ -9,16 +9,19 @@ const anchor = { left: 300, top: 360, width: 80, height: 60 };
 
 function open(over: Partial<Parameters<typeof EdgePicker>[0]> = {}) {
   const onPick = vi.fn();
+  const onFrame = vi.fn();
   render(
     <EdgePicker
       seed={7}
       edge="clean"
+      frame="none"
       anchor={anchor}
       onPick={onPick}
+      onFrame={onFrame}
       {...over}
     />,
   );
-  return { onPick };
+  return { onPick, onFrame };
 }
 
 describe("EdgePicker", () => {
@@ -78,12 +81,42 @@ describe("EdgePicker", () => {
     expect(face("stamped")).not.toBe(face("burnt"));
   });
 
+  it("toggles the polaroid frame on and off", () => {
+    const { onFrame } = open();
+    const toggle = screen.getByTestId("frame-polaroid");
+
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onFrame).toHaveBeenLastCalledWith("polaroid");
+  });
+
+  it("offers to take the polaroid off, and holds the crop while it is on", () => {
+    const { onFrame, onPick } = open({ frame: "polaroid", edge: "torn" });
+    const toggle = screen.getByTestId("frame-polaroid");
+
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(toggle);
+    expect(onFrame).toHaveBeenLastCalledWith("none");
+
+    const torn = screen.getByTestId("edge-torn") as HTMLButtonElement;
+    expect(torn.disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("edge-burnt"));
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
   it("does not let a press on the bar reach the board underneath", () => {
     const onPick = vi.fn();
     const seen = vi.fn();
     render(
       <div onPointerDown={seen}>
-        <EdgePicker seed={1} edge="clean" anchor={anchor} onPick={onPick} />
+        <EdgePicker
+          seed={1}
+          edge="clean"
+          frame="none"
+          anchor={anchor}
+          onPick={onPick}
+          onFrame={vi.fn()}
+        />
       </div>,
     );
 

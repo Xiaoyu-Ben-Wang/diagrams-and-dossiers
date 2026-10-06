@@ -303,7 +303,7 @@ export function demoBoard(): BoardState {
       {
         title: "The Ledger Leaf",
         alt: "One of the ledger’s torn-out leaves",
-        edge: "deckled",
+        edge: "frayed",
         bodyMd: "A leaf from the ledger — the hand changes halfway down.",
       },
     ),

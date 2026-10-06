@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { IMAGE_SIZE, NOTE_SIZE } from "./kinds";
-import { imageFootprint, MAX_IMAGE_EDGE, newImage, newNote } from "./create";
+import { descriptorFor, IMAGE_SIZE, NOTE_SIZE, POLAROID_INSETS } from "./kinds";
+import {
+  imageFootprint,
+  MAX_IMAGE_EDGE,
+  newImage,
+  newNote,
+  withImageFrame,
+} from "./create";
 
 describe("imageFootprint", () => {
   it("leaves a picture that already fits exactly as it is", () => {
@@ -113,5 +119,39 @@ describe("newImage", () => {
   it("writes on plain paper unless it is asked for another", () => {
     expect(newNote({ x: 0, y: 0 }).style).toBe("plain");
     expect(newNote({ x: 0, y: 0 }, { style: "grid" }).style).toBe("grid");
+  });
+});
+
+describe("withImageFrame", () => {
+  const picture = newImage({ x: 100, y: 50 }, "data:,", {
+    width: 240,
+    height: 120,
+  });
+  const context = {} as never;
+
+  it("grows by the border, keeping the photo's size and the pin's place", () => {
+    const framed = withImageFrame(picture, "polaroid");
+    const { top, side, bottom } = POLAROID_INSETS;
+
+    expect(framed.frame).toBe("polaroid");
+    expect(framed.width).toBe(240 + 2 * side);
+    expect(framed.height).toBe(120 + top + bottom);
+    expect(descriptorFor(framed).anchorPoint(framed, context)).toEqual(
+      descriptorFor(picture).anchorPoint(picture, context),
+    );
+  });
+
+  it("takes the border back off exactly, leaving no frame key behind", () => {
+    const round = withImageFrame(withImageFrame(picture, "polaroid"), "none");
+
+    expect(round).toEqual(picture);
+    expect("frame" in round).toBe(false);
+  });
+
+  it("does nothing when the frame is already the one asked for", () => {
+    const framed = withImageFrame(picture, "polaroid");
+
+    expect(withImageFrame(framed, "polaroid")).toEqual(framed);
+    expect(withImageFrame(picture, "none")).toEqual(picture);
   });
 });

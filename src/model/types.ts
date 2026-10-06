@@ -54,6 +54,9 @@ export const MAX_IMAGE_ROTATION = 45;
 export const IMAGE_FITS = ["cover", "contain"] as const;
 export type ImageFit = (typeof IMAGE_FITS)[number];
 
+export const IMAGE_FRAMES = ["none", "polaroid"] as const;
+export type ImageFrame = (typeof IMAGE_FRAMES)[number];
+
 /** `nudge` is a manual offset for an entity whose real position is derived, not a column. */
 export interface EntityBase {
   id: string;
@@ -125,6 +128,8 @@ export interface ImageEntity extends EntityBase {
   edge: EdgeStyle;
   /** Seed the deterministic damage generator runs on; re-rolled when the picture is picked up. */
   edgeSeed: number;
+  /** Absent is `"none"`. A polaroid's border lives inside `width`/`height`. */
+  frame?: ImageFrame;
 }
 
 export type BoardEntity = PinEntity | NoteEntity | ArticleEntity | ImageEntity;

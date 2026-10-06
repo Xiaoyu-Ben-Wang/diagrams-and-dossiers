@@ -426,6 +426,42 @@ describe("refusing a file", () => {
     expect(parseBoardFile(fileWith(withImage)).ok).toBe(true);
   });
 
+  it("keeps a polaroid frame and leaves an unframed picture unframed", () => {
+    const board = tinyBoard();
+    const picture = {
+      ...board.entities[1],
+      kind: "image",
+      src: "https://example.test/scan.png",
+      fit: "cover",
+      edge: "clean",
+      edgeSeed: 7,
+      width: 280,
+      height: 218,
+    };
+    const file = {
+      ...board,
+      entities: [
+        board.entities[0],
+        // Keeps its id: the board's string is tied to it.
+        { ...picture, frame: "polaroid" },
+        { ...picture, id: "plain" },
+        { ...picture, id: "odd", frame: "gilt" },
+      ],
+    };
+
+    const first = parseBoardFile(fileWith(file));
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const again = parseBoardFile(serializeBoard(first.board));
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+
+    const [, framed, plain, odd] = again.board.entities;
+    expect(framed).toMatchObject({ frame: "polaroid" });
+    expect("frame" in plain!).toBe(false);
+    expect("frame" in odd!).toBe(false);
+  });
+
   it("clamps slack rather than refusing a rope that sags oddly", () => {
     const board = tinyBoard();
     const broken = {

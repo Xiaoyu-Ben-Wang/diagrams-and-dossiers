@@ -4,7 +4,8 @@
 import { memo, useCallback } from "react";
 
 import { edgeClipPath, type EdgeStyle } from "./edges";
-import { IMAGE_PIN_INSET } from "../model/kinds";
+import { IMAGE_PIN_INSET, POLAROID_INSETS } from "../model/kinds";
+import type { ImageFrame } from "../model/types";
 import { clampTilt, rotateAbout } from "./pivot";
 import { useResizeDrag } from "./useResizeDrag";
 import { useRotateDrag } from "./useRotateDrag";
@@ -23,6 +24,9 @@ export interface ImageCardProps {
   fit: "cover" | "contain";
   edge: EdgeStyle;
   edgeSeed: number;
+  frame: ImageFrame;
+  title: string;
+  description: string;
   selected: boolean;
   zoom: number;
   // Passed in, not derived: the card is rotated, so its own bounding rect is axis-aligned and
@@ -84,6 +88,9 @@ export const ImageCard = memo(function ImageCard({
   toBoard,
   edge,
   edgeSeed,
+  frame,
+  title,
+  description,
   onMove,
   onRotate,
   onResize,
@@ -92,7 +99,11 @@ export const ImageCard = memo(function ImageCard({
 }: ImageCardProps) {
   const pivot = { x: x + width / 2, y };
 
-  const clipPath = edgeClipPath(edge, width, height, edgeSeed);
+  const polaroid = frame === "polaroid";
+  // A damaged border would bite into the white frame and its writing, so a polaroid stays clean.
+  const clipPath = polaroid
+    ? undefined
+    : edgeClipPath(edge, width, height, edgeSeed);
 
   const drag = useBoardDrag({
     zoom,
@@ -160,15 +171,65 @@ export const ImageCard = memo(function ImageCard({
             : SHADOW,
         }}
       >
-        <div className="image-frame" style={{ clipPath }}>
-          <img
-            src={src}
-            alt={alt ?? ""}
-            draggable={false}
-            className="pointer-events-none h-full w-full select-none"
-            style={{ objectFit: fit }}
-          />
-        </div>
+        {polaroid ? (
+          <div
+            className="image-frame polaroid"
+            data-testid="polaroid"
+            style={{
+              paddingTop: POLAROID_INSETS.top,
+              paddingLeft: POLAROID_INSETS.side,
+              paddingRight: POLAROID_INSETS.side,
+              paddingBottom: POLAROID_INSETS.bottom,
+            }}
+          >
+            {title ? (
+              <div
+                className="polaroid-title"
+                data-note-font="special-elite"
+                style={{
+                  left: POLAROID_INSETS.side,
+                  right: POLAROID_INSETS.side,
+                  top: IMAGE_PIN_INSET + 8,
+                  height: POLAROID_INSETS.top - IMAGE_PIN_INSET - 8,
+                }}
+              >
+                {title}
+              </div>
+            ) : null}
+            <div className="polaroid-photo">
+              <img
+                src={src}
+                alt={alt ?? ""}
+                draggable={false}
+                className="pointer-events-none h-full w-full select-none"
+                style={{ objectFit: fit }}
+              />
+            </div>
+            {description ? (
+              <div
+                className="polaroid-caption"
+                data-note-font="kalam"
+                style={{
+                  left: POLAROID_INSETS.side,
+                  right: POLAROID_INSETS.side,
+                  height: POLAROID_INSETS.bottom,
+                }}
+              >
+                {description}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="image-frame" style={{ clipPath }}>
+            <img
+              src={src}
+              alt={alt ?? ""}
+              draggable={false}
+              className="pointer-events-none h-full w-full select-none"
+              style={{ objectFit: fit }}
+            />
+          </div>
+        )}
       </div>
 
       {/* `IMAGE_PIN_INSET` from the top edge, the same number `model/kinds.ts` uses for the

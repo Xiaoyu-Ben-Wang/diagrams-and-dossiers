@@ -9,7 +9,7 @@ export const EDGE_STYLES = [
   "scalloped",
   "burnt",
   "torn",
-  "deckled",
+
   "scorched",
   "frayed",
   "nibbled",
@@ -40,7 +40,7 @@ export const EDGE_FAMILIES = [
     styles: [
       "burnt",
       "torn",
-      "deckled",
+
       "scorched",
       "frayed",
       "nibbled",
@@ -97,14 +97,6 @@ export const EDGE_PRESETS: Readonly<Record<EdgeStyle, EdgePreset>> = {
     density: 6,
     spread: 0.35,
   },
-  deckled: {
-    depth: 0.022,
-    frequency: 2.5,
-    jitter: 1,
-    samples: 32,
-    density: 6,
-    spread: 0.35,
-  },
   scalloped: {
     depth: 0.018,
     frequency: 1,
@@ -153,7 +145,6 @@ const CORNER_TREATMENT: Readonly<Record<EdgeStyle, "cut" | "keep">> = {
   burnt: "cut",
   stamped: "keep",
   torn: "cut",
-  deckled: "keep",
   scalloped: "keep",
   scorched: "cut",
   frayed: "keep",
@@ -343,14 +334,6 @@ const PROFILES: Readonly<Record<EdgeStyle, ProfileFn>> = {
     const fibre = white(index * 2 + 1, seed ^ 0x1b873593);
     const wander = rough(t * opts.frequency, seed);
     return peak * clamp(wander * 0.8 + (fibre - 0.5) * 1.1 * opts.jitter, 0, 1);
-  },
-
-  deckled: (at) => {
-    const { t, seed, peak, opts } = at;
-    return (
-      peak *
-      (0.15 + 0.85 * regularise(swell(t * opts.frequency, seed), opts.jitter))
-    );
   },
 
   /** Never reached: `buildPattern` draws the whole pattern family, exactly. */

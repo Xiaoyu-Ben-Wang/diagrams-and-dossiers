@@ -946,6 +946,52 @@ body {
   background: rgb(0 0 0 / 0.2);
 }
 
+/* Padding is inline, from `POLAROID_INSETS`, so the border and the pin maths agree. */
+.image-frame.polaroid {
+  position: relative;
+  display: flex;
+  background: #f6f3ea;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+  color: #2a2620;
+}
+
+.polaroid-photo {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: rgb(0 0 0 / 0.2);
+  box-shadow: inset 0 0 6px rgb(0 0 0 / 0.35);
+}
+
+.polaroid-title,
+.polaroid-caption {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  text-align: center;
+}
+
+.polaroid-title {
+  font-size: 13px;
+  line-height: 22px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.polaroid-caption {
+  bottom: 0;
+  padding: 5px 2px 4px;
+  font-size: 13px;
+  line-height: 1.25;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .post-it-close,
 .sheet-close {
   display: flex;
@@ -1471,6 +1517,20 @@ body {
   display: block;
   background: var(--color-parchment-200);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+}
+
+/* The photo window is a background layer; the white is the frame round it. */
+.edge-swatch-polaroid {
+  background:
+    linear-gradient(#5b5246, #5b5246) 3px 5px / calc(100% - 6px) 62% no-repeat,
+    #f6f3ea;
+}
+
+.edge-swatch:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+  background: none;
 }
 
 .edge-swatch-label {

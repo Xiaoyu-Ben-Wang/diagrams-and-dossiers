@@ -146,6 +146,9 @@ export const PIN_RADIUS = 10;
 /** How far inside a picture's top edge its pin sits, in board px — enough to fit the whole tack. */
 export const IMAGE_PIN_INSET = 10;
 
+/** A polaroid's border, in board px; the top clears the tack before the title line. */
+export const POLAROID_INSETS = { top: 40, side: 10, bottom: 58 } as const;
+
 /** `marqueeSelectable` differs from `movable`: an in-text tack can move but not be band-selected. */
 export interface EntityCapabilities {
   marqueeSelectable: boolean;

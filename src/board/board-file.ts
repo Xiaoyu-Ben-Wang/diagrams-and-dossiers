@@ -316,6 +316,7 @@ function parseEntity(value: unknown, where: string): BoardEntity {
         rotation: optionalNumber(raw.rotation) ?? 0,
         edge,
         edgeSeed: optionalNumber(raw.edgeSeed) ?? 0,
+        ...(raw.frame === "polaroid" ? { frame: "polaroid" as const } : {}),
       };
     }
   }
