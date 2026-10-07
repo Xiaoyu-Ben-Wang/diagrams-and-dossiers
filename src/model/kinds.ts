@@ -22,6 +22,10 @@ export const TACK_OFFSET_Y = -5;
 /** A post-it's default footprint; the size actually lives on the entity. */
 export const NOTE_SIZE = { width: 168, height: 128 } as const;
 
+/** Half the drop to the dotted line across a note's head: 8px of padding and half the
+    12px row `PostIt` draws put the line 14px down, and the yarn ties midway to it. */
+export const NOTE_ANCHOR_DROP = (8 + 12 / 2) / 2;
+
 export const NOTE_FONT_SIZE = 12;
 export const NOTE_FONT_SCALE_MIN = 0.75;
 export const NOTE_FONT_SCALE_MAX = 2;
@@ -256,10 +260,10 @@ const note: EntityDescriptor<BoardEntity & { kind: "note" }> = {
     editable: true,
   }),
   anchorPoint: (entity) => ({
-    // Top-centre, not the centre: rope over the writing, and the centre moves when
-    // the note is resized, sliding a tied string down the paper.
+    // Top-centre, below the edge but above the writing. Not the note's centre: that
+    // slides a tied string down the paper when the note is resized.
     x: entity.board.x + entity.width / 2 + entity.nudge.x,
-    y: entity.board.y + entity.nudge.y,
+    y: entity.board.y + NOTE_ANCHOR_DROP + entity.nudge.y,
   }),
   bounds: (entity) =>
     boxAt(entity.board, { width: entity.width, height: entity.height }),

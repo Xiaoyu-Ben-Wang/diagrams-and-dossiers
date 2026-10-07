@@ -9,6 +9,7 @@ import {
   NOTE_FONT_SCALE_DEFAULT,
   NOTE_FONT_SCALE_MAX,
   NOTE_FONT_SCALE_MIN,
+  NOTE_ANCHOR_DROP,
   NOTE_SIZE,
   NOTE_TILT_MAX,
   TACK_SIZE,
@@ -248,12 +249,15 @@ describe("anchor points", () => {
     expect(Math.round(tilted!.y)).toBe(60);
   });
 
-  it("meets a note along the middle of its top edge, where it is held", () => {
+  it("meets a note between its top edge and the dotted line below it", () => {
     const at = descriptorFor(note()).anchorPoint(note(), emptyContext);
-    expect(at).toEqual({ x: 10 + NOTE_SIZE.width / 2, y: 20 });
+    expect(at).toEqual({
+      x: 10 + NOTE_SIZE.width / 2,
+      y: 20 + NOTE_ANCHOR_DROP,
+    });
   });
 
-  it("keeps a string on the top edge when the note is resized", () => {
+  it("keeps a string above the writing when the note is resized", () => {
     const at = (width: number, height: number) => {
       const entity = note({ width, height });
       return descriptorFor(entity).anchorPoint(entity, emptyContext);
@@ -261,9 +265,9 @@ describe("anchor points", () => {
 
     expect(at(NOTE_SIZE.width, NOTE_SIZE.height)).toEqual({
       x: 10 + NOTE_SIZE.width / 2,
-      y: 20,
+      y: 20 + NOTE_ANCHOR_DROP,
     });
-    expect(at(300, 240)).toEqual({ x: 10 + 150, y: 20 });
+    expect(at(300, 240)).toEqual({ x: 10 + 150, y: 20 + NOTE_ANCHOR_DROP });
   });
 
   it("ties an article at the tab on its top edge", () => {
