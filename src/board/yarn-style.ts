@@ -335,11 +335,6 @@ const CREAM = "#e6d3b3";
 const ROSE = "#d08063";
 const CAST = "#140b07";
 
-/** How far a hair droops under its own weight, as a fraction of its length. */
-const DROOP = 0.18;
-
-const HAIRS = 9;
-
 const MAX_PATTERN_SAMPLES = 200;
 
 /** Each style's gauge, as a multiple of the shared wool width. */
@@ -418,10 +413,6 @@ function windowAt(t: number): number {
   return Math.sin(Math.PI * t);
 }
 
-function noise01(at: number, seed: number): number {
-  return (valueNoise(at, seed) + 1) / 2;
-}
-
 function polylinePath(xs: readonly number[], ys: readonly number[]): string {
   let d = `M ${round2(xs[0])} ${round2(ys[0])}`;
   for (let i = 1; i < xs.length; i++)
@@ -468,44 +459,6 @@ function corePath(frame: Frame, radius: number): string {
   return smoothPath(xs, ys);
 }
 
-/** Short fibres rooted on the silhouette, every one of them in a single path. */
-function hairsPath(
-  frame: Frame,
-  seed: number,
-  count: number,
-  halfWidth: number,
-): string {
-  const last = frame.xs.length - 1;
-  let d = "";
-
-  for (let k = 0; k < count; k++) {
-    const at = (0.06 + 0.88 * noise01(k * 1.7, seed)) * last;
-    const i = Math.min(last - 1, Math.floor(at));
-    const frac = at - i;
-    const x = frame.xs[i] + (frame.xs[i + 1] - frame.xs[i]) * frac;
-    const y = frame.ys[i] + (frame.ys[i + 1] - frame.ys[i]) * frac;
-    const nx = frame.nx[i];
-    const ny = frame.ny[i];
-    const tx = ny;
-    const ty = -nx;
-    const side = noise01(k * 3.1, seed ^ 0x2545f491) > 0.5 ? 1 : -1;
-
-    const length =
-      halfWidth * (0.7 + 1.5 * noise01(k * 2.3, seed ^ 0x3c6ef372));
-    const rootX = x + nx * side * halfWidth * 0.5;
-    const rootY = y + ny * side * halfWidth * 0.5;
-    const tipX = rootX + nx * side * length + tx * length * 0.35;
-    const tipY =
-      rootY + ny * side * length + ty * length * 0.35 + DROOP * length;
-    const cx = rootX + nx * side * length * 0.8 + tx * length * 0.1;
-    const cy = rootY + ny * side * length * 0.8 + ty * length * 0.1;
-
-    d += `M ${round2(rootX)} ${round2(rootY)} Q ${round2(cx)} ${round2(cy)} ${round2(tipX)} ${round2(tipY)} `;
-  }
-
-  return d.trim();
-}
-
 /**
  * Thrown down and to the right, because that is the side the light is not, and given extra
  * slack so it hangs below the string — the extra droop is a fraction of the sag, so a taut
@@ -537,7 +490,6 @@ function pliedStrands(
   from: Point,
   to: Point,
   slack: number,
-  seed: number,
   gauge: number,
   samples: number,
 ): readonly YarnStrand[] {
@@ -564,13 +516,6 @@ function pliedStrands(
       d: helixPath(twist, gauge * 0.3, pitch, Math.PI),
       width: gauge * 0.6,
       opacity: 0.8,
-      color: LIT,
-      cap: "round",
-    },
-    {
-      d: hairsPath(body, seed, HAIRS, gauge * 0.5),
-      width: Math.max(0.4, gauge * 0.14),
-      opacity: 0.5,
       color: LIT,
       cap: "round",
     },
@@ -691,13 +636,12 @@ function buildStyled(
   from: Point,
   to: Point,
   slack: number,
-  seed: number,
   gauge: number,
   samples: number,
 ): readonly YarnStrand[] {
   switch (style) {
     case "plied":
-      return pliedStrands(from, to, slack, seed, gauge, samples);
+      return pliedStrands(from, to, slack, gauge, samples);
     case "cable":
       return cableStrands(from, to, slack, gauge, samples);
     case "plaid":
@@ -724,7 +668,7 @@ export function yarnStrands(
   const body =
     style === "realistic"
       ? fuzzyStrands(from, to, slack, seed, options)
-      : buildStyled(style, from, to, slack, seed | 0, gauge, opts.samples);
+      : buildStyled(style, from, to, slack, gauge, opts.samples);
   // The shadow is one layer over whichever style was chosen, so the switch means the same
   // thing everywhere rather than only on the styles that happened to draw one.
   const strands = opts.shadow
