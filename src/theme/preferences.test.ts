@@ -106,6 +106,12 @@ describe("parsePreferences", () => {
     });
   });
 
+  it("falls back to a dotted finish from anything it does not recognise", () => {
+    expect(parsePreferences({ finish: "carpet" }).finish).toBe("dotted");
+    expect(parsePreferences({ finish: 7 }).finish).toBe("dotted");
+    expect(parsePreferences({ finish: "clean" }).finish).toBe("clean");
+  });
+
   it("ignores unknown keys", () => {
     const parsed = parsePreferences({
       theme: "light",
@@ -168,6 +174,7 @@ describe("preference storage", () => {
     const wanted: Preferences = {
       theme: "light",
       surface: "whiteboard",
+      finish: "clean",
       yarnStyle: "realistic",
       yarnShadow: false,
       noteStyle: "ruled",
@@ -265,6 +272,7 @@ describe("preference store", () => {
     setPreferences({
       theme: "light",
       surface: "whiteboard",
+      finish: "clean",
       yarnStyle: "realistic",
     });
     resetPreferences();

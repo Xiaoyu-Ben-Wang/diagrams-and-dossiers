@@ -60,6 +60,16 @@ describe("applyPreferences in a document", () => {
     expect(root.dataset.theme).toBe("light");
     expect(root.dataset.surface).toBe("whiteboard");
     expect(root.dataset.yarnStyle).toBe("realistic");
+    expect(root.dataset.finish).toBe("dotted");
+  });
+
+  it("carries the finish through to the root, so the stylesheet can read it", () => {
+    const root = document.documentElement;
+    setPreferences({ finish: "clean" });
+    expect(root.dataset.finish).toBe("clean");
+
+    setPreferences({ finish: "dotted" });
+    expect(root.dataset.finish).toBe("dotted");
   });
 
   it("repaints when a surface changes", () => {

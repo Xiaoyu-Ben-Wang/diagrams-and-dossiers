@@ -157,6 +157,12 @@ body {
     );
 }
 
+/* After the light-theme grain above: same specificity, so order decides. */
+:root[data-finish="clean"] .app-shell,
+:root[data-finish="clean"] .cork,
+:root[data-finish="clean"] .board-canvas {
+  background-image: none;
+}
 .post-it {
   /* Fallback only: without it a note from a file that never carried a colour is transparent. */
   background-color: var(--color-parchment-200);
@@ -378,14 +384,29 @@ body {
 .parchment[data-collapsed="true"] .paper-tab-bar {
   top: -24px;
   height: 25px;
+  padding: 1px 1px 0 0;
   background-color: var(--color-folder);
+  background-clip: content-box;
+}
+
+.parchment[data-collapsed="true"] .paper-tab-bar::before {
+  content: "";
+  position: absolute;
+  /* Behind the sheet. A stacking context on the bar paints this above it. */
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background-color: var(--color-folder);
+  box-shadow: -1px 1px 0 0 rgb(0 0 0 / 0.16) inset;
+  pointer-events: none;
 }
 
 .parchment[data-collapsed="true"] .paper-disclosure,
 .parchment[data-collapsed="true"] .paper-tab {
+  /* `h-full` is the bar's border box and would cover the edge. */
+  height: auto;
   background-color: var(--color-folder);
   color: var(--color-ink);
-  box-shadow: 0 1px 0 rgb(0 0 0 / 0.16) inset;
 }
 
 .parchment[data-collapsed="true"] .paper-tab {

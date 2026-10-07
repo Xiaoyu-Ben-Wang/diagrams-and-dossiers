@@ -2010,9 +2010,11 @@ export function BoardScreen({
               // the camera that was just restored.
               fitTo={restoredRef.current ? undefined : openingFrame}
               onRecentre={fitBoard}
-              backdrop={(viewport) => (
-                <GridLayer camera={camera} viewport={viewport} />
-              )}
+              backdrop={(viewport) =>
+                preferences.finish === "dotted" ? (
+                  <GridLayer camera={camera} viewport={viewport} />
+                ) : null
+              }
               overlay={
                 <>
                   {/* Chrome sits outside the world layer: it is a transformed

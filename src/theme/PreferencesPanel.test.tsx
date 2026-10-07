@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -157,6 +157,23 @@ describe("PreferencesPanel dialog behaviour", () => {
 
     fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
     expect(document.activeElement).toBe(last);
+  });
+});
+
+describe("PreferencesPanel board finish", () => {
+  it("offers both finishes and remembers the one picked", () => {
+    panel();
+
+    const group = screen.getByRole("group", { name: "Board finish" });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios.map((radio) => radio.getAttribute("value"))).toEqual([
+      "dotted",
+      "clean",
+    ]);
+    expect((radios[0] as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(radios[1]);
+    expect(getPreferences().finish).toBe("clean");
   });
 });
 

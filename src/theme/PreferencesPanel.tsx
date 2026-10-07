@@ -1,11 +1,20 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import {
+  BOARD_FINISHES,
   SURFACES,
+  gridDotFor,
   resetPreferences,
   setPreferences,
   surfaceColor,
   usePreferences,
+  type BoardFinish,
   type BoardSurface,
   type ThemeMode,
   type YarnStyle,
@@ -64,6 +73,8 @@ interface ChoiceOption<T extends string> {
   label: string;
   hint?: string;
   swatch?: string;
+  /** For a swatch that is more than a flat colour: the dot pitch, say. */
+  swatchStyle?: CSSProperties;
   /** Set in this face below the label, so the choice can be read rather than imagined. */
   face?: NoteFont;
   /** Drawn below the label with the board's own renderer, for the same reason. */
@@ -102,6 +113,11 @@ const SURFACE_LABELS: Record<BoardSurface, string | Record<ThemeMode, string>> =
     slate: "Slate",
     whiteboard: { light: "Whiteboard", dark: "Blackboard" },
   };
+
+const FINISH_LABELS: Record<BoardFinish, string> = {
+  dotted: "Dotted",
+  clean: "Clean",
+};
 
 // Exported so the image export offers the board's surfaces by the names the panel uses;
 // a second list of labels is a second list to drift.
@@ -146,13 +162,16 @@ function ChoiceGroup<T extends string>({
                 checked={selected}
                 onChange={() => onChange(option.value)}
               />
-              {option.swatch && (
+              {option.swatch || option.swatchStyle ? (
                 <span
                   className="prefs-swatch"
-                  style={{ background: option.swatch }}
+                  style={
+                    option.swatchStyle ??
+                    (option.swatch ? { background: option.swatch } : undefined)
+                  }
                   aria-hidden="true"
                 />
-              )}
+              ) : null}
               <span>
                 <span className="prefs-option-label">{option.label}</span>
                 {option.hint && (
@@ -444,6 +463,22 @@ export function PreferencesPanel({
     }),
   );
 
+  const base = surfaceColor(preferences.surface, preferences.theme);
+  const finishOptions: readonly ChoiceOption<BoardFinish>[] =
+    BOARD_FINISHES.map((finish) => ({
+      value: finish,
+      label: FINISH_LABELS[finish],
+      swatchStyle: {
+        backgroundColor: base,
+        ...(finish === "dotted"
+          ? {
+              backgroundImage: `radial-gradient(circle, ${gridDotFor(preferences.surface, preferences.theme)} 0 1px, transparent 1.3px)`,
+              backgroundSize: "5px 5px",
+            }
+          : {}),
+      },
+    }));
+
   return (
     <div
       className="prefs-backdrop"
@@ -487,6 +522,13 @@ export function PreferencesPanel({
             value={preferences.surface}
             options={surfaceOptions}
             onChange={(surface) => setPreferences({ surface })}
+          />
+          <ChoiceGroup
+            legend="Board finish"
+            name="prefs-finish"
+            value={preferences.finish}
+            options={finishOptions}
+            onChange={(finish) => setPreferences({ finish })}
           />
           <ChoiceGroup
             legend="Yarn style"

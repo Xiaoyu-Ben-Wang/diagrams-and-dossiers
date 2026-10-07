@@ -15,6 +15,10 @@ export type ThemeMode = (typeof THEMES)[number];
 export const SURFACES = ["cork", "felt", "slate", "whiteboard"] as const;
 export type BoardSurface = (typeof SURFACES)[number];
 
+/** What sits on the surface colour: the scaling dot grid, or nothing at all. */
+export const BOARD_FINISHES = ["dotted", "clean"] as const;
+export type BoardFinish = (typeof BOARD_FINISHES)[number];
+
 import { YARN_STYLES, type YarnStyle } from "../board/yarn-style";
 
 export { YARN_STYLES, type YarnStyle };
@@ -27,6 +31,7 @@ const NOTE_COLORS: readonly string[] = POST_IT_COLORS.map(
 export interface Preferences {
   theme: ThemeMode;
   surface: BoardSurface;
+  finish: BoardFinish;
   yarnStyle: YarnStyle;
   /** Whether a string throws a shadow onto the board. */
   yarnShadow: boolean;
@@ -39,6 +44,7 @@ export interface Preferences {
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: "light",
   surface: "cork",
+  finish: "dotted",
   yarnStyle: "realistic",
   yarnShadow: true,
   noteStyle: "plain",
@@ -197,7 +203,6 @@ export function preferenceVariables(
 ): Record<string, string> {
   const theme = THEME_PALETTES[preferences.theme];
   const surface = SURFACE_RAMPS[preferences.surface][preferences.theme];
-
   return {
     "--color-cork-900": surface.cork900,
     "--color-cork-700": surface.cork700,
@@ -229,6 +234,7 @@ export function parsePreferences(raw: unknown): Preferences {
   return {
     theme: pick(value.theme, THEMES, DEFAULT_PREFERENCES.theme),
     surface: pick(value.surface, SURFACES, DEFAULT_PREFERENCES.surface),
+    finish: pick(value.finish, BOARD_FINISHES, DEFAULT_PREFERENCES.finish),
     yarnStyle: pick(
       value.yarnStyle,
       YARN_STYLES,
@@ -277,6 +283,7 @@ function samePreferences(a: Preferences, b: Preferences): boolean {
   return (
     a.theme === b.theme &&
     a.surface === b.surface &&
+    a.finish === b.finish &&
     a.yarnStyle === b.yarnStyle &&
     a.yarnShadow === b.yarnShadow &&
     a.noteStyle === b.noteStyle &&
@@ -298,6 +305,7 @@ export function applyPreferences(preferences: Preferences): void {
 
   root.dataset.theme = preferences.theme;
   root.dataset.surface = preferences.surface;
+  root.dataset.finish = preferences.finish;
   root.dataset.yarnStyle = preferences.yarnStyle;
   // Scrollbars and form controls follow colorScheme, not any custom property.
   root.style.colorScheme = preferences.theme;
