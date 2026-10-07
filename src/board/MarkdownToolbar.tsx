@@ -63,7 +63,7 @@ export function MarkdownToolbar({
         tool === "separator" ? (
           <span
             key={`sep-${index}`}
-            className="mx-1 h-4 w-px bg-parchment-edge/25"
+            className="mx-1 h-5 w-px bg-parchment-edge/25"
             aria-hidden="true"
           />
         ) : (
@@ -76,7 +76,7 @@ export function MarkdownToolbar({
             // Without this the textarea loses focus and its selection with it.
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => onAction(tool.action)}
-            className={`min-w-[26px] rounded px-1.5 py-0.5 text-[11px] text-board-ink-soft transition hover:bg-brass/25 hover:text-board-ink disabled:cursor-not-allowed disabled:opacity-40 ${tool.className ?? ""}`}
+            className={`min-w-[30px] rounded px-2 py-1 text-[13px] text-board-ink-soft transition hover:bg-brass/25 hover:text-board-ink disabled:cursor-not-allowed disabled:opacity-40 ${tool.className ?? ""}`}
           >
             {tool.label}
           </button>

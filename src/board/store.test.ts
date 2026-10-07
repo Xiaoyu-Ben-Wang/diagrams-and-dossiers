@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { newArticle, newFreePin, newNote } from "../model/create";
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
 import { recordingSync } from "../realtime/transport";
+import type { BoardEntity } from "../model/types";
 import { createBoardStore, type BoardState } from "./store";
 import { DEFAULT_SLACK, YARN_COLOR } from "./yarn";
 
@@ -231,6 +232,145 @@ describe("updating", () => {
     expect(sync.published).toEqual([
       { kind: "string/upsert", string: store.get().strings[0] },
     ]);
+  });
+});
+
+describe("undoing", () => {
+  /** Not every entity carries a position, and the change sees the whole union. */
+  const movedTo =
+    (x: number) =>
+    (entity: BoardEntity): BoardEntity =>
+      "board" in entity ? { ...entity, board: { ...entity.board, x } } : entity;
+
+  it("has nothing to undo on a board that has not been touched", () => {
+    const { store } = open();
+
+    expect(store.canUndo()).toBe(false);
+    store.undo();
+
+    expect(store.get()).toEqual({ entities: [], strings: [] });
+  });
+
+  it("puts back what a change replaced, and redo returns it", () => {
+    const { store } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+    store.updateEntities([pin.id], (entity) => ({
+      ...entity,
+      bodyMd: "paid in silver",
+    }));
+
+    store.undo();
+    expect(store.get().entities[0].bodyMd).toBe(pin.bodyMd);
+
+    store.redo();
+    expect(store.get().entities[0].bodyMd).toBe("paid in silver");
+  });
+
+  it("brings a deleted entity back, with the strings it was holding", () => {
+    const { store } = open();
+    const a = newFreePin({ x: 0, y: 0 });
+    const b = newFreePin({ x: 1, y: 1 });
+    store.addEntities([a, b]);
+    store.addString(link(a.id, b.id));
+    store.removeEntities([b.id]);
+
+    store.undo();
+
+    expect(store.get().entities).toHaveLength(2);
+    expect(store.get().strings).toHaveLength(1);
+  });
+
+  it("takes a whole drag as one step", () => {
+    const { store } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+
+    for (let i = 1; i <= 20; i += 1) {
+      store.updateEntities([pin.id], movedTo(i));
+    }
+
+    store.undo();
+
+    expect(store.get().entities[0]).toMatchObject({ board: { x: 0 } });
+  });
+
+  it("takes a pause as the end of one", () => {
+    vi.useFakeTimers();
+    try {
+      const { store } = open();
+      const pin = newFreePin({ x: 0, y: 0 });
+      store.addEntities([pin]);
+      store.updateEntities([pin.id], movedTo(1));
+
+      vi.advanceTimersByTime(5000);
+      store.updateEntities([pin.id], movedTo(2));
+
+      store.undo();
+      expect(store.get().entities[0]).toMatchObject({ board: { x: 1 } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not fold a change to another entity into the run", () => {
+    const { store } = open();
+    const a = newFreePin({ x: 0, y: 0 });
+    const b = newFreePin({ x: 0, y: 0 });
+    store.addEntities([a, b]);
+
+    store.updateEntities([a.id], movedTo(1));
+    store.updateEntities([b.id], movedTo(1));
+
+    store.undo();
+
+    expect(store.get().entities).toMatchObject([
+      { board: { x: 1 } },
+      { board: { x: 0 } },
+    ]);
+  });
+
+  it("leaves a creation out of the run before it", () => {
+    const { store } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+    store.updateEntities([pin.id], movedTo(5));
+    store.addEntities([newFreePin({ x: 9, y: 9 })]);
+
+    store.undo();
+
+    expect(store.get().entities).toHaveLength(1);
+    expect(store.get().entities[0]).toMatchObject({ board: { x: 5 } });
+  });
+
+  it("stops at the oldest step it kept rather than growing without end", () => {
+    const { store } = open();
+    const a = newFreePin({ x: 0, y: 0 });
+    const b = newFreePin({ x: 1, y: 1 });
+    store.addEntities([a, b]);
+    for (let i = 0; i < 80; i += 1) {
+      const id = i % 2 === 0 ? a.id : b.id;
+      store.updateEntities([id], (entity) => ({ ...entity, bodyMd: `${i}` }));
+    }
+
+    let steps = 0;
+    while (store.canUndo()) {
+      store.undo();
+      steps += 1;
+    }
+
+    expect(steps).toBe(60);
+  });
+
+  it("is not asked to undo somebody else's change", () => {
+    const { store } = open();
+
+    store.applyRemote({
+      kind: "entity/upsert",
+      entity: newFreePin({ x: 0, y: 0 }),
+    });
+
+    expect(store.canUndo()).toBe(false);
   });
 });
 

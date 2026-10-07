@@ -79,6 +79,20 @@ const PINCH_INTENSITY = 0.01;
 // Firefox reports a mouse wheel in lines; the rest of the code thinks in pixels.
 const LINE_PX = 16;
 
+/** One notch of a mouse wheel, in px. Chromium says 100; X11 devices behind it, 120. */
+const WHEEL_NOTCHES = [100, 120];
+
+/**
+ * A wheel and a trackpad both arrive as `wheel`, and the deltas are the only thing
+ * that tells them apart: a wheel moves in notches, a trackpad in small fractions
+ * of one many times a second. Lines and pages are a wheel — no trackpad sends them.
+ */
+function isWheelNotch(event: WheelEvent, deltaY: number): boolean {
+  if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) return true;
+  const px = Math.round(Math.abs(deltaY));
+  return WHEEL_NOTCHES.some((notch) => px >= notch && px % notch === 0);
+}
+
 interface PanState {
   pointerId: number;
   lastX: number;
@@ -184,13 +198,15 @@ export function BoardCanvas({
 
       markInteractingRef.current();
 
-      // A pinch sets ctrlKey; plain scrolling, a two-finger drag on a trackpad, pans.
-      if (!event.ctrlKey && !event.metaKey) {
+      // A pinch sets ctrlKey. A trackpad's two-finger drag pans; a mouse wheel zooms,
+      // which is what it did before gestures were read apart.
+      const pinch = event.ctrlKey || event.metaKey;
+      if (!pinch && !isWheelNotch(event, deltaY)) {
         changeRef.current(panBy(cameraRef.current, -deltaX, -deltaY));
         return;
       }
 
-      const intensity = event.ctrlKey ? PINCH_INTENSITY : WHEEL_INTENSITY;
+      const intensity = pinch ? PINCH_INTENSITY : WHEEL_INTENSITY;
       const factor = Math.exp(-deltaY * intensity);
       changeRef.current(
         zoomAt(cameraRef.current, cursor, cameraRef.current.zoom * factor),

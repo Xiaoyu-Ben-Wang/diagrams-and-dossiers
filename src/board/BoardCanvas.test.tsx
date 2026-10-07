@@ -96,14 +96,40 @@ describe("scroll", () => {
     expect(onCamera.mock.calls[0][0]).toEqual({ x: 20, y: 0, zoom: 2 });
   });
 
-  it("reads a line-mode wheel as pixels", () => {
+  it("pans on a delta no wheel would send", () => {
     const onCamera = vi.fn();
     render(<Harness onCamera={onCamera} />);
     stubBox();
 
-    fireEvent.wheel(viewport(), { deltaY: 3, deltaMode: 1 });
+    fireEvent.wheel(viewport(), { deltaX: 2.5, deltaY: 11.7 });
 
-    expect(onCamera.mock.calls[0][0].y).toBe(48);
+    expect(onCamera.mock.calls[0][0]).toEqual({ x: 2.5, y: 11.7, zoom: 1 });
+  });
+
+  it("zooms on a mouse wheel's notch", () => {
+    const onCamera = vi.fn();
+    render(<Harness onCamera={onCamera} />);
+    stubBox();
+
+    fireEvent.wheel(viewport(), { deltaY: -100, clientX: 400, clientY: 300 });
+
+    expect(onCamera.mock.calls[0][0].zoom).toBeGreaterThan(1);
+  });
+
+  it("reads a line-mode wheel as a wheel, not a trackpad", () => {
+    // Firefox reports a mouse wheel in lines; no trackpad reports them at all.
+    const onCamera = vi.fn();
+    render(<Harness onCamera={onCamera} />);
+    stubBox();
+
+    fireEvent.wheel(viewport(), {
+      deltaY: -3,
+      deltaMode: 1,
+      clientX: 400,
+      clientY: 300,
+    });
+
+    expect(onCamera.mock.calls[0][0].zoom).toBeGreaterThan(1);
   });
 
   it("zooms on a modified mouse wheel", () => {

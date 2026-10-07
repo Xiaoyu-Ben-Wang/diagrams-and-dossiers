@@ -43,6 +43,14 @@ function tap(element: Element): void {
   });
 }
 
+/** Presses the editor's edge at `from` and drags it to `to`; the panel takes the difference. */
+function dragEdge(handle: Element, from: number, to: number): void {
+  const at = { button: 0, pointerId: 1, clientY: 200 };
+  fireEvent.pointerDown(handle, { ...at, clientX: from });
+  fireEvent.pointerMove(handle, { ...at, clientX: to });
+  fireEvent.pointerUp(handle, { ...at, clientX: to });
+}
+
 function sheet(container: HTMLElement, articleId: string): HTMLElement {
   const element = container.querySelector<HTMLElement>(
     `[data-article-id="${articleId}"]`,
@@ -175,6 +183,33 @@ describe("App — document selection", () => {
     ) as HTMLTextAreaElement;
     expect(textarea.value).toContain("Sea Ghost");
     expect(textarea.value).not.toContain("Drowned Bell");
+  });
+
+  it("widens the editor when its edge is dragged", () => {
+    const { container } = renderBoard();
+    tap(within(sheet(container, FIRST_PAGE)).getByTestId("paper-tab"));
+
+    const editor = screen.getByTestId("paper-editor");
+    expect(editor.style.width).toBe("min(92vw, 380px)");
+
+    dragEdge(screen.getByTestId("paper-editor-resize"), 380, 460);
+
+    expect(editor.style.width).toBe("min(92vw, 460px)");
+  });
+
+  it("holds the editor between its narrowest and the width of the window", () => {
+    const { container } = renderBoard();
+    tap(within(sheet(container, FIRST_PAGE)).getByTestId("paper-tab"));
+
+    const editor = screen.getByTestId("paper-editor");
+    const handle = screen.getByTestId("paper-editor-resize");
+
+    dragEdge(handle, 380, 20);
+    expect(editor.style.width).toBe("min(92vw, 300px)");
+
+    dragEdge(handle, 380, 4000);
+    // 92vw of jsdom's 1024px window is 942, past the 900 ceiling.
+    expect(editor.style.width).toBe("min(92vw, 900px)");
   });
 
   it("moves the editor with the selection rather than opening a second one", () => {
@@ -1033,6 +1068,84 @@ describe("App — placing pins", () => {
 
     fireEvent.click(canvas, { clientX: 10, clientY: 10 });
     expect(container.querySelectorAll(".is-selected").length).toBe(0);
+  });
+});
+
+describe("App — undo", () => {
+  function stringBetween(canvas: HTMLElement): void {
+    const tacks = document.querySelectorAll("button[data-pin-id]");
+    fireEvent.pointerDown(tacks[0], {
+      button: 0,
+      pointerId: 21,
+      clientX: 300,
+      clientY: 200,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 21,
+      clientX: 520,
+      clientY: 260,
+    });
+    fireEvent.pointerUp(canvas, { pointerId: 21, clientX: 520, clientY: 260 });
+  }
+
+  it("puts back a string the keyboard cut", () => {
+    const { container } = renderBoard();
+    const canvas = screen.getByTestId("board-canvas");
+
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 });
+    stringBetween(canvas);
+
+    const span = Math.hypot(520 - 300, 260 - 200);
+    const apexY = 230 + sagFor(span, DEFAULT_SLACK) / 2;
+    fireEvent.click(canvas, { clientX: 410, clientY: apexY });
+    fireEvent.keyDown(document, { key: "Delete" });
+    expect(container.querySelectorAll('[data-testid="yarn"]').length).toBe(0);
+
+    fireEvent.keyDown(document, { key: "z", ctrlKey: true });
+    expect(container.querySelectorAll('[data-testid="yarn"]').length).toBe(1);
+
+    fireEvent.keyDown(document, { key: "y", ctrlKey: true });
+    expect(container.querySelectorAll('[data-testid="yarn"]').length).toBe(0);
+  });
+
+  it("takes a whole drag of a page as one step", () => {
+    const { container } = renderBoard();
+    const before = posOf(container, FIRST_PAGE);
+    const target = sheet(container, FIRST_PAGE).querySelector(".article")!;
+
+    fireEvent.pointerDown(target, {
+      button: 0,
+      pointerId: 3,
+      clientX: 400,
+      clientY: 400,
+    });
+    fireEvent.pointerMove(target, { pointerId: 3, clientX: 540, clientY: 460 });
+    fireEvent.pointerMove(target, { pointerId: 3, clientX: 560, clientY: 470 });
+    fireEvent.pointerUp(target, {
+      button: 0,
+      pointerId: 3,
+      clientX: 560,
+      clientY: 470,
+    });
+    fireEvent.click(target, { clientX: 560, clientY: 470 });
+    expect(posOf(container, FIRST_PAGE)).not.toEqual(before);
+
+    fireEvent.keyDown(document, { key: "z", ctrlKey: true });
+
+    expect(posOf(container, FIRST_PAGE)).toEqual(before);
+  });
+
+  it("leaves the board alone while a field has the keyboard", () => {
+    const { container } = renderBoard();
+    tap(within(sheet(container, FIRST_PAGE)).getByTestId("paper-tab"));
+
+    const source = screen.getByLabelText(
+      "Article markdown source",
+    ) as HTMLTextAreaElement;
+    fireEvent.keyDown(source, { key: "z", ctrlKey: true });
+
+    expect(source.value).toContain("The Drowned Bell");
   });
 });
 

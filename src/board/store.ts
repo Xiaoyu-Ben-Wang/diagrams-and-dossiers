@@ -40,7 +40,18 @@ export interface BoardStore {
   replaceAll(board: BoardState): void;
 
   applyRemote(change: BoardChange): void;
+
+  canUndo(): boolean;
+  canRedo(): boolean;
+  undo(): void;
+  redo(): void;
 }
+
+/** How many changes are kept. Snapshots, so this is the whole board each time. */
+const HISTORY_LIMIT = 60;
+
+/** A run of changes to the same targets inside this window is one undo step. */
+const COALESCE_MS = 600;
 
 export interface BoardStoreOptions {
   sync?: BoardSync;
@@ -67,6 +78,30 @@ export function createBoardStore({
   const publish = (change: BoardChange): void => {
     sync.publish(change);
   };
+
+  let past: BoardState[] = [];
+  let future: BoardState[] = [];
+  let last: { key: string; at: number } | null = null;
+
+  /**
+   * `emit`, with the state it replaces pushed onto the undo stack. `key` names a run
+   * that is one step — a drag, a burst of typing; null is a step on its own.
+   */
+  const commit = (next: BoardState, key: string | null = null): void => {
+    const now = Date.now();
+    const merged =
+      key !== null && last?.key === key && now - last.at < COALESCE_MS;
+    if (!merged) {
+      past.push(state);
+      if (past.length > HISTORY_LIMIT) past.shift();
+    }
+    future = [];
+    last = key === null ? null : { key, at: now };
+    emit(next);
+  };
+
+  const targets = (kind: string, ids: readonly string[]): string =>
+    `${kind}:${[...ids].sort().join(",")}`;
 
   const orphaned = (
     ids: ReadonlySet<string>,
@@ -97,7 +132,7 @@ export function createBoardStore({
       }
       if (permitted.length === 0) return;
 
-      emit({ ...state, entities: [...state.entities, ...permitted] });
+      commit({ ...state, entities: [...state.entities, ...permitted] });
       for (const entity of permitted)
         publish({ kind: "entity/upsert", entity });
     },
@@ -114,7 +149,7 @@ export function createBoardStore({
 
       const gone = new Set(going.map((entity) => entity.id));
       const severed = new Set(cut.map((link) => link.id));
-      emit({
+      commit({
         entities: state.entities.filter((entity) => !gone.has(entity.id)),
         strings: state.strings.filter((link) => !severed.has(link.id)),
       });
@@ -139,7 +174,7 @@ export function createBoardStore({
       });
 
       if (touched.length === 0) return;
-      emit({ ...state, entities });
+      commit({ ...state, entities }, targets("entity", ids));
       for (const entity of touched) publish({ kind: "entity/upsert", entity });
     },
 
@@ -152,7 +187,7 @@ export function createBoardStore({
       );
       if (exists) return;
 
-      emit({ ...state, strings: [...state.strings, link] });
+      commit({ ...state, strings: [...state.strings, link] });
       publish({ kind: "string/upsert", string: link });
     },
 
@@ -162,7 +197,7 @@ export function createBoardStore({
       const strings = state.strings.filter((link) => !doomed.has(link.id));
       if (strings.length === state.strings.length) return;
 
-      emit({ ...state, strings });
+      commit({ ...state, strings });
       for (const id of doomed) publish({ kind: "string/delete", id });
     },
 
@@ -180,7 +215,7 @@ export function createBoardStore({
       });
 
       if (touched.length === 0) return;
-      emit({ ...state, strings });
+      commit({ ...state, strings }, targets("string", ids));
       for (const link of touched)
         publish({ kind: "string/upsert", string: link });
     },
@@ -188,7 +223,26 @@ export function createBoardStore({
     replaceAll(board) {
       if (!allowed("create")) return;
       // Copied so a caller holding the parsed object cannot mutate the board through it.
-      emit({ entities: [...board.entities], strings: [...board.strings] });
+      commit({ entities: [...board.entities], strings: [...board.strings] });
+    },
+
+    canUndo: () => past.length > 0,
+    canRedo: () => future.length > 0,
+
+    undo() {
+      const previous = past.pop();
+      if (!previous) return;
+      future.push(state);
+      last = null;
+      emit(previous);
+    },
+
+    redo() {
+      const next = future.pop();
+      if (!next) return;
+      past.push(state);
+      last = null;
+      emit(next);
     },
 
     applyRemote(change) {

@@ -72,6 +72,15 @@
   --color-board-ink-soft: #57452f;
 
   --board-surface: var(--color-cork-500);
+
+  /* Every shade the cork ramp offers is tinted by the board's surface, so none of
+     them is the neutral light/dark pair the writing surface needs. Text on it is
+     `--color-board-ink`, which already flips. */
+  --editor-surface: color-mix(in srgb, var(--color-cork-900) 72%, #000);
+}
+
+:root[data-theme="light"] {
+  --editor-surface: var(--color-parchment-100);
 }
 
 html,
@@ -645,9 +654,9 @@ body {
 }
 
 .editor {
-  background: rgb(20 13 8 / 0.55);
-  color: var(--color-parchment-200);
-  border: 1px solid rgb(201 180 138 / 0.22);
+  background: var(--editor-surface);
+  color: var(--color-board-ink);
+  border: 1px solid color-mix(in srgb, var(--color-board-ink) 20%, transparent);
   font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
   line-height: 1.6;
   tab-size: 2;
@@ -655,8 +664,45 @@ body {
 
 .editor:focus {
   outline: none;
-  border-color: rgb(201 162 39 / 0.5);
-  box-shadow: 0 0 0 3px rgb(201 162 39 / 0.12);
+  border-color: color-mix(in srgb, var(--color-brass) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brass) 12%, transparent);
+}
+
+.paper-editor-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+/* A pill rather than dots: this edge is full-height, and a grip is what says it moves. */
+.paper-editor-resize::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 38px;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--color-board-ink) 20%, transparent);
+  transition: background-color 120ms ease;
+}
+
+.paper-editor-resize:hover::after,
+.paper-editor-resize[data-dragging="true"]::after {
+  background: var(--color-brass);
+}
+
+.paper-editor-resize:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: -2px;
 }
 
 .article {

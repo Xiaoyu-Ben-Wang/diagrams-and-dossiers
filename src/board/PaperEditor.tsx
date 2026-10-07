@@ -24,6 +24,18 @@ export interface PaperEditorProps {
 
 const MAX_SUGGESTIONS = 8;
 
+const MIN_WIDTH = 300;
+const DEFAULT_WIDTH = 380;
+const MAX_WIDTH = 900;
+
+/** The widest the panel may be dragged, against the viewport it has to fit in. */
+function widthCeiling(): number {
+  return Math.max(
+    MIN_WIDTH,
+    Math.min(MAX_WIDTH, Math.round(window.innerWidth * 0.92)),
+  );
+}
+
 const LIST_ID = "mention-list";
 const optionId = (index: number): string => `mention-option-${index}`;
 
@@ -68,6 +80,10 @@ export const PaperEditor = memo(function PaperEditor({
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
   // Bumped by a scroll, which moves the caret without changing the value.
   const [scrolled, setScrolled] = useState(0);
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [resizing, setResizing] = useState(false);
+  // Recorded at the press and computed from after; never accumulated.
+  const dragRef = useRef<{ x: number; width: number } | null>(null);
 
   const suggestions = useMemo(() => {
     if (!run) return [];
@@ -152,6 +168,41 @@ export const PaperEditor = memo(function PaperEditor({
     }
   };
 
+  const onResizeDown = (event: React.PointerEvent<HTMLButtonElement>): void => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Capture is a refinement; the drag still tracks while over the handle.
+    }
+    dragRef.current = { x: event.clientX, width };
+    setResizing(true);
+  };
+
+  const onResizeMove = (event: React.PointerEvent<HTMLButtonElement>): void => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    event.stopPropagation();
+    setWidth(
+      Math.min(
+        Math.max(drag.width + event.clientX - drag.x, MIN_WIDTH),
+        widthCeiling(),
+      ),
+    );
+  };
+
+  const onResizeUp = (event: React.PointerEvent<HTMLButtonElement>): void => {
+    dragRef.current = null;
+    setResizing(false);
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Already released.
+    }
+  };
+
   return (
     <aside
       // Over the board rather than beside it: a panel that took width from the
@@ -159,7 +210,8 @@ export const PaperEditor = memo(function PaperEditor({
       // page was opened for editing. Taken out of the flow, nothing moves.
       // Above the palette (28) and opaque, so it covers the pad rather than letting
       // it ghost through; below the menus (30), which must not be hidden while open.
-      className="absolute inset-y-0 left-0 z-[29] flex w-[min(92vw,380px)] flex-col overflow-hidden border-r border-parchment-edge/15 bg-cork-900 shadow-2xl"
+      className="absolute inset-y-0 left-0 z-[29] flex flex-col overflow-hidden border-r border-parchment-edge/15 bg-cork-900 shadow-2xl"
+      style={{ width: `min(92vw, ${width}px)` }}
       aria-label="Document editor"
       data-testid="paper-editor"
     >
@@ -241,7 +293,7 @@ export const PaperEditor = memo(function PaperEditor({
           onScroll={() => setScrolled((tick) => tick + 1)}
           onBlur={close}
           spellCheck={false}
-          className="editor h-full min-h-0 w-full resize-none rounded-b border border-t-0 border-parchment-edge/25 p-3 text-[13px]"
+          className="editor h-full min-h-0 w-full resize-none rounded-b border border-t-0 border-parchment-edge/25 p-5 text-[13px]"
           aria-label="Article markdown source"
           aria-expanded={open}
           aria-controls={open ? LIST_ID : undefined}
@@ -257,6 +309,19 @@ export const PaperEditor = memo(function PaperEditor({
         <code className="font-mono">@</code> for the list. Click a word on the
         board to pin a note to it.
       </p>
+
+      <button
+        type="button"
+        data-testid="paper-editor-resize"
+        aria-label="Drag to resize the editor"
+        title="Drag to resize"
+        className="paper-editor-resize"
+        data-dragging={resizing}
+        onPointerDown={onResizeDown}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeUp}
+        onPointerCancel={onResizeUp}
+      />
     </aside>
   );
 });

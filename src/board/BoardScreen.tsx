@@ -1638,6 +1638,21 @@ export function BoardScreen({
         return;
       }
 
+      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+        const key = event.key.toLowerCase();
+        if (key === "z") {
+          event.preventDefault();
+          if (event.shiftKey) store.redo();
+          else store.undo();
+          return;
+        }
+        if (key === "y") {
+          event.preventDefault();
+          store.redo();
+          return;
+        }
+      }
+
       if (event.key === "Delete" || event.key === "Backspace") {
         if (selectedString) {
           event.preventDefault();
@@ -1669,6 +1684,7 @@ export function BoardScreen({
     removeString,
     selectedString,
     selection,
+    store,
   ]);
 
   const images = useSameItems(
@@ -2166,8 +2182,8 @@ export function BoardScreen({
             {strings.length === 1 ? "" : "s"}
           </span>
           <span className="ml-auto hidden lg:inline text-sm">
-            Scroll or right/middle-drag to pan · pinch or ⌘/Ctrl-scroll to zoom
-            · right-click for options
+            Drag, trackpad-scroll or right/middle-drag to pan · wheel or
+            ⌘/Ctrl-scroll to zoom · right-click for options
           </span>
         </div>
       </footer>
