@@ -678,6 +678,28 @@ body {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brass) 12%, transparent);
 }
 
+/* Reads as the name it replaces; the box is what says it can be edited. */
+.board-name {
+  width: 24ch;
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  outline: none;
+  text-overflow: ellipsis;
+}
+
+.board-name:hover {
+  border-color: color-mix(in srgb, var(--color-board-ink) 22%, transparent);
+}
+
+.board-name:focus {
+  border-color: color-mix(in srgb, var(--color-brass) 60%, transparent);
+  background: color-mix(in srgb, var(--color-parchment-100) 22%, transparent);
+}
+
 .paper-editor-resize {
   position: absolute;
   top: 0;
@@ -1234,6 +1256,30 @@ body {
     0 0 0 1px rgb(0 0 0 / 0.2);
 }
 
+/* A sheet with its tab along the top edge, which is where a page is held. */
+.palette-glyph-page {
+  position: relative;
+  display: block;
+  width: 21px;
+  height: 25px;
+  border-radius: 0 1px 1px 1px;
+  background-color: var(--color-parchment-100);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.6) inset,
+    0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+.palette-glyph-page::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 0;
+  width: 9px;
+  height: 4px;
+  border-radius: 1px 1px 0 0;
+  background-color: var(--color-folder);
+}
+
 .palette-glyph-note {
   /* Relative so the paper's fold and tape hang off it, and a longhand colour so
      the `[data-note-style]` rules can still set its `background-image`. */
@@ -1249,11 +1295,23 @@ body {
 }
 
 .palette-ghost-note,
+.palette-ghost-page,
 .palette-ghost-tack {
   position: fixed;
   z-index: 60;
   pointer-events: none;
   transform: translate(-50%, -50%);
+}
+
+/* Hung from the pointer rather than centred on it: a page is dropped by its tab. */
+.palette-ghost-page {
+  transform: translate(-50%, 0);
+  width: 240px;
+  height: 158px;
+  border-radius: 2px;
+  background: var(--color-parchment-100);
+  box-shadow: 0 8px 18px -6px rgb(0 0 0 / 0.6);
+  opacity: 0.85;
 }
 
 .palette-ghost-note {

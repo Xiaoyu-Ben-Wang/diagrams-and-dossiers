@@ -59,6 +59,8 @@ import { ArrowLeft } from "lucide-react";
 
 import { boardNameFrom } from "../boards/board-record";
 
+import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
+import { ImageLinkDialog } from "./ImageLinkDialog";
 import { ImportChoice } from "./ImportChoice";
 import { attachAutosave } from "../boards/autosave";
 import { loadCameraView, saveCameraView } from "../boards/last-camera";
@@ -73,6 +75,7 @@ import { EntityLayer } from "./EntityLayer";
 import { ContextMenu, type ContextMenuEntry } from "./ContextMenu";
 import { GridLayer } from "./GridLayer";
 import { PaperEditor } from "./PaperEditor";
+import { TitleField } from "./TitleField";
 import { PinTooltip } from "./PinTooltip";
 import { PinEditor } from "./PinEditor";
 import {
@@ -108,6 +111,7 @@ import {
   freshEdgeSeed,
   imageFootprint,
   newAnchoredPin,
+  newArticle,
   newFreePin,
   newImage,
   newNote,
@@ -183,6 +187,8 @@ export interface BoardScreenProps {
   onBack?: () => void;
   /** Which board this is, for the top bar. */
   name?: string;
+  /** Renames the board. Left out where it has no record to rename — the demo, a seed. */
+  onRename?: (next: string) => void;
   /**
    * Where this board's camera is remembered under. Omitted by a caller that has
    * nowhere to remember it — the tests' seeded board — which then opens at the
@@ -198,6 +204,7 @@ export function BoardScreen({
   onSave,
   onBack,
   name,
+  onRename,
   viewId,
   onAddBoard,
 }: BoardScreenProps) {
@@ -296,6 +303,10 @@ export function BoardScreen({
     (BoardContextTarget & { board: Point; entityId: string | null }) | null
   >(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
+  const [imageLink, setImageLink] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [nameReset, setNameReset] = useState(0);
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
   // Read by the drag and select handlers, so their identity survives a selection change.
   const selectionRef = useRef(selection);
@@ -589,12 +600,12 @@ export function BoardScreen({
   );
 
   const addImageFromUrl = useCallback(
-    async (src: string, clientX: number, clientY: number) => {
+    async (src: string, clientX: number, clientY: number): Promise<boolean> => {
       let size;
       try {
         size = await measure(src);
       } catch {
-        return;
+        return false;
       }
 
       const footprint = imageFootprint(size.width, size.height);
@@ -610,6 +621,7 @@ export function BoardScreen({
           },
         ),
       ]);
+      return true;
     },
     [nextDateLabel, worldPoint],
   );
@@ -1214,6 +1226,27 @@ export function BoardScreen({
       preferences.noteFont,
     ],
   );
+
+  const createArticle = useCallback((point: Point) => {
+    const id = crypto.randomUUID();
+    store.addEntities((state) => {
+      // The title names the page in a mention, so a second "Untitled sheet" would
+      // make `@[Untitled sheet]` name one of two things.
+      const title = uniqueName("Untitled sheet", state.entities);
+      return [
+        newArticle(
+          // The tab is on the top edge, mid-width: that is the point a drop aims at.
+          { x: point.x - DEFAULT_ARTICLE_OPTIONS.width / 2, y: point.y },
+          `# ${title}\n`,
+          title,
+          DEFAULT_ARTICLE_OPTIONS,
+          { id },
+        ),
+      ];
+    });
+    // Open for writing: an empty page is not something to leave someone looking at.
+    setSelection(new Set([id]));
+  }, []);
 
   const tapArticleTab = useCallback(
     (id: string) => {
@@ -1883,6 +1916,17 @@ export function BoardScreen({
     },
     [selectedArticleId, setEntityBody],
   );
+  const renameBoard = useCallback(
+    (next: string) => {
+      if (next.trim() === "") {
+        setNameReset((tick) => tick + 1);
+        return;
+      }
+      onRename?.(next);
+    },
+    [onRename],
+  );
+
   const renameSelectedArticle = useCallback(
     (next: string) => {
       if (selectedArticleId) renameEntity(selectedArticleId, next);
@@ -1891,6 +1935,11 @@ export function BoardScreen({
   );
   const clearSelection = useCallback(() => setSelection(new Set()), []);
 
+  const dropPage = useCallback(
+    (clientX: number, clientY: number) =>
+      createArticle(worldPoint(clientX, clientY)),
+    [createArticle, worldPoint],
+  );
   const dropNote = useCallback(
     (clientX: number, clientY: number) => {
       const at = worldPoint(clientX, clientY);
@@ -1925,9 +1974,23 @@ export function BoardScreen({
             ]
           : []),
         {
+          id: "page",
+          label: "Create page",
+          onSelect: () => createArticle(contextMenu.board),
+        },
+        {
           id: "post-it",
           label: "Create post-it",
           onSelect: () => createPostIt(contextMenu.board),
+        },
+        {
+          id: "picture-link",
+          label: "Add picture from link…",
+          onSelect: () =>
+            setImageLink({
+              x: contextMenu.clientX,
+              y: contextMenu.clientY,
+            }),
         },
         {
           id: "pin",
@@ -1969,13 +2032,33 @@ export function BoardScreen({
         ) : null}
         {name ? (
           <span
-            className="truncate text-[13px] text-board-ink-soft"
+            className="min-w-0 truncate text-[13px] text-board-ink-soft"
             data-testid="board-name"
           >
-            {name}
+            {onRename ? (
+              <TitleField
+                // Remounted when a blank name is refused, which is the only way to
+                // put the old one back: the field keeps its own draft otherwise.
+                key={nameReset}
+                className="board-name"
+                value={name}
+                onCommit={renameBoard}
+                label="Board name"
+                placeholder="Untitled board"
+              />
+            ) : (
+              name
+            )}
           </span>
         ) : null}
       </TopBar>
+
+      {imageLink ? (
+        <ImageLinkDialog
+          onAdd={(src) => addImageFromUrl(src, imageLink.x, imageLink.y)}
+          onClose={() => setImageLink(null)}
+        />
+      ) : null}
 
       <main className="relative flex min-h-0 flex-1">
         <>
@@ -2048,6 +2131,7 @@ export function BoardScreen({
                   <BoardPalette
                     canCreate={can(LOCAL_VIEWER, "create")}
                     onDropNote={dropNote}
+                    onDropPage={dropPage}
                     onDropPin={dropPin}
                     onOpenNoteMenu={openStyleMenuForPad}
                     noteMenuOpen={noteStyleMenu?.at === "pad"}

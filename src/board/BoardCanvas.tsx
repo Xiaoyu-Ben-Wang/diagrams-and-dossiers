@@ -129,6 +129,13 @@ export function BoardCanvas({
   // bare-board handler and clears the selection the band just made.
   const suppressClickRef = useRef<{ x: number; y: number } | null>(null);
 
+  // A press on the palette ends with a click on the viewport — the palette sits inside
+  // the canvas, and the viewport is where the pointer came up — so without this a drop
+  // would make a thing and then the click would clear what it just selected. Read on the
+  // way down in the capture phase, because the pad stops the press before it bubbles.
+  // True by default, so a click that came from anywhere but a press behaves as it did.
+  const pressedBoardRef = useRef(true);
+
   const entityRef = useRef<{
     pointerId: number;
     lastX: number;
@@ -433,6 +440,9 @@ export function BoardCanvas({
   // the viewport itself and `target === currentTarget` means empty board.
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      const pressedBoard = pressedBoardRef.current;
+      pressedBoardRef.current = true;
+
       const swallowed = suppressClickRef.current;
       if (swallowed) {
         suppressClickRef.current = null;
@@ -445,6 +455,7 @@ export function BoardCanvas({
         }
       }
 
+      if (!pressedBoard) return;
       if (event.button !== 0 || event.target !== event.currentTarget) return;
       const bounds = event.currentTarget.getBoundingClientRect();
       onBackgroundClick?.({
@@ -483,6 +494,9 @@ export function BoardCanvas({
       ref={viewportRef}
       className={`board-canvas relative overflow-hidden ${className ?? ""}`}
       onPointerDown={handlePointerDown}
+      onPointerDownCapture={(event) => {
+        pressedBoardRef.current = event.target === event.currentTarget;
+      }}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}

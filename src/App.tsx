@@ -137,6 +137,7 @@ export function App({ seed, storage, now }: AppProps = {}) {
       key={resolved.id}
       board={resolved.board}
       name={resolved.name}
+      onRename={(next) => void library.rename(resolved.id, next)}
       viewId={resolved.id}
       onBack={() => navigate({ name: "library" })}
       onSave={saveCurrent}

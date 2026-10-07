@@ -178,6 +178,7 @@ export function PalettePad({
 
 export interface BoardPaletteProps {
   onDropNote: (clientX: number, clientY: number) => void;
+  onDropPage: (clientX: number, clientY: number) => void;
   onDropPin: (clientX: number, clientY: number) => void;
   /** Opens the note pad's style and colour menu. */
   onOpenNoteMenu?: () => void;
@@ -190,6 +191,7 @@ export interface BoardPaletteProps {
 
 export const BoardPalette = memo(function BoardPalette({
   onDropNote,
+  onDropPage,
   onDropPin,
   onOpenNoteMenu,
   noteMenuOpen,
@@ -227,12 +229,29 @@ export const BoardPalette = memo(function BoardPalette({
         )}
         onDrop={onDropNote}
       />
+      <PalettePad
+        index={2}
+        label="Drag onto the board to make a page"
+        disabled={!canCreate}
+        icon={<PageGlyph />}
+        ghost={(at) => (
+          <span
+            className="palette-ghost-page"
+            style={{ left: at.x, top: at.y }}
+          />
+        )}
+        onDrop={onDropPage}
+      />
     </div>
   );
 });
 
 function PinGlyph() {
   return <span className="palette-glyph-tack" />;
+}
+
+function PageGlyph() {
+  return <span className="palette-glyph-page" />;
 }
 
 function NoteGlyph({ style, color }: { style: NoteStyle; color?: string }) {

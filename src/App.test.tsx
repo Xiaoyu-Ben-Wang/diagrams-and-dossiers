@@ -51,6 +51,20 @@ function dragEdge(handle: Element, from: number, to: number): void {
   fireEvent.pointerUp(handle, { ...at, clientX: to });
 }
 
+/** A right press, which is what the board opens its menu on. */
+function rightClick(element: Element, clientX = 400, clientY = 300): void {
+  fireEvent.pointerDown(element, { button: 2, pointerId: 3, clientX, clientY });
+  fireEvent.pointerUp(element, { button: 2, pointerId: 3, clientX, clientY });
+}
+
+/** A click on the bare board, which in a browser always follows a press on it. Without
+    the press the board cannot tell it from the click a palette drop leaves behind. */
+function clickBoard(canvas: Element, clientX: number, clientY: number): void {
+  fireEvent.pointerDown(canvas, { button: 0, pointerId: 77, clientX, clientY });
+  fireEvent.pointerUp(canvas, { button: 0, pointerId: 77, clientX, clientY });
+  fireEvent.click(canvas, { clientX, clientY });
+}
+
 function sheet(container: HTMLElement, articleId: string): HTMLElement {
   const element = container.querySelector<HTMLElement>(
     `[data-article-id="${articleId}"]`,
@@ -381,6 +395,53 @@ describe("App — the boards library", () => {
     expect(await screen.findByTestId("board-name")).toBeTruthy();
   });
 
+  it("renames the board from the board itself, and writes it down", async () => {
+    const storage = memoryBoardStorage([ledger]);
+    window.history.replaceState(null, "", `/b/${ledger.id}`);
+    render(<App storage={storage} />);
+    await screen.findByTestId("board-name");
+
+    const field = screen.getByLabelText("Board name") as HTMLInputElement;
+    expect(field.value).toBe("Ledger");
+
+    // Enter drops focus, and it is the blur that commits — so the field has to hold it.
+    field.focus();
+    fireEvent.change(field, { target: { value: "The Ledger" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    expect((await storage.get(ledger.id))?.name).toBe("The Ledger");
+    expect(
+      (screen.getByLabelText("Board name") as HTMLInputElement).value,
+    ).toBe("The Ledger");
+  });
+
+  it("keeps the old name when the board is renamed to nothing", async () => {
+    const storage = memoryBoardStorage([ledger]);
+    window.history.replaceState(null, "", `/b/${ledger.id}`);
+    render(<App storage={storage} />);
+    await screen.findByTestId("board-name");
+
+    const field = screen.getByLabelText("Board name") as HTMLInputElement;
+    field.focus();
+    fireEvent.change(field, { target: { value: "   " } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    expect((await storage.get(ledger.id))?.name).toBe("Ledger");
+    expect(
+      (screen.getByLabelText("Board name") as HTMLInputElement).value,
+    ).toBe("Ledger");
+  });
+
+  it("leaves the demo's name alone, having no record to write it to", async () => {
+    window.history.replaceState(null, "", "/demo");
+    render(<App storage={memoryBoardStorage([])} />);
+
+    expect((await screen.findByTestId("board-name")).textContent).toBe(
+      "The Drowned Bell",
+    );
+    expect(screen.queryByLabelText("Board name")).toBeNull();
+  });
+
   it("renames a board, and writes it down", async () => {
     const storage = openLibrary([ledger]);
 
@@ -537,16 +598,6 @@ describe("App — pinning by click", () => {
 describe("App — placing pins", () => {
   const freePins = (container: HTMLElement) =>
     container.querySelectorAll('[data-status="free"]').length;
-
-  function rightClick(element: Element, clientX = 400, clientY = 300): void {
-    fireEvent.pointerDown(element, {
-      button: 2,
-      pointerId: 3,
-      clientX,
-      clientY,
-    });
-    fireEvent.pointerUp(element, { button: 2, pointerId: 3, clientX, clientY });
-  }
 
   it("places a pin from the context menu, even over bare board", () => {
     const { container } = renderBoard();
@@ -826,7 +877,7 @@ describe("App — placing pins", () => {
     // Aim at the curve's lowest point — the chord midpoint, half the sag below it.
     const span = Math.hypot(520 - 300, 260 - 200);
     const apexY = 230 + sagFor(span, DEFAULT_SLACK) / 2;
-    fireEvent.click(canvas, { clientX: 410, clientY: apexY });
+    clickBoard(canvas, 410, apexY);
 
     expect(screen.queryByTestId("yarn-bead")).not.toBeNull();
     expect(screen.queryByTestId("yarn-halo")).not.toBeNull();
@@ -893,14 +944,14 @@ describe("App — placing pins", () => {
 
     const span = Math.hypot(520 - 300, 260 - 200);
     const apexY = 230 + sagFor(span, DEFAULT_SLACK) / 2;
-    fireEvent.click(canvas, { clientX: 410, clientY: apexY });
+    clickBoard(canvas, 410, apexY);
     expect(screen.queryByTestId("yarn-bead")).not.toBeNull();
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByTestId("yarn-bead")).toBeNull();
     expect(container.querySelectorAll('[data-testid="yarn"]').length).toBe(1);
 
-    fireEvent.click(canvas, { clientX: 410, clientY: apexY });
+    clickBoard(canvas, 410, apexY);
     fireEvent.keyDown(document, { key: "Delete" });
     expect(container.querySelectorAll('[data-testid="yarn"]').length).toBe(0);
     expect(container.querySelectorAll("button[data-pin-id]").length).toBe(2);
@@ -1098,7 +1149,7 @@ describe("App — undo", () => {
 
     const span = Math.hypot(520 - 300, 260 - 200);
     const apexY = 230 + sagFor(span, DEFAULT_SLACK) / 2;
-    fireEvent.click(canvas, { clientX: 410, clientY: apexY });
+    clickBoard(canvas, 410, apexY);
     fireEvent.keyDown(document, { key: "Delete" });
     expect(container.querySelectorAll('[data-testid="yarn"]').length).toBe(0);
 
@@ -1603,6 +1654,160 @@ describe("App — mentions", () => {
     expect(
       within(screen.getByTestId("mention-list")).getByText("The Ledger"),
     ).toBeTruthy();
+  });
+});
+
+describe("App — making a page", () => {
+  /** The drag from a palette pad, which is tracked on the window rather than captured.
+      jsdom measures nothing, so the canvas is given a box for the drop to land in. */
+  function padDrag(pad: string, to: { x: number; y: number }): void {
+    const canvas = screen.getByTestId("board-canvas");
+    const box = vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 1200,
+      bottom: 800,
+      width: 1200,
+      height: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    try {
+      fireEvent.pointerDown(screen.getByTestId(pad), {
+        button: 0,
+        pointerId: 9,
+        clientX: 40,
+        clientY: 500,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 9,
+        clientX: to.x,
+        clientY: to.y,
+      });
+      fireEvent.pointerUp(window, {
+        pointerId: 9,
+        clientX: to.x,
+        clientY: to.y,
+      });
+    } finally {
+      box.mockRestore();
+    }
+  }
+
+  it("makes a page by dragging it off the palette", () => {
+    const { container } = renderBoard();
+    const before = container.querySelectorAll("[data-article-id]").length;
+
+    padDrag("palette-pad-2", { x: 400, y: 400 });
+
+    const sheets = container.querySelectorAll("[data-article-id]");
+    expect(sheets.length).toBe(before + 1);
+    const made = sheets[sheets.length - 1];
+    expect(made.querySelector('[data-testid="paper-tab"]')?.textContent).toBe(
+      "Untitled sheet",
+    );
+    expect(made.querySelector(".article h1")?.textContent).toBe(
+      "Untitled sheet",
+    );
+  });
+
+  it("opens the new page for writing, rather than leaving it blank on the board", () => {
+    renderBoard();
+
+    padDrag("palette-pad-2", { x: 400, y: 400 });
+
+    const editor = screen.getByTestId("paper-editor");
+    expect(
+      (within(editor).getByLabelText("Page title") as HTMLInputElement).value,
+    ).toBe("Untitled sheet");
+    expect(
+      (
+        within(editor).getByLabelText(
+          "Article markdown source",
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toBe("# Untitled sheet\n");
+  });
+
+  it("makes one from the board's own menu too", () => {
+    const { container } = renderBoard();
+    const canvas = screen.getByTestId("board-canvas");
+    const before = container.querySelectorAll("[data-article-id]").length;
+
+    rightClick(canvas, 300, 300);
+    fireEvent.click(screen.getByText("Create page"));
+
+    expect(container.querySelectorAll("[data-article-id]").length).toBe(
+      before + 1,
+    );
+    expect(screen.getByTestId("paper-editor")).toBeTruthy();
+  });
+
+  it("gives a second page a name of its own, so a mention is unambiguous", () => {
+    const { container } = renderBoard();
+
+    padDrag("palette-pad-2", { x: 400, y: 300 });
+    padDrag("palette-pad-2", { x: 700, y: 500 });
+
+    const tabs = [
+      ...container.querySelectorAll('[data-testid="paper-tab"]'),
+    ].map((tab) => tab.textContent);
+    expect(tabs.filter((name) => name === "Untitled sheet").length).toBe(1);
+    expect(tabs).toContain("Untitled sheet (2)");
+  });
+});
+
+describe("App — a picture from a link", () => {
+  function openLinkDialog(): void {
+    rightClick(screen.getByTestId("board-canvas"), 300, 300);
+    fireEvent.click(screen.getByText("Add picture from link…"));
+  }
+
+  it("refuses an address that is not a link before storing anything", () => {
+    renderBoard();
+    openLinkDialog();
+
+    fireEvent.change(screen.getByLabelText("Image address"), {
+      target: { value: "not a link" },
+    });
+    fireEvent.click(screen.getByTestId("image-link-add"));
+
+    expect(screen.getByText(/http or https/i)).toBeTruthy();
+    expect(screen.getByTestId("image-link-dialog")).toBeTruthy();
+  });
+
+  it("loads the picture at the address and closes", async () => {
+    // jsdom neither loads an image nor fires its events, so the probe answers itself.
+    class StubImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      naturalWidth = 400;
+      naturalHeight = 300;
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal("Image", StubImage);
+
+    const { container } = renderBoard();
+    const before = container.querySelectorAll("[data-entity-id] img").length;
+    openLinkDialog();
+
+    fireEvent.change(screen.getByLabelText("Image address"), {
+      target: { value: "https://example.test/cat.png" },
+    });
+    // Act-wrapped: the measure resolves on a promise, and adding is what follows it.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("image-link-add"));
+    });
+
+    expect(container.querySelectorAll("[data-entity-id] img").length).toBe(
+      before + 1,
+    );
+    expect(screen.queryByTestId("image-link-dialog")).toBeNull();
+    vi.unstubAllGlobals();
   });
 });
 

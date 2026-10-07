@@ -1,0 +1,102 @@
+/* The import dialog's twin, so a dialog looks like a dialog whichever asked. */
+.link-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(12 7 4 / 0.62);
+}
+
+.link-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 24rem;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--color-parchment-edge);
+  border-top: 2px solid rgb(201 162 39 / 0.8);
+  border-radius: 2px 8px 3px 7px;
+  background-color: var(--color-parchment-100);
+  color: var(--color-ink);
+  box-shadow: 0 24px 48px -18px rgb(0 0 0 / 0.8);
+}
+
+.link-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.link-label {
+  margin-bottom: 4px;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.link-input {
+  padding: 5px 7px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 25%, transparent);
+  border-radius: 2px;
+  background: #fffdf6;
+  color: var(--color-ink);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  outline: none;
+}
+
+.link-input:focus {
+  border-color: var(--color-brass);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brass) 14%, transparent);
+}
+
+.link-hint {
+  min-height: 1.5em;
+  margin: 6px 0 14px;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.link-hint-error {
+  color: var(--color-wax);
+}
+
+.link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.link-button {
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 25%, transparent);
+  border-radius: 2px;
+  background: none;
+  color: var(--color-ink-soft);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 110ms ease,
+    color 110ms ease;
+}
+
+.link-button:hover:not(:disabled) {
+  border-color: var(--color-brass);
+  color: var(--color-ink);
+}
+
+.link-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.link-button-primary {
+  border-color: var(--color-brass);
+  color: var(--color-ink);
+}
