@@ -23,6 +23,10 @@ const MAX_EDGE = 900;
 /** The note's padding plus the header row, above the first line of writing. */
 const TEXT_TOP = 8 + 12 + 4;
 
+/** The two "A" glyphs on the writing-size buttons, in px. */
+const GLYPH_SMALL = 9;
+const GLYPH_LARGE = 14;
+
 export interface PostItProps {
   note: NoteEntity;
   zoom: number;
@@ -182,7 +186,7 @@ export const PostIt = memo(function PostIt({
             >
               <span
                 className="post-it-font-a"
-                style={{ fontSize: 9 }}
+                style={{ fontSize: GLYPH_SMALL }}
                 aria-hidden="true"
               >
                 A
@@ -202,7 +206,7 @@ export const PostIt = memo(function PostIt({
             >
               <span
                 className="post-it-font-a"
-                style={{ fontSize: 14 }}
+                style={{ fontSize: GLYPH_LARGE }}
                 aria-hidden="true"
               >
                 A

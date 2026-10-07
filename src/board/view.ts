@@ -1,4 +1,5 @@
 import type { AnchorRect } from "../anchors/dom";
+import { TACK_OFFSET_X, TACK_OFFSET_Y, TACK_RADIUS } from "../model/kinds";
 import type { Point } from "./yarn";
 
 export interface PinView {
@@ -22,11 +23,6 @@ export interface DrawableString {
   from: Point;
   to: Point;
 }
-
-/** Must match TACK_OFFSET_X/TACK_OFFSET_Y/TACK_RADIUS in kinds.ts. */
-const TACK_OFFSET_X = -6;
-const TACK_OFFSET_Y = -5;
-const TACK_RADIUS = 7;
 
 /** In the article's own space. */
 export function tackPoint(rect: AnchorRect): Point {

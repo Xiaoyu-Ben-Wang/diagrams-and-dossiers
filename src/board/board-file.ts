@@ -28,6 +28,7 @@ import {
   seededTilt,
 } from "../model/kinds";
 import type { BoardState } from "./store";
+import { DEFAULT_SLACK, LABEL_AT_MIDDLE, YARN_COLOR } from "./yarn";
 import type { Point } from "./yarn";
 
 export const BOARD_FILE_FORMAT = "diagrams-and-dossiers.board";
@@ -330,12 +331,15 @@ function parseString(value: unknown, where: string): StringLink {
     id: text(raw.id, `${where}.id`),
     from: text(raw.from, `${where}.from`),
     to: text(raw.to, `${where}.to`),
-    slack: Math.min(1, Math.max(0, optionalNumber(raw.slack) ?? 0.18)),
-    color: optionalText(raw.color, "#a3302b"),
+    slack: Math.min(1, Math.max(0, optionalNumber(raw.slack) ?? DEFAULT_SLACK)),
+    color: optionalText(raw.color, YARN_COLOR),
     style: oneOf<StringStyle>(raw.style, STRING_STYLES, "solid"),
     label:
       typeof raw.label === "string" && raw.label !== "" ? raw.label : undefined,
-    labelAt: Math.min(1, Math.max(0, optionalNumber(raw.labelAt) ?? 0.5)),
+    labelAt: Math.min(
+      1,
+      Math.max(0, optionalNumber(raw.labelAt) ?? LABEL_AT_MIDDLE),
+    ),
     visibility: oneOf<Visibility>(raw.visibility, VISIBILITIES, "shared"),
   };
 }

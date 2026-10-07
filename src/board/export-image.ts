@@ -13,6 +13,7 @@ import {
   type BoardSurface,
   type ThemeMode,
 } from "../theme/preferences";
+import { GRID_BASE_SPACING } from "./grid";
 import type { BoardState } from "./store";
 import type { Rect } from "./camera";
 
@@ -39,8 +40,8 @@ export interface ExportBackground {
   pattern: ExportPattern;
 }
 
-/** Board px between dots, matching the grid's own spacing closely enough. */
-export const EXPORT_DOT_TILE = 24;
+/** Board px between dots: the exported board is drawn on the grid's own pitch. */
+export const EXPORT_DOT_TILE = GRID_BASE_SPACING;
 
 /** Device pixels per board pixel. Independent of the screen's own DPR. */
 export const EXPORT_SCALES = [0.5, 1, 2, 3] as const;

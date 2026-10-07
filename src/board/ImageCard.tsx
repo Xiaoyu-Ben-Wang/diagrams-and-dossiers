@@ -4,9 +4,20 @@
 import { memo, useCallback } from "react";
 
 import { edgeClipPath, type EdgeStyle } from "./edges";
-import { IMAGE_PIN_INSET, POLAROID_INSETS } from "../model/kinds";
+import {
+  IMAGE_PIN_INSET,
+  POLAROID_INSETS,
+  POLAROID_TITLE_GAP,
+  TACK_RADIUS,
+} from "../model/kinds";
 import type { ImageFrame } from "../model/types";
 import { clampTilt, rotateAbout } from "./pivot";
+import {
+  HANDLE_DROP,
+  RESIZE_HANDLE_HALF,
+  ROTATE_HANDLE_HALF,
+  STEM_HALF,
+} from "./tuning";
 import { useResizeDrag } from "./useResizeDrag";
 import { useRotateDrag } from "./useRotateDrag";
 import { useBoardDrag } from "./useBoardDrag";
@@ -44,8 +55,6 @@ export interface ImageCardProps {
 // one, so a clone cannot be cleaned up by stripping a class.
 export const SHADOW =
   "drop-shadow(0 6px 9px rgb(0 0 0 / 0.55)) drop-shadow(0 1px 2px rgb(0 0 0 / 0.5))";
-
-const HANDLE_DROP = 16;
 
 export const MIN_EDGE = 48;
 export const MAX_EDGE = 1600;
@@ -189,8 +198,9 @@ export const ImageCard = memo(function ImageCard({
                 style={{
                   left: POLAROID_INSETS.side,
                   right: POLAROID_INSETS.side,
-                  top: IMAGE_PIN_INSET + 8,
-                  height: POLAROID_INSETS.top - IMAGE_PIN_INSET - 8,
+                  top: IMAGE_PIN_INSET + POLAROID_TITLE_GAP,
+                  height:
+                    POLAROID_INSETS.top - IMAGE_PIN_INSET - POLAROID_TITLE_GAP,
                 }}
               >
                 {title}
@@ -242,8 +252,8 @@ export const ImageCard = memo(function ImageCard({
         style={{
           left: "50%",
           top: IMAGE_PIN_INSET,
-          marginLeft: -7,
-          marginTop: -7,
+          marginLeft: -TACK_RADIUS,
+          marginTop: -TACK_RADIUS,
           touchAction: "none",
         }}
         onPointerDown={(event) => onStartYarn(event, id)}
@@ -258,7 +268,7 @@ export const ImageCard = memo(function ImageCard({
               left: "50%",
               top: "100%",
               height: HANDLE_DROP,
-              marginLeft: -1,
+              marginLeft: -STEM_HALF,
             }}
           />
           <button
@@ -266,7 +276,7 @@ export const ImageCard = memo(function ImageCard({
             data-testid="image-resize"
             aria-label="Drag to resize the picture"
             className="image-resize absolute"
-            style={{ right: -9, bottom: -9 }}
+            style={{ right: -RESIZE_HANDLE_HALF, bottom: -RESIZE_HANDLE_HALF }}
             {...resizeProps}
           >
             <svg
@@ -294,7 +304,7 @@ export const ImageCard = memo(function ImageCard({
               left: "50%",
               top: "100%",
               marginTop: HANDLE_DROP,
-              marginLeft: -11,
+              marginLeft: -ROTATE_HANDLE_HALF,
             }}
             {...rotateProps}
           >

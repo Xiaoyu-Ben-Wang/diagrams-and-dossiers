@@ -9,13 +9,22 @@ import { ChevronDown, ChevronRight, RotateCw, X } from "lucide-react";
 
 import type { ArticleEntity } from "../model/types";
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
+import { TACK_OFFSET_X, TACK_OFFSET_Y, TACK_RADIUS } from "../model/kinds";
 import { openAwayLinksInNewTab } from "../markdown/links";
 import { linkifyMentions, markMissingMentions } from "../markdown/mentions";
 import { FolderLabel } from "./FolderLabel";
 import { Tack } from "./entities/Tack";
 import { CLICK_SLOP, useBoardDrag } from "./useBoardDrag";
 import { clampTilt, rotateAbout } from "./pivot";
-import { foldedHeight, PAPER_MAX_WIDTH, PAPER_MIN_WIDTH } from "./tuning";
+import {
+  CLOSE_HANDLE_HALF,
+  foldedHeight,
+  HANDLE_DROP,
+  PAPER_MAX_WIDTH,
+  PAPER_MIN_WIDTH,
+  ROTATE_HANDLE_HALF,
+  STEM_HALF,
+} from "./tuning";
 import { useResizeDrag } from "./useResizeDrag";
 import { useRotateDrag } from "./useRotateDrag";
 import type { ArticleNodes } from "./useArticleViews";
@@ -52,9 +61,6 @@ export interface ArticleSheetProps {
   toBoard: (clientX: number, clientY: number) => Point;
   articleToBoard: (articleId: string, local: Point) => Point | null;
 }
-
-const TACK_DX = -6;
-const TACK_DY = -5;
 
 export const ArticleSheet = memo(function ArticleSheet({
   article,
@@ -239,8 +245,8 @@ export const ArticleSheet = memo(function ArticleSheet({
         style={{
           left: "50%",
           top: 0,
-          marginLeft: -7,
-          marginTop: -7,
+          marginLeft: -TACK_RADIUS,
+          marginTop: -TACK_RADIUS,
           touchAction: "none",
         }}
         onPointerDown={(event) => onStartYarn(event, article.id, pinAt)}
@@ -251,14 +257,24 @@ export const ArticleSheet = memo(function ArticleSheet({
           <span
             aria-hidden="true"
             className="image-rotate-stem absolute"
-            style={{ left: "50%", top: "100%", height: 16, marginLeft: -1 }}
+            style={{
+              left: "50%",
+              top: "100%",
+              height: HANDLE_DROP,
+              marginLeft: -STEM_HALF,
+            }}
           />
           <button
             type="button"
             data-testid="article-rotate"
             aria-label="Drag to swing the page about its pin"
             className="image-rotate absolute"
-            style={{ left: "50%", top: "100%", marginTop: 16, marginLeft: -11 }}
+            style={{
+              left: "50%",
+              top: "100%",
+              marginTop: HANDLE_DROP,
+              marginLeft: -ROTATE_HANDLE_HALF,
+            }}
             {...rotate}
           >
             <RotateCw size={22} strokeWidth={2.2} aria-hidden="true" />
@@ -337,7 +353,7 @@ export const ArticleSheet = memo(function ArticleSheet({
           data-testid="paper-close"
           aria-label="Roll the page up"
           className="sheet-close"
-          style={{ right: -10, top: -10 }}
+          style={{ right: -CLOSE_HANDLE_HALF, top: -CLOSE_HANDLE_HALF }}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={() => onToggleCollapsed(id)}
         >
@@ -392,8 +408,8 @@ export const ArticleSheet = memo(function ArticleSheet({
                 <Tack
                   key={`tack-${pin.id}`}
                   pin={pin}
-                  x={pin.rect.x + pin.rect.width + TACK_DX + pin.nudge.x}
-                  y={pin.rect.y + TACK_DY + pin.nudge.y}
+                  x={pin.rect.x + pin.rect.width + TACK_OFFSET_X + pin.nudge.x}
+                  y={pin.rect.y + TACK_OFFSET_Y + pin.nudge.y}
                   selected={selectedPins.has(pin.id)}
                   moving={movingPin === pin.id}
                   zoom={zoom}

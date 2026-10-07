@@ -65,6 +65,9 @@ export const EDGE_PICKER_GAP = 44;
 
 export const EDGE_PICKER_MARGIN = 6;
 
+/** What the polaroid swatch leaves as its white border, either side of the photo window. */
+const SWATCH_FRAME = 8;
+
 // Flips above when it would not fit below; clamping is a last resort, `max()` before `min()`.
 // Pure and exported because jsdom has no layout — the component only feeds it measured boxes.
 export function placeEdgePicker(
@@ -188,7 +191,10 @@ export function EdgePicker({
         <span
           aria-hidden="true"
           className="edge-swatch-face edge-swatch-polaroid"
-          style={{ width: SWATCH_WIDTH - 16, height: SWATCH_HEIGHT }}
+          style={{
+            width: SWATCH_WIDTH - SWATCH_FRAME * 2,
+            height: SWATCH_HEIGHT,
+          }}
         />
         <span className="edge-swatch-label">Polaroid</span>
       </button>

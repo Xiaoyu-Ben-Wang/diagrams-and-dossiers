@@ -5,6 +5,8 @@ import { domRangeToFlatRange } from "../anchors/dom";
 import { caretRangeFromPoint, caretRangeThroughPins } from "../anchors/caret";
 import { CAMPAIGN_EPOCH, FIRST_SESSION, SESSION_GAP_MS } from "../app/demo";
 import {
+  CAMERA_SAVE_DEBOUNCE_MS,
+  FIT_PADDING,
   IMAGE_CAPTION_SPACE,
   IMAGE_CAPTION_TOP,
   NUDGE_SLOP_PX,
@@ -92,6 +94,7 @@ import {
   distance,
   distanceToYarn,
   DEFAULT_SLACK,
+  LABEL_AT_MIDDLE,
   MAX_SAG_RATIO,
   MAX_SLACK,
   sagFor,
@@ -263,7 +266,10 @@ export function BoardScreen({
   // Debounced, so a pan writes once when it stops rather than once per frame.
   useEffect(() => {
     if (!viewId) return;
-    const handle = setTimeout(() => saveCameraView(viewId, camera), 400);
+    const handle = setTimeout(
+      () => saveCameraView(viewId, camera),
+      CAMERA_SAVE_DEBOUNCE_MS,
+    );
     return () => clearTimeout(handle);
   }, [viewId, camera]);
 
@@ -1056,7 +1062,7 @@ export function BoardScreen({
           slack: DEFAULT_SLACK,
           color: YARN_COLOR,
           style: "solid",
-          labelAt: 0.5,
+          labelAt: LABEL_AT_MIDDLE,
           visibility: "shared",
         });
       }
@@ -1152,7 +1158,7 @@ export function BoardScreen({
     const fitted = fitBounds(
       targets,
       { width: box.width, height: box.height },
-      56,
+      FIT_PADDING,
     );
     if (fitted) commitCamera(fitted);
   }, [entities, commitCamera]);

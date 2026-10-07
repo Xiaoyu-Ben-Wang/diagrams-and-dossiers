@@ -27,12 +27,14 @@ const MAX_SUGGESTIONS = 8;
 const MIN_WIDTH = 300;
 const DEFAULT_WIDTH = 380;
 const MAX_WIDTH = 900;
+/** The most of the window the panel may take, so a board is always left showing. */
+const WIDTH_SHARE = 0.92;
 
 /** The widest the panel may be dragged, against the viewport it has to fit in. */
 function widthCeiling(): number {
   return Math.max(
     MIN_WIDTH,
-    Math.min(MAX_WIDTH, Math.round(window.innerWidth * 0.92)),
+    Math.min(MAX_WIDTH, Math.round(window.innerWidth * WIDTH_SHARE)),
   );
 }
 
@@ -211,7 +213,7 @@ export const PaperEditor = memo(function PaperEditor({
       // Above the palette (28) and opaque, so it covers the pad rather than letting
       // it ghost through; below the menus (30), which must not be hidden while open.
       className="absolute inset-y-0 left-0 z-[29] flex flex-col overflow-hidden border-r border-parchment-edge/15 bg-cork-900 shadow-2xl"
-      style={{ width: `min(92vw, ${width}px)` }}
+      style={{ width: `min(${WIDTH_SHARE * 100}vw, ${width}px)` }}
       aria-label="Document editor"
       data-testid="paper-editor"
     >

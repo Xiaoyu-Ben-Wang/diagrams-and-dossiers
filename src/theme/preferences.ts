@@ -170,6 +170,9 @@ const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
   },
 };
 
+/** 0.42 rather than 0.5: a mid-grey board wants light dots, not dark ones. */
+const DOT_LUMA_THRESHOLD = 0.42;
+
 /** Derived from the surface, not the theme: a whiteboard is white in a dark room. */
 export function gridDotFor(surface: BoardSurface, theme: ThemeMode): string {
   const base = SURFACE_RAMPS[surface][theme].base;
@@ -178,9 +181,11 @@ export function gridDotFor(surface: BoardSurface, theme: ThemeMode): string {
   const g = (value >> 8) & 0xff;
   const b = value & 0xff;
 
-  // Rec. 709 luma, normalised. 0.42 not 0.5: a mid-grey board wants light dots.
+  // Rec. 709 luma, normalised.
   const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return luma > 0.42 ? "rgb(20 12 6 / 0.22)" : "rgb(255 240 214 / 0.16)";
+  return luma > DOT_LUMA_THRESHOLD
+    ? "rgb(20 12 6 / 0.22)"
+    : "rgb(255 240 214 / 0.16)";
 }
 
 export function surfaceColor(surface: BoardSurface, theme: ThemeMode): string {

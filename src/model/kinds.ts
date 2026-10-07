@@ -153,6 +153,9 @@ export const IMAGE_PIN_INSET = 10;
 /** A polaroid's border, in board px; the top clears the tack before the title line. */
 export const POLAROID_INSETS = { top: 40, side: 10, bottom: 58 } as const;
 
+/** Between the tack's inset and the title's first line, so the pin clears the words. */
+export const POLAROID_TITLE_GAP = 8;
+
 /** `marqueeSelectable` differs from `movable`: an in-text tack can move but not be band-selected. */
 export interface EntityCapabilities {
   marqueeSelectable: boolean;

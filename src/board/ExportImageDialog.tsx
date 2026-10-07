@@ -21,6 +21,7 @@ import {
   type ExportPattern,
 } from "./export-image";
 import { copyImageToClipboard, downloadBlob } from "./export-png";
+import { PREVIEW_DEBOUNCE_MS } from "./tuning";
 import {
   SURFACES,
   surfaceColor,
@@ -123,7 +124,7 @@ export function ExportImageDialog({
         previewUrl.current = URL.createObjectURL(result);
         setPreview(previewUrl.current);
       });
-    }, 180);
+    }, PREVIEW_DEBOUNCE_MS);
     return () => {
       live = false;
       clearTimeout(timer);

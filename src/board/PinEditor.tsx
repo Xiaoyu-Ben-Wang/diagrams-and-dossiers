@@ -17,6 +17,9 @@ export interface PinEditorProps {
 const WIDTH = 288;
 const ESTIMATED_HEIGHT = 240;
 
+/** Kept between the card and the edge of the window it is placed in, in screen px. */
+const VIEWPORT_MARGIN = 12;
+
 export function PinEditor({
   quote,
   status,
@@ -60,14 +63,21 @@ export function PinEditor({
     };
   }, [onClose]);
 
-  const left = Math.min(x, window.innerWidth - WIDTH - 12);
-  const top = Math.min(y, window.innerHeight - ESTIMATED_HEIGHT - 12);
+  const left = Math.min(x, window.innerWidth - WIDTH - VIEWPORT_MARGIN);
+  const top = Math.min(
+    y,
+    window.innerHeight - ESTIMATED_HEIGHT - VIEWPORT_MARGIN,
+  );
 
   return (
     <div
       ref={cardRef}
       className="fixed z-50 rounded-sm border border-parchment-edge/50 bg-parchment-100 shadow-2xl"
-      style={{ left: Math.max(12, left), top: Math.max(12, top), width: WIDTH }}
+      style={{
+        left: Math.max(VIEWPORT_MARGIN, left),
+        top: Math.max(VIEWPORT_MARGIN, top),
+        width: WIDTH,
+      }}
       role="dialog"
       aria-label="Edit pin"
       data-testid="pin-editor"

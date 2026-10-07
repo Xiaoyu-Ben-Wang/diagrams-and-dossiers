@@ -20,6 +20,12 @@ export interface AmbientProps {
 /** Dust drifts slowly enough that 30fps is indistinguishable from 60. */
 const FRAME_INTERVAL = 1 / 30;
 
+/** Past this the field is drawn at more pixels than the dust is worth. */
+const MAX_PIXEL_RATIO = 2;
+
+/** Fixed, so the field is the same board to board and across a re-render. */
+const MOTE_SEED = 20261004;
+
 export function Ambient({ camera, count = 26, className }: AmbientProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const vignetteRef = useRef<HTMLDivElement>(null);
@@ -55,7 +61,7 @@ export function Ambient({ camera, count = 26, className }: AmbientProps) {
 
       const width = parent.clientWidth;
       const height = parent.clientHeight;
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
 
       canvas.width = Math.max(1, Math.floor(width * ratio));
       canvas.height = Math.max(1, Math.floor(height * ratio));
@@ -66,7 +72,7 @@ export function Ambient({ camera, count = 26, className }: AmbientProps) {
       const bounds = { width, height };
       boundsRef.current = bounds;
       // Re-seeded on resize; the fixed seed keeps the field stable across renders.
-      motesRef.current = createMotes(count, bounds, 20261004);
+      motesRef.current = createMotes(count, bounds, MOTE_SEED);
     };
 
     const draw = (time: number): void => {
@@ -78,12 +84,7 @@ export function Ambient({ camera, count = 26, className }: AmbientProps) {
       context.globalCompositeOperation = "lighter";
 
       for (const mote of motes) {
-        const position = moteScreenPosition(
-          mote,
-          cameraRef.current,
-          bounds,
-          0.3,
-        );
+        const position = moteScreenPosition(mote, cameraRef.current, bounds);
         context.globalAlpha = moteOpacity(mote, time);
         context.beginPath();
         context.arc(position.x, position.y, mote.radius, 0, Math.PI * 2);

@@ -6,6 +6,9 @@ export interface Point {
 /** How much rope a string has, as a fraction of the gap it spans. */
 export const DEFAULT_SLACK = 0.18;
 
+/** Where a string's label sits by default: the middle of the rope. */
+export const LABEL_AT_MIDDLE = 0.5;
+
 export const MAX_SAG_RATIO = 0.55;
 
 export function distance(a: Point, b: Point): number {

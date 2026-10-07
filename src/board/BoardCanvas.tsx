@@ -17,6 +17,7 @@ import {
   type Rect,
   type Viewport,
 } from "./camera";
+import { CAMERA_SETTLE_MS, FIT_PADDING, ZOOM_STEP } from "./tuning";
 import { CLICK_SLOP, DRAG_THRESHOLD } from "./useBoardDrag";
 import type { Point } from "./yarn";
 
@@ -152,7 +153,10 @@ export function BoardCanvas({
   const markInteracting = useCallback(() => {
     setInteracting(true);
     window.clearTimeout(settleTimer.current);
-    settleTimer.current = window.setTimeout(() => setInteracting(false), 180);
+    settleTimer.current = window.setTimeout(
+      () => setInteracting(false),
+      CAMERA_SETTLE_MS,
+    );
   }, []);
 
   useEffect(() => () => window.clearTimeout(settleTimer.current), []);
@@ -254,7 +258,7 @@ export function BoardCanvas({
     const fitted = fitBounds(
       fitTo,
       { width: bounds.width, height: bounds.height },
-      56,
+      FIT_PADDING,
     );
     if (!fitted) return;
 
@@ -562,7 +566,9 @@ function ZoomReadout({
       <button
         type="button"
         onClick={() =>
-          onCameraChange(zoomAt(camera, { x: 0, y: 0 }, camera.zoom / 1.25))
+          onCameraChange(
+            zoomAt(camera, { x: 0, y: 0 }, camera.zoom / ZOOM_STEP),
+          )
         }
         className="px-1.5 text-board-ink-soft transition hover:text-board-ink"
         aria-label="Zoom out"
@@ -580,7 +586,9 @@ function ZoomReadout({
       <button
         type="button"
         onClick={() =>
-          onCameraChange(zoomAt(camera, { x: 0, y: 0 }, camera.zoom * 1.25))
+          onCameraChange(
+            zoomAt(camera, { x: 0, y: 0 }, camera.zoom * ZOOM_STEP),
+          )
         }
         className="px-1.5 text-board-ink-soft transition hover:text-board-ink"
         aria-label="Zoom in"

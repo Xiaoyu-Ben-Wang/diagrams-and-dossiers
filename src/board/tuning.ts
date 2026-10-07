@@ -15,11 +15,34 @@ export const STRING_HALO_PX = 11;
 /** The sag handle's footprint, in board px. */
 export const HANDLE_SIZE = 20;
 
+/** How far under an entity's bottom edge its rotate handle hangs, in board px. */
+export const HANDLE_DROP = 16;
+
+/** Halves of the sizes `index.css` gives the corner handles — the rotate disc (22px), the
+    resize grip (18px), the page's close button (20px) and the 2px stem — which is what the
+    code needs to centre each one on the corner it sits on. */
+export const ROTATE_HANDLE_HALF = 11;
+export const RESIZE_HANDLE_HALF = 9;
+export const CLOSE_HANDLE_HALF = 10;
+export const STEM_HALF = 1;
+
+/** Padding the board keeps round a zoom-to-fit, in screen px. */
+export const FIT_PADDING = 56;
+
+/** What one press of the zoom buttons multiplies the scale by. */
+export const ZOOM_STEP = 1.25;
+
+/** How long after a camera move stops before the world may be re-rasterised. */
+export const CAMERA_SETTLE_MS = 180;
+
+/** How long a camera sits still before it is written to the board's record. */
+export const CAMERA_SAVE_DEBOUNCE_MS = 400;
+
+/** How long the export dialog waits for the board to settle before rendering a preview. */
+export const PREVIEW_DEBOUNCE_MS = 180;
+
 /** Slack is rounded to this many steps per unit on every change. */
 export const SLACK_STEP = 1000;
-
-/** How far under a picture the border bar hangs, in screen px. */
-export const EDGE_PICKER_DROP = 44;
 
 /** Caption top and height below a selected picture, in screen px. */
 export const IMAGE_CAPTION_TOP = 48;

@@ -12,6 +12,8 @@
  * Everything else — the palette, the zoom readout, the tooltip, the context
  * menu — is outside the world and never cloned.
  */
+import { GRID_BASE_SPACING } from "./grid";
+
 export const EXPORT_HIDE_SELECTORS = [
   ".post-it-tools",
   ".post-it-resize",
@@ -173,7 +175,7 @@ export interface ExportSvgInput {
  */
 export function buildExportSvg(input: ExportSvgInput): string {
   const { content, width, height, background, pattern, variables, css } = input;
-  const tile = input.patternTile ?? 24;
+  const tile = input.patternTile ?? GRID_BASE_SPACING;
 
   // On the wrapper rather than as an SVG pattern: it is one CSS declaration,
   // and it tiles in the export's own coordinates so the same board always

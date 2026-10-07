@@ -1,5 +1,6 @@
 import { memo, useCallback } from "react";
 
+import { TACK_RADIUS } from "../model/kinds";
 import type { ImageEntity, NoteEntity } from "../model/types";
 import { ImageCard } from "./ImageCard";
 import { PostIt } from "./entities/PostIt";
@@ -42,8 +43,6 @@ export interface EntityLayerProps {
   styleMenuNoteId: string | null;
   onRemove: (id: string) => void;
 }
-
-const TACK_RADIUS = 7;
 
 export const EntityLayer = memo(function EntityLayer({
   freePins,
