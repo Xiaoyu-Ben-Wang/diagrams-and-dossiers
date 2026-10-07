@@ -44,6 +44,11 @@ export function LibraryScreen({
         className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6"
         data-testid="library"
       >
+        <p className="library-local" data-testid="library-local">
+          Everything is kept in this browser. Nothing is uploaded, and no
+          personal data leaves your machine.
+        </p>
+
         {library.degraded() ? (
           // Visible on purpose. Preferences fail quietly; a board is a session's work.
           <p

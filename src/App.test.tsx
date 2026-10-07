@@ -365,6 +365,14 @@ describe("App — the boards library", () => {
     return storage;
   };
 
+  it("says on the list that nothing leaves the machine", () => {
+    openLibrary();
+
+    expect(screen.getByTestId("library-local").textContent).toMatch(
+      /kept in this browser/i,
+    );
+  });
+
   it("lists the boards you have, most recently changed first", () => {
     openLibrary();
 

@@ -12,6 +12,17 @@
   font-size: 12px;
 }
 
+.library-local {
+  max-width: 46rem;
+  margin: 0 auto 14px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-brass) 45%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-brass) 12%, transparent);
+  color: var(--color-board-ink);
+  font-size: 12px;
+}
+
 .library-list {
   display: grid;
   gap: 10px;
