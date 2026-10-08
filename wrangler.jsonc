@@ -3,8 +3,9 @@
   "compatibility_date": "2026-10-07",
   "assets": {
     "directory": "./dist",
-    // Without this, a reload or a pasted /b/<id> 404s in production. _redirects
-    // is a Pages convention and is not read here.
+    // Without this, a reload or a pasted /b/<id> 404s in production. Workers
+    // does read _redirects, but rejects the "/* /index.html 200" rule as an
+    // infinite loop, so the fallback can only live here — do not re-add it.
     "not_found_handling": "single-page-application"
   }
 }
