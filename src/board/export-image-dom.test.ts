@@ -28,7 +28,10 @@ function world(): HTMLElement {
         <button class="image-resize"></button>
       </div>
       <div class="string-note"><span class="string-note-prompt">+ note</span></div>
-      <div class="string-note"><textarea>which of the two</textarea></div>
+      <div class="string-note">
+        <textarea>which of the two</textarea>
+        <div class="string-note-swatches"><button class="string-note-swatch"></button></div>
+      </div>
     </div>
   `;
   return element;

@@ -18,7 +18,7 @@ export function YarnSample({ style }: { style: YarnStyle }) {
 
   return (
     <svg
-      className="prefs-yarn-sample"
+      className="prefs-yarn-sample yarn-paint"
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       width={WIDTH}
       height={HEIGHT}

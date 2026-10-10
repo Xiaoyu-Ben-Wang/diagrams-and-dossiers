@@ -22,6 +22,7 @@ export interface DrawableString {
   slack: number;
   from: Point;
   to: Point;
+  color: string;
 }
 
 /** In the article's own space. */

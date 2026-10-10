@@ -2,7 +2,8 @@ import { memo } from "react";
 
 import { HANDLE_SIZE } from "../tuning";
 import { useBoardDrag } from "../useBoardDrag";
-import { pointOnYarn, YARN_COLOR, type Point } from "../yarn";
+import { pointOnYarn, type Point } from "../yarn";
+import { yarnColorCss } from "../yarn-color";
 
 // Only the vertical component of the drag is used: feeding sideways travel into the sag would
 // make the string lurch whenever the hand drifted.
@@ -11,6 +12,7 @@ export const YarnBead = memo(function YarnBead({
   from,
   to,
   slack,
+  color,
   zoom,
   onSag,
 }: {
@@ -18,6 +20,7 @@ export const YarnBead = memo(function YarnBead({
   from: Point;
   to: Point;
   slack: number;
+  color: string;
   zoom: number;
   onSag: (id: string, dy: number) => void;
 }) {
@@ -43,7 +46,7 @@ export const YarnBead = memo(function YarnBead({
         <path
           d="M 10 4.5 V 15.5 M 6.4 8.1 L 10 4.5 L 13.6 8.1 M 6.4 11.9 L 10 15.5 L 13.6 11.9"
           fill="none"
-          stroke={YARN_COLOR}
+          stroke={yarnColorCss(color)}
           strokeWidth={2.1}
           strokeLinecap="round"
           strokeLinejoin="round"

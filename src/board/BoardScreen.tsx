@@ -106,6 +106,7 @@ import {
   YARN_COLOR,
   type Point,
 } from "./yarn";
+import type { YarnColor } from "./yarn-color";
 import { maxStrandDeviation } from "./yarn-style";
 import {
   freshEdgeSeed,
@@ -1569,6 +1570,7 @@ export function BoardScreen({
             slack: string.slack,
             from: fromPoint,
             to: toPoint,
+            color: string.color,
           },
         ];
       }),
@@ -1640,6 +1642,15 @@ export function BoardScreen({
         const next = label || undefined;
         return next === link.label ? link : { ...link, label: next };
       });
+    },
+    [store],
+  );
+
+  const setStringColor = useCallback(
+    (id: string, color: YarnColor) => {
+      store.updateStrings([id], (link) =>
+        link.color === color ? link : { ...link, color },
+      );
     },
     [store],
   );
@@ -2246,6 +2257,7 @@ export function BoardScreen({
                     toBoard={worldPoint}
                     onSlide={slideStringNote}
                     onWrite={writeStringNote}
+                    onColor={setStringColor}
                   />
                 );
               })}
@@ -2257,6 +2269,7 @@ export function BoardScreen({
                   from={selectedString.from}
                   to={selectedString.to}
                   slack={selectedString.slack}
+                  color={selectedString.color}
                   zoom={camera.zoom}
                   onSag={dragStringSag}
                 />

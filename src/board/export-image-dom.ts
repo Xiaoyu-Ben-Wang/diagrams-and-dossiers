@@ -25,6 +25,7 @@ export const EXPORT_HIDE_SELECTORS = [
   ".sheet-close",
   ".paper-close",
   ".yarn-bead",
+  ".string-note-swatches",
   '[data-testid="yarn-halo"]',
   '[data-testid="live-yarn"]',
 ] as const;

@@ -10,7 +10,12 @@ import {
   SECOND_ARTICLE_ID,
   THIRD_ARTICLE_ID,
 } from "./app/demo";
-import { DEFAULT_SLACK, sagFor, YARN_COLOR } from "./board/yarn";
+import { DEFAULT_SLACK, sagFor } from "./board/yarn";
+import {
+  DEFAULT_YARN_COLOR,
+  YARN_BASE,
+  yarnColorCss,
+} from "./board/yarn-color";
 import { demoBoard, demoPages } from "./app/demo";
 import {
   parseBoardFile,
@@ -836,11 +841,14 @@ describe("App — placing pins", () => {
     // The shadow is a pass of its own, so the string is the pass in the yarn's colour.
     expect(
       [...strands].map((strand) => strand.getAttribute("stroke")),
-    ).toContain(YARN_COLOR);
+    ).toContain(YARN_BASE);
 
     const group = container.querySelector(
       '[data-testid="yarn"]',
     ) as SVGGElement;
+    expect(group.style.getPropertyValue("--yarn-base")).toBe(
+      yarnColorCss(DEFAULT_YARN_COLOR),
+    );
     expect(group.style.opacity).toBe("");
   });
 
@@ -920,6 +928,45 @@ describe("App — placing pins", () => {
       clientY: apexY - 60,
     });
     expect(yarnControlY(container)).toBeLessThan(sagged);
+  });
+
+  it("draws a string in the colour picked from its note", () => {
+    const { container } = renderBoard();
+    const canvas = screen.getByTestId("board-canvas");
+
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
+    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 });
+    const tacks = container.querySelectorAll("button[data-pin-id]");
+    fireEvent.pointerDown(tacks[0], {
+      button: 0,
+      pointerId: 21,
+      clientX: 300,
+      clientY: 200,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 21,
+      clientX: 520,
+      clientY: 260,
+    });
+    fireEvent.pointerUp(canvas, { pointerId: 21, clientX: 520, clientY: 260 });
+
+    const span = Math.hypot(520 - 300, 260 - 200);
+    clickBoard(canvas, 410, 230 + sagFor(span, DEFAULT_SLACK) / 2);
+
+    const painted = () =>
+      (
+        container.querySelector('[data-testid="yarn"]') as SVGGElement
+      ).style.getPropertyValue("--yarn-base");
+    expect(painted()).toBe(yarnColorCss(DEFAULT_YARN_COLOR));
+
+    fireEvent.click(screen.getByTestId("yarn-color-indigo"));
+    expect(painted()).toBe(yarnColorCss("indigo"));
+    expect(
+      screen.getByTestId("yarn-color-indigo").getAttribute("data-selected"),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("yarn-color-crimson").getAttribute("data-selected"),
+    ).toBe("false");
   });
 
   it("removes a selected string on Delete, and lets go of it on Escape", () => {

@@ -2,10 +2,19 @@
 // accumulate off the end of the rope and leave the note hanging beside the string.
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 
 import type { StringLink } from "../model/types";
 import { DRAG_THRESHOLD } from "./useBoardDrag";
 import { distanceToYarn, pointOnYarn, type Point } from "./yarn";
+import {
+  DEFAULT_YARN_COLOR,
+  YARN_COLORS,
+  isYarnColor,
+  yarnColorCss,
+  yarnColorLabel,
+  type YarnColor,
+} from "./yarn-color";
 
 export interface StringNoteProps {
   link: StringLink;
@@ -15,6 +24,7 @@ export interface StringNoteProps {
   toBoard: (clientX: number, clientY: number) => Point;
   onSlide: (id: string, t: number) => void;
   onWrite: (id: string, text: string) => void;
+  onColor: (id: string, color: YarnColor) => void;
 }
 
 export const StringNote = memo(function StringNote({
@@ -25,6 +35,7 @@ export const StringNote = memo(function StringNote({
   toBoard,
   onSlide,
   onWrite,
+  onColor,
 }: StringNoteProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(link.label ?? "");
@@ -103,11 +114,19 @@ export const StringNote = memo(function StringNote({
 
   if (!text && !selected && !editing) return null;
 
+  const color = isYarnColor(link.color) ? link.color : DEFAULT_YARN_COLOR;
+
   return (
     <div
       className="string-note"
       data-testid="string-note"
-      style={{ left: at.x, top: at.y }}
+      style={
+        {
+          left: at.x,
+          top: at.y,
+          "--yarn-base": yarnColorCss(link.color),
+        } as CSSProperties
+      }
       // The board must not also see a press meant for the note.
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -149,6 +168,31 @@ export const StringNote = memo(function StringNote({
             {text || "+ note"}
           </span>
         )}
+
+        {selected && !editing ? (
+          <div
+            className="string-note-swatches"
+            role="group"
+            aria-label="String colour"
+            // The card starts a slide or an edit on press; picking a colour is neither.
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            {YARN_COLORS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                data-testid={`yarn-color-${option}`}
+                aria-pressed={option === color}
+                data-selected={option === color}
+                aria-label={`${yarnColorLabel(option)} string`}
+                title={yarnColorLabel(option)}
+                className="string-note-swatch"
+                style={{ background: yarnColorCss(option) }}
+                onClick={() => onColor(link.id, option)}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <span aria-hidden="true" className="string-note-dot" />
