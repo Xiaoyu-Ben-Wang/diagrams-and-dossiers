@@ -1,0 +1,69 @@
+.delete-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(12 7 4 / 0.62);
+}
+
+.delete-dialog {
+  max-width: 26rem;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--color-parchment-edge);
+  border-top: 2px solid rgb(140 47 30 / 0.75);
+  border-radius: 2px 8px 3px 7px;
+  background-color: var(--color-parchment-100);
+  color: var(--color-ink);
+  box-shadow: 0 24px 48px -18px rgb(0 0 0 / 0.8);
+}
+
+.delete-dialog:focus-visible {
+  outline: 2px solid var(--color-wax);
+  outline-offset: 3px;
+}
+
+.delete-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.delete-hint {
+  margin: 0 0 14px;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.delete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.delete-button {
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 25%, transparent);
+  border-radius: 2px;
+  background: none;
+  color: var(--color-ink-soft);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 110ms ease,
+    color 110ms ease;
+}
+
+.delete-button:hover {
+  border-color: var(--color-brass);
+  color: var(--color-ink);
+}
+
+.delete-button-danger {
+  border-color: color-mix(in srgb, var(--color-wax) 60%, transparent);
+  color: var(--color-wax);
+}

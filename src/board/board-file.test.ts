@@ -73,6 +73,7 @@ function tinyBoard(): BoardState {
         label: "the claim",
         labelAt: 0.5,
         visibility: "shared",
+        version: 1,
       },
     ],
   };

@@ -12,7 +12,7 @@ import {
 import type { BoardEntity, StringLink } from "../model/types";
 import { COIN_RUBBING, MARSH_MAP, TORN_LEAF } from "./demo-pictures";
 // `?inline` keeps a data: URL: a board file rejects a plain asset path.
-import catSrc from "./cat.png?inline";
+import catSrc from "./cat.jpg?inline";
 
 export const INITIAL_MARKDOWN = `# The Drowned Bell
 
@@ -347,6 +347,7 @@ export function demoBoard(): BoardState {
       label: "Molgar paid him",
       labelAt: 0.25,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-missing",
@@ -357,6 +358,7 @@ export function demoBoard(): BoardState {
       style: "solid",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-ink",
@@ -367,6 +369,7 @@ export function demoBoard(): BoardState {
       style: "solid",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-fourth",
@@ -378,6 +381,7 @@ export function demoBoard(): BoardState {
       label: "a third hand",
       labelAt: 0.12,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-account",
@@ -389,6 +393,7 @@ export function demoBoard(): BoardState {
       label: "he never opened it",
       labelAt: 0.3,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-sundries",
@@ -400,6 +405,7 @@ export function demoBoard(): BoardState {
       label: "consigned to nobody",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-tide",
@@ -411,6 +417,7 @@ export function demoBoard(): BoardState {
       label: "which of the two?",
       labelAt: 0.16,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-burned",
@@ -422,6 +429,7 @@ export function demoBoard(): BoardState {
       label: "the third entry",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-map",
@@ -433,6 +441,7 @@ export function demoBoard(): BoardState {
       label: "all three docks",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-ebb",
@@ -443,6 +452,7 @@ export function demoBoard(): BoardState {
       style: "solid",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-leaf",
@@ -454,6 +464,7 @@ export function demoBoard(): BoardState {
       label: "the missing entries",
       labelAt: 0.2,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-ink-ledger",
@@ -464,6 +475,7 @@ export function demoBoard(): BoardState {
       style: "solid",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
   ];
 

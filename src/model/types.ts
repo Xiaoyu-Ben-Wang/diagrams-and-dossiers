@@ -162,6 +162,8 @@ export interface StringLink {
   /** Where along the string the tag hangs: 0 at `from`, 1 at `to`. */
   labelAt: number;
   visibility: Visibility;
+  /** The server version this is based on; the database owns it, as on an entity. */
+  version: number;
 }
 
 /** Schema only; no UI yet. */

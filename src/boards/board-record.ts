@@ -1,8 +1,11 @@
 // A board as the library holds it: the document plus the little that makes it a
-// thing you can name, order and point at. Shaped after the `boards` table, minus
-// everything that is a server's business — `slug`, `owner_id` and the three
-// capability tokens. Minting those locally would imply an access check that does
-// not exist here.
+// thing you can name, order and point at.
+//
+// A board created against the server is keyed by its `boards.id` — the `id` below
+// *is* that row's id, not a second local one — and carries the tokens that row
+// minted. A board created with no network behind it carries neither and stays on
+// this machine. Both shapes live here together, so a record written before any of
+// this existed still loads and still works.
 
 import type { BoardState } from "../board/store";
 
@@ -12,9 +15,31 @@ export interface BoardRecord {
   createdAt: number;
   updatedAt: number;
   board: BoardState;
+  /**
+   * True when this board lives on the server. Not the same question as "has a
+   * token": someone who arrived by a link holds none of their own, and their
+   * board still syncs.
+   */
+  remote?: true;
+  /** The edit link's token; half of a share link, and the door onto the board. */
+  editToken?: string;
+  /** Read-only, and not yet handed to anyone. */
+  viewToken?: string;
 }
 
 export const DEFAULT_BOARD_NAME = "Untitled board";
+
+/**
+ * A board somebody gave you a link to, rather than one you made.
+ *
+ * The join path redeems the token and strips it, so arriving by a link is exactly
+ * "on the server, holding no token of my own" — and the token is what a share link
+ * is made of, which is why only your own boards can offer one. A board that never
+ * reached the server is local, and local boards are yours.
+ */
+export function isSharedBoard(record: BoardRecord): boolean {
+  return record.remote === true && record.editToken === undefined;
+}
 
 /** `crypto.randomUUID` where it exists; a v4 from raw bytes where it does not. */
 export function newBoardId(): string {
@@ -70,13 +95,29 @@ export function parseBoardRecord(raw: unknown): BoardRecord | null {
   if (id === null || name === null) return null;
 
   const createdAt = finite(value.createdAt) ?? 0;
-  return {
+  const record: BoardRecord = {
     id,
     name,
     createdAt,
     updatedAt: finite(value.updatedAt) ?? createdAt,
     board: parseBoardState(value.board),
   };
+
+  if (value.remote === true) record.remote = true;
+
+  // Left off rather than set to undefined, so a record for a board that has never
+  // been published has the same shape it had before any of this existed.
+  const editToken = optionalId(value.editToken);
+  if (editToken !== undefined) record.editToken = editToken;
+  const viewToken = optionalId(value.viewToken);
+  if (viewToken !== undefined) record.viewToken = viewToken;
+
+  return record;
+}
+
+/** Undefined rather than null, so a local record keeps the fields absent. */
+function optionalId(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
 }
 
 function finite(value: unknown): number | null {

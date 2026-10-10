@@ -1,5 +1,7 @@
 import { Settings } from "lucide-react";
 
+import "./TopBar.css";
+
 export interface TopBarProps {
   /** Left out where there is no panel to open, which is everywhere but the board. */
   onOpenPreferences?: () => void;
@@ -16,8 +18,9 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-parchment-edge/15 bg-cork-900/55 px-4 py-2 backdrop-blur-sm lg:px-6">
-      <span className="text-sm font-semibold tracking-tight text-board-ink">
-        Diagrams &amp; Dossiers
+      <span className="brand">
+        <span className="brand-mark" aria-hidden="true" />
+        <span className="brand-name">Diagrams &amp; Dossiers</span>
       </span>
 
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">

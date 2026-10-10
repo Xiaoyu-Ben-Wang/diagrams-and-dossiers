@@ -19,8 +19,10 @@ import {
 } from "./board/board-file";
 import { memoryBoardStorage } from "./boards/board-storage";
 import { createBoardRecord, type BoardRecord } from "./boards/board-record";
+import { recordingSync } from "./realtime/transport";
 import { POST_IT_COLORS } from "./board/tuning";
-import { newArticle } from "./model/create";
+import { newAnchoredPin, newArticle } from "./model/create";
+import { createAnchor } from "./anchors/create";
 import type { BoardEntity } from "./model/types";
 import { getPreferences, resetPreferences } from "./theme/preferences";
 
@@ -352,7 +354,10 @@ describe("App — the demo board on its own address", () => {
 
 describe("App — the boards library", () => {
   const board = { entities: [], strings: [] };
-  const ledger = { ...createBoardRecord("Ledger", board, 1) };
+  const ledger = {
+    ...createBoardRecord("Ledger", board, 1),
+    editToken: "ledger-edit-token",
+  };
   const manifest = { ...createBoardRecord("Manifest", board, 2) };
 
   const openLibrary = (
@@ -496,7 +501,7 @@ describe("App — the boards library", () => {
     fireEvent.click(screen.getByTestId(`share-${ledger.id}`));
 
     expect(writeText).toHaveBeenCalledWith(
-      expect.stringContaining(`/b/${ledger.id}`),
+      expect.stringContaining(`/j/${ledger.editToken}`),
     );
     Reflect.deleteProperty(navigator, "clipboard");
   });
@@ -507,17 +512,30 @@ describe("App — the boards library", () => {
     fireEvent.click(screen.getByTestId(`share-${ledger.id}`));
 
     const field = await screen.findByTestId(`link-${ledger.id}`);
-    expect((field as HTMLInputElement).value).toContain(`/b/${ledger.id}`);
+    expect((field as HTMLInputElement).value).toContain(
+      `/j/${ledger.editToken}`,
+    );
+  });
+
+  it("says so rather than making up a link for a board with no token", async () => {
+    openLibrary([manifest]);
+
+    fireEvent.click(screen.getByTestId(`share-${manifest.id}`));
+
+    expect(await screen.findByTestId(`local-${manifest.id}`)).toBeTruthy();
   });
 
   it("starts empty, and offers the demo board rather than saving it for you", async () => {
-    openLibrary([]);
+    const storage = openLibrary([]);
 
     expect(screen.getByTestId("library-empty")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("open-demo"));
 
     expect(await screen.findByTestId("board-canvas")).toBeTruthy();
+    // The sample board is its own address, not a copy filed into the library.
+    expect(window.location.pathname).toBe("/demo");
+    expect(await storage.list()).toHaveLength(0);
   });
 
   it("makes a new board and opens it", async () => {
@@ -569,6 +587,165 @@ describe("App — the boards library", () => {
       "A Loaded Case",
       "Ledger",
     ]);
+  });
+
+  it("says so rather than forgetting a board it could not delete", async () => {
+    // On the server, and made here — so deleting it means deleting the row, and
+    // this test has no server. The row must survive and the reason must be visible.
+    const mine = {
+      ...createBoardRecord("Ledger", board, 2),
+      remote: true as const,
+      editToken: "ledger-edit-token",
+    };
+    const storage = openLibrary([mine]);
+
+    fireEvent.click(screen.getByTestId(`delete-${mine.id}`));
+    fireEvent.click(screen.getByTestId(`confirm-delete-${mine.id}`));
+
+    expect(await screen.findByTestId(`delete-failed-${mine.id}`)).toBeTruthy();
+    expect(screen.getByTestId(`open-${mine.id}`)).toBeTruthy();
+    expect(await storage.get(mine.id)).not.toBeNull();
+  });
+
+  it("keeps somebody else's board in its own group, with no link to give", async () => {
+    const mine = {
+      ...createBoardRecord("Ledger", board, 2),
+      remote: true as const,
+      editToken: "ledger-edit-token",
+    };
+    // What the join path writes: on the server, and holding no token, because the
+    // link that let you in was redeemed and stripped on the way.
+    const theirs = {
+      ...createBoardRecord("Aria's Campaign", board, 3),
+      remote: true as const,
+    };
+    // Never reached the server, so nobody shared it — it is simply yours.
+    const local = createBoardRecord("Saltmarsh Notes", board, 1);
+
+    openLibrary([mine, theirs, local]);
+
+    expect(
+      screen.getByRole("heading", { name: "Your boards" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Shared with you" })).toBeTruthy();
+
+    const yours = screen.getByRole("list", { name: "Your boards" });
+    const shared = screen.getByRole("list", { name: "Shared with you" });
+
+    expect(within(yours).getByTestId(`open-${mine.id}`)).toBeTruthy();
+    expect(within(yours).getByTestId(`open-${local.id}`)).toBeTruthy();
+    expect(within(shared).getByTestId(`open-${theirs.id}`)).toBeTruthy();
+
+    // The token is what a share link is made of, and a joiner holds none.
+    expect(within(yours).getByTestId(`share-${mine.id}`)).toBeTruthy();
+    expect(within(shared).queryByTestId(`share-${theirs.id}`)).toBeNull();
+    expect(screen.getByTestId(`from-link-${theirs.id}`)).toBeTruthy();
+
+    // Removing it forgets it here; the board itself belongs to somebody else.
+    fireEvent.click(within(shared).getByTestId(`delete-${theirs.id}`));
+    expect(screen.getByText("Remove from this list?")).toBeTruthy();
+    fireEvent.click(screen.getByTestId(`confirm-delete-${theirs.id}`));
+
+    expect(await screen.findByTestId(`open-${mine.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`open-${theirs.id}`)).toBeNull();
+    // Nothing left to put under it, so the heading goes with it.
+    expect(
+      screen.queryByRole("heading", { name: "Shared with you" }),
+    ).toBeNull();
+  });
+});
+
+describe("App — deleting a page", () => {
+  /** A page carries its pins: this one has one anchored to its first words. */
+  const openWithPinOnTheFirstPage = () => {
+    const page = demoPages()[0];
+    return render(
+      <App
+        seed={{
+          entities: [
+            ...demoPages(),
+            newAnchoredPin(page.id, createAnchor("The Drowned Bell", 0, 3), {
+              id: "pin-on-the-page",
+            }),
+          ],
+          strings: [],
+        }}
+      />,
+    ).container;
+  };
+
+  const selectPage = (container: HTMLElement): void =>
+    tap(within(sheet(container, FIRST_PAGE)).getByTestId("paper-tab"));
+
+  it("takes the pins on a page, after saying how many", () => {
+    const container = openWithPinOnTheFirstPage();
+    selectPage(container);
+
+    fireEvent.click(
+      within(sheet(container, FIRST_PAGE)).getByTestId("article-delete"),
+    );
+
+    expect(screen.getByTestId("entity-delete-ask")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The pin on it goes too, and the note written on that pin.",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("entity-delete-confirm"));
+
+    expect(container.querySelector(`[data-article-id="${FIRST_PAGE}"]`)).toBeNull();
+    expect(container.querySelector("footer")!.textContent).toContain("0 pins");
+  });
+
+  it("asks the same question from the editor, and Cancel keeps everything", () => {
+    const container = openWithPinOnTheFirstPage();
+    selectPage(container);
+
+    fireEvent.click(screen.getByTestId("paper-editor-delete"));
+    expect(screen.getByTestId("entity-delete-ask")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("entity-delete-cancel"));
+
+    expect(screen.queryByTestId("entity-delete-ask")).toBeNull();
+    expect(sheet(container, FIRST_PAGE)).toBeTruthy();
+    expect(container.querySelector("footer")!.textContent).toContain("1 pin");
+  });
+
+  it("deletes a page with nothing on it without a word", () => {
+    const { container } = renderBoard();
+    selectPage(container);
+
+    fireEvent.click(
+      within(sheet(container, FIRST_PAGE)).getByTestId("article-delete"),
+    );
+
+    // Nothing to lose, so nothing to ask.
+    expect(screen.queryByTestId("entity-delete-ask")).toBeNull();
+    expect(container.querySelector(`[data-article-id="${FIRST_PAGE}"]`)).toBeNull();
+  });
+
+  it("deletes a selected page with the Delete key, under the same rule", () => {
+    const container = openWithPinOnTheFirstPage();
+    selectPage(container);
+
+    fireEvent.keyDown(document, { key: "Delete" });
+
+    // The page has a pin on it, so the key asks the same question the buttons do.
+    expect(screen.getByTestId("entity-delete-ask")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("entity-delete-confirm"));
+
+    expect(container.querySelector(`[data-article-id="${FIRST_PAGE}"]`)).toBeNull();
+    expect(container.querySelector("footer")!.textContent).toContain("0 pins");
+  });
+
+  it("offers the same delete on the right-click menu", () => {
+    const container = openWithPinOnTheFirstPage();
+
+    rightClick(sheet(container, FIRST_PAGE));
+
+    fireEvent.click(screen.getByText("Delete page"));
+    expect(screen.getByTestId("entity-delete-ask")).toBeTruthy();
   });
 });
 
@@ -2680,5 +2857,55 @@ describe("App — preferences", () => {
 
     expect(screen.queryByTestId("paper-editor")).toBeNull();
     expect(container.querySelectorAll("[data-article-id]").length).toBe(0);
+  });
+});
+
+// The store takes its transport when it is built, so a board that turns out to be
+// on the server must not be opened before that transport exists. It was, once:
+// the gate waited to be *told* the transport was pending, React batched that away,
+// and every board — shared or not — silently dropped its edits. Nothing caught it
+// because nothing could see which transport the store had actually been given.
+vi.mock("./realtime/supabase-sync", () => ({
+  supabaseSync: () => recordingSync(),
+}));
+vi.mock("./supabase/session", () => ({
+  ensureSession: async () => ({ userId: "11111111-1111-4111-8111-111111111111" }),
+}));
+// There is no server here. Saying so once beats every board-creation test logging
+// a network failure that is the correct, expected fallback.
+vi.mock("./boards/remote", () => ({
+  createRemoteBoard: async () => null,
+  redeemCreatorInvite: async () => false,
+  joinBoard: async () => null,
+  boardName: async () => null,
+  // There is no server here, so a board that lives on one cannot be deleted —
+  // which is the case the library is supposed to be honest about.
+  deleteRemoteBoard: async () => false,
+}));
+
+describe("App — a board with a server behind it", () => {
+  const empty = { entities: [], strings: [] };
+  const local = createBoardRecord("On this device", empty, 1);
+  const remote = { ...createBoardRecord("On the server", empty, 2), remote: true as const };
+
+  const open = (record: BoardRecord) => {
+    window.history.replaceState(null, "", `/b/${record.id}`);
+    render(<App storage={memoryBoardStorage([record])} />);
+  };
+
+  it("reports the connection once it has one", async () => {
+    open(remote);
+
+    const pill = await screen.findByTestId("connection-status");
+    // `recordingSync` reports itself live; `localSync` would say offline, which is
+    // exactly the state the bug left every board in.
+    expect(pill.getAttribute("data-status")).toBe("live");
+  });
+
+  it("says nothing about a connection it does not have", async () => {
+    open(local);
+
+    await screen.findByTestId("board-canvas");
+    expect(screen.queryByTestId("connection-status")).toBeNull();
   });
 });

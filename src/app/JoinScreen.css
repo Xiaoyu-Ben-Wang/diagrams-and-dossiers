@@ -1,0 +1,23 @@
+.entry-submit {
+  padding: 5px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-brass) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-brass) 10%, transparent);
+  color: var(--color-board-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 110ms ease,
+    border-color 110ms ease;
+}
+
+.entry-submit:hover:not(:disabled) {
+  border-color: var(--color-brass);
+  background: color-mix(in srgb, var(--color-brass) 20%, transparent);
+}
+
+.entry-submit:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}

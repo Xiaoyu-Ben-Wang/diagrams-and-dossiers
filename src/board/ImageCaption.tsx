@@ -4,25 +4,32 @@ import { IMAGE_CAPTION_HEIGHT } from "./tuning";
 export const CAPTION_WIDTH = 240;
 
 export interface ImageCaptionProps {
+  /** The picture this is the caption of, so the board knows what a keypress in it is editing. */
+  entityId: string;
   title: string;
   description: string;
   x: number;
   y: number;
   onTitle: (next: string) => void;
   onDescription: (next: string) => void;
+  /** Somebody else has it; still readable, just not writable. */
+  locked?: boolean;
 }
 
 export function ImageCaption({
+  entityId,
   title,
   description,
   x,
   y,
   onTitle,
   onDescription,
+  locked = false,
 }: ImageCaptionProps) {
   return (
     <div
       className="image-caption absolute"
+      data-entity-id={entityId}
       data-testid="image-caption"
       style={{
         left: x,
@@ -39,13 +46,15 @@ export function ImageCaption({
         onCommit={onTitle}
         placeholder="Untitled picture"
         label="Picture title"
+        locked={locked}
       />
       <textarea
         className="image-caption-body"
         value={description}
+        readOnly={locked}
         onChange={(event) => onDescription(event.target.value)}
-        placeholder="What is this a picture of?"
-        aria-label="Picture description"
+        placeholder={locked ? "" : "What is this a picture of?"}
+        aria-label={locked ? "Picture description (locked)" : "Picture description"}
         spellCheck={false}
       />
     </div>

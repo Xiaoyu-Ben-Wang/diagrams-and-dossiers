@@ -5,7 +5,7 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
-import { ChevronDown, ChevronRight, RotateCw, X } from "lucide-react";
+import { ChevronDown, ChevronRight, RotateCw, Trash2 } from "lucide-react";
 
 import type { ArticleEntity } from "../model/types";
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
@@ -56,6 +56,8 @@ export interface ArticleSheetProps {
   onRotate: (id: string, degrees: number) => void;
   onResize: (id: string, width: number) => void;
   onToggleCollapsed: (id: string) => void;
+  /** Takes the page, the pins anchored to it, and the notes on those pins. */
+  onDelete: (id: string) => void;
   onTapTab: (id: string) => void;
   onMove: (id: string, delta: Point) => void;
   toBoard: (clientX: number, clientY: number) => Point;
@@ -81,6 +83,7 @@ export const ArticleSheet = memo(function ArticleSheet({
   onRotate,
   onResize,
   onToggleCollapsed,
+  onDelete,
   onTapTab,
   onMove,
   toBoard,
@@ -350,14 +353,15 @@ export const ArticleSheet = memo(function ArticleSheet({
       {selected && !collapsed ? (
         <button
           type="button"
-          data-testid="paper-close"
-          aria-label="Roll the page up"
+          data-testid="article-delete"
+          aria-label="Delete this page"
+          title="Delete this page"
           className="sheet-close"
           style={{ right: -CLOSE_HANDLE_HALF, top: -CLOSE_HANDLE_HALF }}
           onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => onToggleCollapsed(id)}
+          onClick={() => onDelete(id)}
         >
-          <X size={13} strokeWidth={2.5} aria-hidden="true" />
+          <Trash2 size={13} strokeWidth={2.5} aria-hidden="true" />
         </button>
       ) : null}
 

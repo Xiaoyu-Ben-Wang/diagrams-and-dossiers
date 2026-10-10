@@ -9,6 +9,13 @@ export type Route =
   | { name: "library" }
   /** The sample board, rendered from the seed and belonging to no library. */
   | { name: "demo" }
+  /**
+   * A board link, carrying an edit token. Redeemed once and then replaced — §1's
+   * token is a door, not a credential, so it does not stay in the address bar.
+   */
+  | { name: "join"; token: string }
+  /** A creator invite, which is the one thing that grants the right to make a board. */
+  | { name: "invite"; token: string }
   | { name: "notFound"; path: string };
 
 /** pushState fires no popstate; this event is how the app hears its own navigation. */
@@ -23,6 +30,12 @@ export function parseRoute(pathname: string): Route {
 
   const board = /^\/b\/([^/]+)$/.exec(path);
   if (board) return { name: "board", id: decodeURIComponent(board[1]) };
+
+  const join = /^\/j\/([^/]+)$/.exec(path);
+  if (join) return { name: "join", token: decodeURIComponent(join[1]) };
+
+  const invite = /^\/c\/([^/]+)$/.exec(path);
+  if (invite) return { name: "invite", token: decodeURIComponent(invite[1]) };
 
   return { name: "notFound", path };
 }
@@ -57,6 +70,10 @@ export function routeToPath(route: Route): string {
       return "/boards";
     case "demo":
       return "/demo";
+    case "join":
+      return `/j/${encodeURIComponent(route.token)}`;
+    case "invite":
+      return `/c/${encodeURIComponent(route.token)}`;
     case "notFound":
       return route.path;
   }

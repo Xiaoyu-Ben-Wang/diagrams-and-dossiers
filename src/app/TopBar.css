@@ -1,0 +1,24 @@
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-board-ink);
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  background: currentColor;
+  /* Alpha, not luminance: the mark is dark ink, and a luminance mask would hide it. */
+  -webkit-mask: url("/favicon.svg") center / contain no-repeat;
+  mask: url("/favicon.svg") center / contain no-repeat;
+  mask-mode: alpha;
+}
+
+.brand-name {
+  font-family: "Special Elite", "Courier New", monospace;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}

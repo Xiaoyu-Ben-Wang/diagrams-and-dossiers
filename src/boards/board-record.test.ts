@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_BOARD_NAME,
   createBoardRecord,
+  isSharedBoard,
   newBoardId,
   parseBoardRecord,
   uniqueBoardName,
@@ -78,11 +79,28 @@ describe("parseBoardRecord", () => {
       name: "Ledger",
       board: emptyBoard,
       slug: "ledger",
-      viewToken: "secret",
+      owner_id: "someone",
+      dmToken: "secret",
     });
 
     expect(parsed).not.toHaveProperty("slug");
-    expect(parsed).not.toHaveProperty("viewToken");
+    expect(parsed).not.toHaveProperty("owner_id");
+    expect(parsed).not.toHaveProperty("dmToken");
+  });
+
+  it("keeps the tokens that make a share link, and leaves them off when absent", () => {
+    const published = parseBoardRecord({
+      id: "abc",
+      name: "Ledger",
+      board: emptyBoard,
+      editToken: "edit-me",
+      viewToken: "view-me",
+    });
+    expect(published).toMatchObject({ editToken: "edit-me", viewToken: "view-me" });
+
+    const local = parseBoardRecord({ id: "abc", name: "Ledger", board: emptyBoard });
+    expect(local).not.toHaveProperty("editToken");
+    expect(local).not.toHaveProperty("viewToken");
   });
 });
 
@@ -112,6 +130,27 @@ describe("createBoardRecord", () => {
 describe("newBoardId", () => {
   it("is a uuid where the platform can make one", () => {
     expect(newBoardId()).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});
+
+describe("isSharedBoard", () => {
+  const record = createBoardRecord("Manifest", emptyBoard, 1);
+
+  it("is not a board that never reached the server", () => {
+    // Local boards are yours. They simply have no link to give anyone yet.
+    expect(isSharedBoard(record)).toBe(false);
+  });
+
+  it("is not a board you made, which is the one holding the token", () => {
+    expect(
+      isSharedBoard({ ...record, remote: true, editToken: "an-edit-token" }),
+    ).toBe(false);
+  });
+
+  it("is a board you arrived at through somebody else's link", () => {
+    // The join path redeems the token and strips it, so this is what a joiner's
+    // record looks like: on the server, holding nothing of their own.
+    expect(isSharedBoard({ ...record, remote: true })).toBe(true);
   });
 });
 

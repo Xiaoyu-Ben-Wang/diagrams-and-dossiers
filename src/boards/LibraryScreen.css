@@ -12,6 +12,22 @@
   font-size: 12px;
 }
 
+/* The headings that split your own boards from the ones somebody gave you a link
+   to, in the small-caps the rest of the board uses for a label. */
+.library-group+.library-group {
+  margin-top: 24px;
+}
+
+.library-group-title {
+  max-width: 46rem;
+  margin: 0 auto .25rem;
+  color: color-mix(in srgb, var(--color-brass) 80%, var(--color-ink));
+  font-family: "Special Elite", "Courier New", monospace;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
 .library-list {
   display: grid;
   gap: 10px;
@@ -109,6 +125,28 @@
   color: var(--color-ink);
 }
 
+.library-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-brass) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-brass) 10%, transparent);
+  color: var(--color-board-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 110ms ease,
+    border-color 110ms ease;
+}
+
+.library-new:hover {
+  border-color: var(--color-brass);
+  background: color-mix(in srgb, var(--color-brass) 20%, transparent);
+}
+
 .library-button-danger {
   border-color: color-mix(in srgb, var(--color-wax) 60%, transparent);
   color: var(--color-wax);
@@ -134,6 +172,8 @@
 }
 
 .library-link-hint {
+  /* Its own row under the board, not the cell beside the buttons. */
+    grid-column: 1 / -1;
   color: color-mix(in srgb, var(--color-ink) 55%, transparent);
   font-size: 12px;
 }

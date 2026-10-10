@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { createAnchor } from "../anchors/create";
 import { domRangeToFlatRange } from "../anchors/dom";
@@ -15,6 +22,12 @@ import {
   STRING_HIT_PX,
 } from "./tuning";
 import { DRAG_THRESHOLD } from "./useBoardDrag";
+
+/** 20Hz. A layout read per pointermove would be one per frame for no gain. */
+const CURSOR_SEND_MS = 50;
+
+/** Stable across renders, so `useSyncExternalStore` can compare it. */
+const NOTHING_EDITING: ReadonlyMap<string, Peer> = new Map();
 import { CAMERA_FLIGHT_MS, prefersReducedMotion } from "./motion";
 import {
   MENTION_ATTRIBUTE,
@@ -41,10 +54,17 @@ import { BoardPalette } from "./Palette";
 import { StringNote } from "./StringNote";
 import type { DrawableString, PinView } from "./view";
 import { TopBar } from "../app/TopBar";
-import { can, LOCAL_VIEWER } from "../access/permissions";
+import { can, LOCAL_VIEWER, type Viewer } from "../access/permissions";
+import type { BoardSync } from "../realtime/transport";
+import { boardPresence, type BoardPresence, type Peer } from "../realtime/presence";
+import { defaultColor } from "../identity/creature-names";
+import { loadIdentity, nameFor } from "../identity/identity";
+import { CursorLayer } from "./CursorLayer";
+import { PresenceBar } from "./PresenceBar";
 import { BoardCanvas, type BoardContextTarget } from "./BoardCanvas";
 import {
   createBoardStore,
+  TYPING_QUIET_MS,
   useBoard,
   type BoardState,
   type BoardStore,
@@ -62,6 +82,7 @@ import { boardNameFrom } from "../boards/board-record";
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
 import { ImageLinkDialog } from "./ImageLinkDialog";
 import { ImportChoice } from "./ImportChoice";
+import { ConfirmDelete } from "./ConfirmDelete";
 import { attachAutosave } from "../boards/autosave";
 import { loadCameraView, saveCameraView } from "../boards/last-camera";
 import { isPatternEdge, type EdgeStyle } from "./edges";
@@ -148,6 +169,14 @@ function pictureName(fileName: string): string {
 
 const NO_PINS: readonly PinView[] = [];
 
+/** What a thing is called on the board, for the menu that deletes it. */
+const ENTITY_NOUN: Record<BoardEntity["kind"], string> = {
+  pin: "pin",
+  note: "post-it",
+  article: "page",
+  image: "picture",
+};
+
 function uniqueName(desired: string, entities: readonly BoardEntity[]): string {
   const taken = new Set(
     entities
@@ -197,6 +226,13 @@ export interface BoardScreenProps {
   viewId?: string;
   /** Adds an imported board to the library, rather than into this one. */
   onAddBoard?: (name: string, board: BoardState) => void | Promise<void>;
+  /**
+   * How this board reaches anyone else. Absent means it does not: the demo, a
+   * seed, a board that never got to the server.
+   */
+  sync?: BoardSync;
+  /** Who is looking. The server's RLS is the authority; this mirrors it for the UI. */
+  viewer?: Viewer;
 }
 
 export function BoardScreen({
@@ -207,24 +243,168 @@ export function BoardScreen({
   onRename,
   viewId,
   onAddBoard,
+  sync,
+  viewer,
 }: BoardScreenProps) {
   const preferences = usePreferences();
 
   const storeRef = useRef<BoardStore | null>(null);
   if (!storeRef.current) {
     storeRef.current = createBoardStore({
-      viewer: LOCAL_VIEWER,
+      sync,
+      viewer: viewer ?? LOCAL_VIEWER,
       initial: board,
     });
   }
   const store = storeRef.current;
   const { entities, strings } = useBoard(store);
+  // `status()` is a plain function on the store, so the same subscription that
+  // carries board changes carries this. Read unconditionally — a hook cannot be
+  // behind a condition — and shown only when there is a transport to report on.
+  const syncStatus = useSyncExternalStore(
+    store.subscribe,
+    store.status,
+    store.status,
+  );
+
+  // Who else is here. Only with a transport and a user behind it: a board on this
+  // device alone has nobody to tell and nobody to hear.
+  /**
+   * Who else is here. Held in state rather than a ref so the layers that draw
+   * other people can subscribe to it themselves — a cursor arriving twenty times
+   * a second must not re-render the board underneath it.
+   */
+  const [presence, setPresence] = useState<BoardPresence | null>(null);
+  const self = useMemo(() => {
+    const userId = viewer?.userId;
+    if (!sync || !userId) return undefined;
+    const identity = loadIdentity();
+    return { name: nameFor(identity, userId), color: defaultColor(userId) };
+  }, [sync, viewer?.userId]);
+  /**
+   * The same object, for the handlers that run on every frame of a drag. They are
+   * built once and cannot depend on the state without being rebuilt, and a
+   * callback that captured the first render's `null` would silently announce
+   * nothing at all.
+   */
+  const presenceRef = useRef<BoardPresence | null>(null);
+  presenceRef.current = presence;
+
+  /**
+   * A thing is held by whoever is typing in one of its fields — any of them. The
+   * claim is made from where the focus actually lands rather than by each editor
+   * asking, so a field added later is covered without its author having to know
+   * this exists, and a locked one is never taken by somebody only looking at it:
+   * a read-only field still takes focus, and without the refusal below, clicking
+   * one would throw out the person already writing in it.
+   */
+  const heldRef = useRef<string | null>(null);
+  const claimEditing = useCallback((id: string | null) => {
+    const live = presenceRef.current;
+    if (!live || heldRef.current === id) return;
+    if (id !== null && live.editors().has(id)) return;
+    heldRef.current = id;
+    live.editing(id);
+  }, []);
+
+  useEffect(() => {
+    const claimed = (target: EventTarget | null): Element | null => {
+      if (!(target instanceof Element)) return null;
+      if (!target.matches("textarea, input, [contenteditable='true']")) return null;
+      return target.closest("[data-entity-id]");
+    };
+
+    const onFocusIn = (event: FocusEvent): void => {
+      const id = claimed(event.target)?.getAttribute("data-entity-id");
+      if (id) claimEditing(id);
+    };
+
+    const onFocusOut = (event: FocusEvent): void => {
+      const from = claimed(event.target);
+      if (!from || from.getAttribute("data-entity-id") !== heldRef.current) return;
+      // Moving between two fields of the same thing has not let go of it.
+      if (event.relatedTarget instanceof Node && from.contains(event.relatedTarget)) {
+        return;
+      }
+      claimEditing(null);
+    };
+
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+    };
+  }, [claimEditing]);
+
+  // Who is holding what, for the editors that are chrome rather than entities on
+  // the cork. Cheap to subscribe to here: this changes when somebody opens or
+  // closes a field, not when they move.
+  const editingBy = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) => presence?.subscribe(listener) ?? (() => {}),
+      [presence],
+    ),
+    useCallback(() => presence?.editors() ?? NOTHING_EDITING, [presence]),
+    useCallback(() => NOTHING_EDITING, []),
+  );
+
+  useEffect(() => {
+    const userId = viewer?.userId;
+    if (!sync || !userId || !viewId) {
+      setPresence(null);
+      return;
+    }
+    const opened = boardPresence({ boardId: viewId, userId });
+    setPresence(opened);
+
+    // Derived from the id, so everyone works out the same name and colour for the
+    // same person without anyone having to agree on it.
+    const identity = loadIdentity();
+    opened.identify(nameFor(identity, userId), defaultColor(userId));
+
+    return () => {
+      opened.dispose();
+      setPresence(null);
+    };
+  }, [sync, viewer?.userId, viewId]);
+
+  // Broadcast in board coordinates: everyone has their own camera, so a screen
+  // point would land in the wrong place for anyone who has panned.
+  useEffect(() => {
+    let last = 0;
+    const onMove = (event: PointerEvent): void => {
+      const live = presenceRef.current;
+      if (!live) return;
+      const now = Date.now();
+      if (now - last < CURSOR_SEND_MS) return;
+      last = now;
+      const box = document
+        .querySelector('[data-testid="board-canvas"]')
+        ?.getBoundingClientRect();
+      if (!box) return;
+      const at = screenToBoard(cameraRef.current, {
+        x: event.clientX - box.left,
+        y: event.clientY - box.top,
+      });
+      live.move(at.x, at.y);
+    };
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
 
   useEffect(() => {
     if (!onSave) return;
     const autosave = attachAutosave({ store, save: onSave });
     return () => autosave.detach();
   }, [store, onSave]);
+
+  // Everything arriving from elsewhere lands here. `applyRemote` keeps it out of
+  // the undo history and never publishes it back, so an echo cannot loop.
+  useEffect(() => {
+    if (!sync) return;
+    return sync.subscribe((change) => store.applyRemote(change));
+  }, [store, sync]);
 
   // Memoised: these feed dependency lists, and a fresh array every render would
   // re-run the anchor projection — which sets state, so the board would loop.
@@ -478,6 +658,15 @@ export function BoardScreen({
     [cancelFlight, tether],
   );
   cameraRef.current = camera;
+
+  /** Somebody picked from the top bar: frame where their pointer is. */
+  const jumpTo = useCallback(
+    (at: Point) => {
+      const reach = 60;
+      flyTo({ x: at.x - reach, y: at.y - reach, width: reach * 2, height: reach * 2 });
+    },
+    [flyTo],
+  );
   const dragFromRef = useRef(dragFrom);
   dragFromRef.current = dragFrom;
   const pinsRef = useRef(pins);
@@ -756,18 +945,6 @@ export function BoardScreen({
     },
     [store],
   );
-
-  const removeEntities = useCallback((ids: readonly string[]) => {
-    if (ids.length === 0) return;
-    const doomed = new Set(ids);
-    store.removeEntities(ids);
-    setSelection(
-      (previous) => new Set([...previous].filter((id) => !doomed.has(id))),
-    );
-    setHovered((previous) =>
-      previous && doomed.has(previous.id) ? null : previous,
-    );
-  }, []);
 
   const overAnyArticle = useCallback((board: Point): boolean => {
     for (const article of articlesByIdRef.current.values()) {
@@ -1076,6 +1253,7 @@ export function BoardScreen({
           style: "solid",
           labelAt: LABEL_AT_MIDDLE,
           visibility: "shared",
+          version: 1,
         });
       }
 
@@ -1151,12 +1329,19 @@ export function BoardScreen({
     [entities],
   );
 
+  // A dragged selection is one gesture over several things, so all of them move
+  // ephemerally and all of them are written once, together, when it stops.
   const moveSelection = useCallback((delta: Point) => {
-    store.updateEntities([...selectionRef.current], (entity) => {
+    store.previewEntities([...selectionRef.current], (entity) => {
+      // A held thing stays put and the rest of the selection moves around it,
+      // rather than one person's sentence dragging the whole group to a halt.
+      if (presenceRef.current?.editors().has(entity.id)) return entity;
       const descriptor = descriptorFor(entity);
-      return descriptor.capabilities(entity).movable
-        ? descriptor.move(entity, delta)
-        : entity;
+      if (!descriptor.capabilities(entity).movable) return entity;
+      const moved = descriptor.move(entity, delta);
+      const at = "board" in moved ? moved.board : null;
+      if (at) presenceRef.current?.moveThing(entity.id, at.x, at.y);
+      return moved;
     });
   }, []);
 
@@ -1262,12 +1447,22 @@ export function BoardScreen({
     [toggleArticleCollapsed],
   );
 
+  // A drag is a gesture, not a series of edits: the move shows up on the others'
+  // screens at 20Hz over the ephemeral channel, and the database hears about it
+  // once, when the thing has been let go. `previewEntities` is what defers that
+  // write; `moveThing` is what the others actually watch.
   const moveOne = useCallback((id: string, delta: Point) => {
-    store.updateEntities([id], (entity) => {
+    // Somebody has the editor open on this one. It is theirs until they let go —
+    // moving it under them mid-sentence is worse than not being able to move it.
+    if (presenceRef.current?.editors().has(id)) return;
+
+    store.previewEntities([id], (entity) => {
       const descriptor = descriptorFor(entity);
-      return descriptor.capabilities(entity).movable
-        ? descriptor.move(entity, delta)
-        : entity;
+      if (!descriptor.capabilities(entity).movable) return entity;
+      const moved = descriptor.move(entity, delta);
+      const at = "board" in moved ? moved.board : null;
+      if (at) presenceRef.current?.moveThing(id, at.x, at.y);
+      return moved;
     });
   }, []);
 
@@ -1301,12 +1496,15 @@ export function BoardScreen({
     [],
   );
 
+  // Every text surface on the board comes through here — a note, a page, a pin's
+  // note, a picture's caption. Typing is a gesture like a drag: it shows up here at
+  // once, and it is written once the typing stops rather than once per keystroke.
   const setEntityBody = useCallback((id: string, bodyMd: string) => {
-    store.updateEntities([id], (entity) => ({
-      ...entity,
-      bodyMd,
-      updatedAt: Date.now(),
-    }));
+    store.previewEntities(
+      [id],
+      (entity) => ({ ...entity, bodyMd, updatedAt: Date.now() }),
+      TYPING_QUIET_MS,
+    );
   }, []);
 
   const setNoteFontScale = useCallback((id: string, fontScale: number) => {
@@ -1440,15 +1638,88 @@ export function BoardScreen({
     }));
   }, []);
 
-  const removeEntity = useCallback(
-    (id: string) => {
-      store.removeEntities([id]);
-      setEditingPin(null);
-      setNoteStyleMenu((menu) =>
-        menu?.at === "note" && menu.id === id ? null : menu,
-      );
-    },
+  const [pendingPageDelete, setPendingPageDelete] = useState<{
+    ids: readonly string[];
+    title: string;
+    body: string;
+  } | null>(null);
+
+  /** The pins anchored to a page, resolved or not — an orphaned pin is still on it. */
+  const pinsOnPage = useCallback(
+    (id: string): string[] =>
+      store
+        .get()
+        .entities.filter(
+          (entity) =>
+            entity.kind === "pin" &&
+            "articleId" in entity &&
+            entity.articleId === id,
+        )
+        .map((entity) => entity.id),
     [store],
+  );
+
+  const forget = useCallback((ids: readonly string[]) => {
+    store.removeEntities(ids);
+    const gone = new Set(ids);
+    setSelection((current) => {
+      if (![...current].some((id) => gone.has(id))) return current;
+      return new Set([...current].filter((id) => !gone.has(id)));
+    });
+    setHovered((previous) =>
+      previous && gone.has(previous.id) ? null : previous,
+    );
+    setEditingPin(null);
+    setNoteStyleMenu((menu) =>
+      menu?.at === "note" && gone.has(menu.id) ? null : menu,
+    );
+  }, [store]);
+
+  /**
+   * The one way anything leaves the board, whoever asked. A page carries its pins —
+   * they anchor to its text and each one may hold a note — so a page takes them, and
+   * asks first when there is anything to lose. Which pins is worked out at the press
+   * and again at the answer, because one can be added while the question is on screen.
+   */
+  const removeEntities = useCallback(
+    (ids: readonly string[]) => {
+      if (ids.length === 0) return;
+      const wanted = new Set(ids);
+      const pages = store
+        .get()
+        .entities.filter(
+          (entity) => wanted.has(entity.id) && entity.kind === "article",
+        );
+      const pinned = pages.flatMap((page) => pinsOnPage(page.id));
+      if (pinned.length === 0) {
+        forget(ids);
+        return;
+      }
+
+      const one = pages.length === 1 && ids.length === 1 ? pages[0] : null;
+      const name = one?.title?.trim() || "Untitled sheet";
+      setPendingPageDelete({
+        ids: [...ids, ...pinned],
+        title: one ? `Delete “${name}”?` : `Delete ${ids.length} things?`,
+        body: one
+          ? pinned.length === 1
+            ? "The pin on it goes too, and the note written on that pin."
+            : `The ${pinned.length} pins on it go too, and the notes written on them.`
+          : `The ${pinned.length} pins anchored to them go too, and the notes written on those pins.`,
+      });
+    },
+    [store, pinsOnPage, forget],
+  );
+
+  const confirmPageDelete = useCallback(() => {
+    if (!pendingPageDelete) return;
+    forget(pendingPageDelete.ids);
+    setPendingPageDelete(null);
+  }, [pendingPageDelete, forget]);
+
+  const removeEntity = useCallback(
+    (id: string) => removeEntities([id]),
+    [removeEntities],
   );
 
   const [awaitingFit, setAwaitingFit] = useState(false);
@@ -1698,9 +1969,7 @@ export function BoardScreen({
           removeString(selectedString.id);
           return;
         }
-        const doomed = [...selection].filter(
-          (id) => articlesByIdRef.current.get(id) === undefined,
-        );
+        const doomed = [...selection];
         if (doomed.length > 0) {
           event.preventDefault();
           removeEntities(doomed);
@@ -1963,12 +2232,12 @@ export function BoardScreen({
 
   const contextItems: ContextMenuEntry[] = contextMenu
     ? [
-        ...(contextEntity?.kind === "image"
+        ...(contextEntity
           ? [
               {
-                id: "remove-image",
-                label: "Remove picture",
-                onSelect: () => removeEntities([contextEntity.id]),
+                id: "delete-entity",
+                label: `Delete ${ENTITY_NOUN[contextEntity.kind]}`,
+                onSelect: () => removeEntity(contextEntity.id),
               },
               { id: "sep-0", separator: true } as ContextMenuEntry,
             ]
@@ -2051,6 +2320,7 @@ export function BoardScreen({
             )}
           </span>
         ) : null}
+        <PresenceBar presence={presence} self={self} onJump={jumpTo} />
       </TopBar>
 
       {imageLink ? (
@@ -2064,6 +2334,7 @@ export function BoardScreen({
         <>
           {selectedArticle && (
             <PaperEditor
+              entityId={selectedArticle.id}
               // The raw title, not the placeholder: committing an untouched field
               // would otherwise store "Untitled sheet" as the page's real name.
               title={selectedArticle.title ?? ""}
@@ -2071,7 +2342,9 @@ export function BoardScreen({
               onChange={setSelectedArticleBody}
               onRename={renameSelectedArticle}
               onClose={clearSelection}
+              onDelete={() => removeEntity(selectedArticle.id)}
               mentions={mentions}
+              locked={editingBy.has(selectedArticle.id)}
             />
           )}
 
@@ -2104,6 +2377,7 @@ export function BoardScreen({
                       element, so nothing inside it can rise above this overlay. */}
                   {selectedImage && captionAt ? (
                     <ImageCaption
+                      entityId={selectedImage.id}
                       x={captionAt.x}
                       y={captionAt.y}
                       title={selectedImage.title ?? ""}
@@ -2112,6 +2386,7 @@ export function BoardScreen({
                       onDescription={(next) =>
                         setEntityBody(selectedImage.id, next)
                       }
+                      locked={editingBy.has(selectedImage.id)}
                     />
                   ) : null}
 
@@ -2184,6 +2459,7 @@ export function BoardScreen({
                   onRotate={rotateEntity}
                   onResize={resizeArticle}
                   onToggleCollapsed={toggleArticleCollapsed}
+                  onDelete={removeEntity}
                   onTapTab={tapArticleTab}
                   onMove={moveEntity}
                   toBoard={worldPoint}
@@ -2192,6 +2468,7 @@ export function BoardScreen({
               ))}
 
               <EntityLayer
+                presence={presence}
                 freePins={freePins}
                 images={images}
                 postIts={postIts}
@@ -2261,6 +2538,8 @@ export function BoardScreen({
                   onSag={dragStringSag}
                 />
               ) : null}
+
+              <CursorLayer presence={presence} zoom={camera.zoom} />
             </BoardCanvas>
           </div>
         </>
@@ -2268,6 +2547,32 @@ export function BoardScreen({
 
       <footer className="border-t border-parchment-edge/15 bg-cork-900/55 px-4 py-2 lg:px-6">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 pb-1 text-xs text-board-ink-soft/50">
+          {/* Only when there is a transport. A board on this device alone has no
+              connection to report, and saying "Offline" would be a lie. */}
+          {sync ? (
+            <span
+              className="flex items-center gap-1.5"
+              data-testid="connection-status"
+              data-status={syncStatus}
+              role="status"
+            >
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  syncStatus === "live"
+                    ? "bg-emerald-500"
+                    : syncStatus === "connecting"
+                      ? "bg-amber-500"
+                      : "bg-board-ink-soft/40"
+                }`}
+                aria-hidden="true"
+              />
+              {syncStatus === "live"
+                ? "Live"
+                : syncStatus === "connecting"
+                  ? "Reconnecting…"
+                  : "Offline"}
+            </span>
+          ) : null}
           <span>
             {placed.length} pin{placed.length === 1 ? "" : "s"} ·{" "}
             {strings.length} string
@@ -2322,6 +2627,7 @@ export function BoardScreen({
 
       {editingPin && activePin && (
         <PinEditor
+          entityId={editingPin.id}
           quote={activePin.quote}
           status={activePin.status === "free" ? "exact" : activePin.status}
           dateLabel={
@@ -2338,6 +2644,7 @@ export function BoardScreen({
             setEditingPin(null);
           }}
           onClose={() => setEditingPin(null)}
+          locked={editingBy.has(editingPin.id)}
         />
       )}
 
@@ -2361,6 +2668,15 @@ export function BoardScreen({
           onReplace={replaceWithImport}
           onAddBoard={addImportAsBoard}
           onCancel={() => setPendingImport(null)}
+        />
+      ) : null}
+
+      {pendingPageDelete ? (
+        <ConfirmDelete
+          title={pendingPageDelete.title}
+          body={pendingPageDelete.body}
+          onDelete={confirmPageDelete}
+          onCancel={() => setPendingPageDelete(null)}
         />
       ) : null}
 

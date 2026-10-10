@@ -40,6 +40,8 @@ export interface PostItProps {
   onOpenStyleMenu: (id: string) => void;
   styleMenuOpen: boolean;
   onRemove: (id: string) => void;
+  /** Somebody else has the editor open on this one; it is theirs until they stop. */
+  locked?: boolean;
 }
 
 export const PostIt = memo(function PostIt({
@@ -55,6 +57,7 @@ export const PostIt = memo(function PostIt({
   onOpenStyleMenu,
   styleMenuOpen,
   onRemove,
+  locked = false,
 }: PostItProps) {
   const drag = useBoardDrag({
     zoom,
@@ -121,7 +124,9 @@ export const PostIt = memo(function PostIt({
       <div className="mb-1 flex h-3 shrink-0 items-center gap-1">
         <div
           {...drag}
-          className="drag-bar h-full flex-1 rounded-sm"
+          className={`drag-bar h-full flex-1 rounded-sm ${
+            locked ? "cursor-not-allowed" : ""
+          }`}
           title="Drag to move"
           aria-label="Drag post-it"
         />
@@ -139,13 +144,19 @@ export const PostIt = memo(function PostIt({
       <textarea
         value={note.bodyMd}
         onChange={(event) => onChange(note.id, event.target.value)}
-        placeholder="Write something…"
-        className="min-h-0 w-full flex-1 resize-none bg-transparent text-ink outline-none placeholder:text-ink-soft/40"
+        // Held by somebody else: still readable and selectable, just not writable.
+        // `readOnly` rather than `disabled` so the caret does not vanish and the
+        // text stays copyable.
+        readOnly={locked}
+        placeholder={locked ? "" : "Write something…"}
+        className={`min-h-0 w-full flex-1 resize-none bg-transparent text-ink outline-none placeholder:text-ink-soft/40 ${
+          locked ? "cursor-not-allowed" : ""
+        }`}
         style={{
           fontSize: NOTE_FONT_SIZE * note.fontScale,
           lineHeight: `${lineHeight}px`,
         }}
-        aria-label="Post-it note"
+        aria-label={locked ? "Post-it note (locked)" : "Post-it note"}
       />
 
       {selected ? (
