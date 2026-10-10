@@ -219,6 +219,9 @@ const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
   },
 };
 
+/** How much of a card keeps the theme's parchment, the rest being the board it lies on. */
+const PAPER_TINT = 0.88;
+
 /** 0.42 rather than 0.5: a mid-grey board wants light dots, not dark ones. */
 const DOT_LUMA_THRESHOLD = 0.42;
 
@@ -241,14 +244,38 @@ export function surfaceColor(surface: BoardSurface, theme: ThemeMode): string {
   return SURFACE_RAMPS[surface][theme].base;
 }
 
-/** The manila of a folder tab and a board row's edge. The same sum as `--color-folder`. */
+const FOLDER_ACCENT = 0.26;
+
+/**
+ * The manila of a folder: the cover a rolled-up page shows, and the tab the palette's
+ * page glyph wears. The surface's accent laid thinly over card. The accent is a quarter
+ * of the mix rather than half, which turned the cover into varnished brass, and the card
+ * is the light room's parchment or the dark room's own deep board — so a folder is a pale
+ * manila in one and shadowed in the other, instead of the same brass tan in both.
+ */
 export function folderColor(surface: BoardSurface, mode: ThemeMode): string {
+  const ramp = SURFACE_RAMPS[surface][mode];
+  const card =
+    mode === "light"
+      ? mixHex(THEME_PALETTES.light.parchment300, ramp.base, PAPER_TINT)
+      : ramp.cork300;
+  return mixHex(ramp.accent, card, FOLDER_ACCENT);
+}
+
+/**
+ * What is printed on a folder cover. The cover is card in the light room and shadowed in
+ * the dark one, so the ink flips with it: the theme's ink in the light room, and in the
+ * dark one the paper the dark room writes on, which is the only light thing to hand.
+ */
+export function folderInk(surface: BoardSurface, mode: ThemeMode): string {
   const palette = THEME_PALETTES[mode];
-  return mixHex(
-    SURFACE_RAMPS[surface][mode].accent,
-    palette.parchment300,
-    0.55,
-  );
+  return mode === "light"
+    ? palette.ink
+    : mixHex(
+        palette.parchment100,
+        SURFACE_RAMPS[surface][mode].base,
+        PAPER_TINT,
+      );
 }
 
 /**
@@ -296,9 +323,21 @@ export function preferenceVariables(
     "--color-cork-700": surface.cork700,
     "--color-cork-500": surface.cork500,
     "--color-cork-300": surface.cork300,
-    "--color-parchment-100": mixHex(theme.parchment100, surface.base, 0.88),
-    "--color-parchment-200": mixHex(theme.parchment200, surface.base, 0.88),
-    "--color-parchment-300": mixHex(theme.parchment300, surface.base, 0.88),
+    "--color-parchment-100": mixHex(
+      theme.parchment100,
+      surface.base,
+      PAPER_TINT,
+    ),
+    "--color-parchment-200": mixHex(
+      theme.parchment200,
+      surface.base,
+      PAPER_TINT,
+    ),
+    "--color-parchment-300": mixHex(
+      theme.parchment300,
+      surface.base,
+      PAPER_TINT,
+    ),
     "--color-border": mixWithBoard(theme.border, surface, 0.62),
     "--color-ink": theme.ink,
     "--color-ink-soft": theme.inkSoft,
@@ -306,6 +345,8 @@ export function preferenceVariables(
     "--color-warning": theme.warning,
     "--color-pin": mixWithBoard(theme.pin, surface, 0.85),
     "--color-accent": surface.accent,
+    "--color-folder": folderColor(preferences.surface, preferences.theme),
+    "--color-folder-ink": folderInk(preferences.surface, preferences.theme),
     "--board-surface": surface.base,
     "--editor-surface": editorSurface(preferences.theme, theme, surface),
     "--grid-dot-color": gridDotFor(preferences.surface, preferences.theme),

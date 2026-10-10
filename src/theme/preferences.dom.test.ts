@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_PREFERENCES,
   SURFACES,
+  folderColor,
+  folderInk,
   getPreferences,
   preferenceVariables,
   resetPreferences,
@@ -60,6 +62,25 @@ function luminance(hex: string): number {
       0.0722 * (value & 255)) /
     255
   );
+}
+
+/** How far a colour is from grey, as a fraction of full chroma. */
+function saturation(hex: string): number {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  return (Math.max(...channels) - Math.min(...channels)) / 255;
+}
+
+/** A custom property declared in a plain `:root` block, which `@theme` is not part of. */
+function rootToken(name: string): string | undefined {
+  const css = indexCss().replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const block of css.matchAll(/:root\s*\{([^}]*)\}/g)) {
+    const match = new RegExp(`(?:^|;)\\s*${name}:\\s*([^;]+);`).exec(
+      block[1] as string,
+    );
+    if (match) return (match[1] as string).trim();
+  }
+  return undefined;
 }
 
 describe("applyPreferences in a document", () => {
@@ -162,5 +183,49 @@ describe("applyPreferences in a document", () => {
         surface,
       ).toBeGreaterThan(0.6);
     }
+  });
+
+  it("folds a paler folder in the light room than in the dark one", () => {
+    for (const surface of SURFACES) {
+      const light = folderColor(surface as BoardSurface, "light");
+      const dark = folderColor(surface as BoardSurface, "dark");
+      expect(luminance(light), surface).toBeGreaterThan(0.6);
+      expect(luminance(dark), surface).toBeLessThan(0.5);
+    }
+  });
+
+  it("folds it out of card, not out of the pin's brass", () => {
+    for (const surface of SURFACES) {
+      for (const mode of ["light", "dark"] as const) {
+        const folder = folderColor(surface as BoardSurface, mode);
+        const brass = preferenceVariables({
+          ...DEFAULT_PREFERENCES,
+          surface: surface as BoardSurface,
+          theme: mode,
+        })["--color-pin"] as string;
+        expect(saturation(folder), `${surface} ${mode}`).toBeLessThan(
+          saturation(brass),
+        );
+      }
+    }
+  });
+
+  it("inks the folder against its cover, whichever way the cover leans", () => {
+    for (const surface of SURFACES) {
+      const lightInk = luminance(folderInk(surface as BoardSurface, "light"));
+      const darkInk = luminance(folderInk(surface as BoardSurface, "dark"));
+      expect(lightInk, surface).toBeLessThan(
+        luminance(folderColor(surface as BoardSurface, "light")),
+      );
+      expect(darkInk, surface).toBeGreaterThan(
+        luminance(folderColor(surface as BoardSurface, "dark")),
+      );
+      expect(Math.abs(darkInk - lightInk), surface).toBeGreaterThan(0.5);
+    }
+  });
+
+  it("declares the default folder in index.css, so a first visit never repaints it", () => {
+    expect(rootToken("--color-folder")).toBe(folderColor("cork", "light"));
+    expect(rootToken("--color-folder-ink")).toBe(folderInk("cork", "light"));
   });
 });

@@ -83,15 +83,13 @@
   --color-yarn-violet: #5b3a72;
 }
 
-/* Manila: the folder tabs, and a board row's edge. Mixed from the palette rather than
-   named outright, so a folder is warm on cork and cool on slate like everything else.
-   Outside `@theme` because no class is built from it. */
+/* Manila: the cover a rolled-up page shows, and the tab on the palette's page glyph.
+   Written out by `preferenceVariables`, which cuts it from the surface's accent, so a
+   folder is warm on cork and cool on slate like everything else. This literal is that
+   sum for the default light + cork. Outside `@theme` because no class is built from it. */
 :root {
-  --color-folder: color-mix(
-    in srgb,
-    var(--color-pin) 55%,
-    var(--color-parchment-300)
-  );
+  --color-folder: #cfbc8f;
+  --color-folder-ink: #241a12;
   --color-folder-paper: var(--color-parchment-100);
 
   /* The candle. A light source, so it keeps its own colour in either room; one token so
@@ -392,7 +390,7 @@ body {
   display: block;
   padding: 0 18px;
   overflow: hidden;
-  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+  color: color-mix(in srgb, var(--color-folder-ink) 70%, transparent);
   font-family: "Special Elite", "Courier New", monospace;
   letter-spacing: 0.06em;
   line-height: 1.1;
@@ -447,7 +445,7 @@ body {
   /* `h-full` is the bar's border box and would cover the edge. */
   height: auto;
   background-color: var(--color-folder);
-  color: var(--color-ink);
+  color: var(--color-folder-ink);
 }
 
 .parchment[data-collapsed="true"] .paper-tab {
@@ -460,6 +458,8 @@ body {
 .parchment[data-collapsed="true"] .paper-tab:hover,
 .parchment[data-collapsed="true"] .paper-disclosure:hover {
   background-color: var(--color-parchment-300);
+  /* Back to paper, which is light in both rooms, so the hover takes the paper's ink. */
+  color: var(--color-ink);
 }
 
 /* No `:hover`: `filter`/`opacity`/`transform` here makes a stacking context and the `z-index: -1` layer paints above the panel. */
