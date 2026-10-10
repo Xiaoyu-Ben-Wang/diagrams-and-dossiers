@@ -39,6 +39,11 @@
 }
 
 @theme {
+  /* Named, never shipped: the free download is personal-use only and even the
+     paid webfont tier bars the file from any repository, so there is deliberately
+     no `@font-face` — anyone without it installed gets Special Elite. */
+  --font-brand: "Dragonit", "Special Elite", "Courier New", monospace;
+
   /* Light cork, which is what the default light + cork paints. These must match
      `SURFACE_RAMPS.cork.light` and `THEME_PALETTES.light`, or the first visit
      repaints the moment preferences are read. */

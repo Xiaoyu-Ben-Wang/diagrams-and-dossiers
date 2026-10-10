@@ -16,7 +16,7 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-parchment-edge/15 bg-cork-900/55 px-4 py-2 backdrop-blur-sm lg:px-6">
-      <span className="text-sm font-semibold tracking-tight text-board-ink">
+      <span className="font-brand text-xl font-normal tracking-tight text-board-ink">
         Diagrams &amp; Dossiers
       </span>
 
