@@ -53,6 +53,11 @@
     0 6px 14px -8px rgb(0 0 0 / 0.6);
 }
 
+/* Brass rather than folder-coloured: a board to look at, not one of yours. */
+.library-board-demo {
+  border-left-color: var(--color-brass);
+}
+
 .library-name {
   justify-self: start;
   padding: 0;
@@ -190,6 +195,12 @@
   box-shadow:
     0 1px 0 rgb(255 255 255 / 0.5) inset,
     0 10px 22px -12px rgb(0 0 0 / 0.6);
+}
+
+/* Under the demo row it joins the list, rather than centring on a page that has
+   nothing else on it. */
+.library-group + .library-empty {
+  margin-top: 24px;
 }
 
 .library-empty-title {

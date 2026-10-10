@@ -538,6 +538,24 @@ describe("App — the boards library", () => {
     expect(await storage.list()).toHaveLength(0);
   });
 
+  it("keeps the demo board at the top, above the boards you have", async () => {
+    const storage = openLibrary();
+
+    const demo = screen.getByTestId("demo-board");
+    const yours = screen.getByTestId(`board-${manifest.id}`);
+    expect(
+      demo.compareDocumentPosition(yours) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("open-demo"));
+
+    expect(await screen.findByTestId("board-canvas")).toBeTruthy();
+    expect(window.location.pathname).toBe("/demo");
+    // A row of its own rather than a record: opening it files nothing.
+    await act(async () => {});
+    expect(await storage.list()).toHaveLength(2);
+  });
+
   it("makes a new board and opens it", async () => {
     const storage = openLibrary([]);
 

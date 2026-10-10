@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link as LinkIcon, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { TopBar } from "../app/TopBar";
+import { ARTICLE_TITLE } from "../app/demo";
 import { isSharedBoard, type BoardRecord } from "./board-record";
 import type { BoardLibrary } from "./library";
 import { copyTextToClipboard, shareUrlFor } from "./share";
@@ -48,8 +49,10 @@ export function LibraryScreen({
           </p>
         ) : null}
 
+        <DemoRow onOpen={onOpenDemo} />
+
         {records.length === 0 ? (
-          <EmptyLibrary onCreate={onCreate} onOpenDemo={onOpenDemo} />
+          <EmptyLibrary onCreate={onCreate} />
         ) : (
           <>
             <Group
@@ -66,13 +69,37 @@ export function LibraryScreen({
   );
 }
 
-function EmptyLibrary({
-  onCreate,
-  onOpenDemo,
-}: {
-  onCreate: () => void;
-  onOpenDemo: () => void;
-}) {
+/**
+ * Always first, and never one of the records: the demo is a look at a finished
+ * board, so it has no name to change, no link to pass on and nothing to delete.
+ */
+function DemoRow({ onOpen }: { onOpen: () => void }) {
+  return (
+    <section className="library-group">
+      <h2 className="library-group-title">Demo</h2>
+      <ul className="library-list" aria-label="Demo">
+        <li
+          className="library-board library-board-demo"
+          data-testid="demo-board"
+        >
+          <button
+            type="button"
+            className="library-name"
+            onClick={onOpen}
+            data-testid="open-demo"
+          >
+            {ARTICLE_TITLE}
+          </button>
+          <p className="library-meta">
+            The demo board · nothing you do to it is kept
+          </p>
+        </li>
+      </ul>
+    </section>
+  );
+}
+
+function EmptyLibrary({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="library-empty" data-testid="library-empty">
       <h1 className="library-empty-title">No boards yet</h1>
@@ -87,14 +114,6 @@ function EmptyLibrary({
           onClick={onCreate}
         >
           New board
-        </button>
-        <button
-          type="button"
-          className="library-button"
-          onClick={onOpenDemo}
-          data-testid="open-demo"
-        >
-          Open the demo board
         </button>
       </div>
     </div>

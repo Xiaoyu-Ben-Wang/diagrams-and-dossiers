@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { demoBoard } from "./app/demo";
+import { ARTICLE_TITLE, demoBoard } from "./app/demo";
 import { EntryScreen } from "./app/JoinScreen";
 import { NotFound } from "./app/NotFound";
 import { useRoute } from "./app/router";
@@ -187,7 +187,7 @@ export function App({ seed, storage, now }: AppProps = {}) {
       <BoardScreen
         key="demo"
         board={demoBoard()}
-        name="The Drowned Bell"
+        name={ARTICLE_TITLE}
         // Its own key: the demo has no id, and should still open where it was left.
         viewId="demo"
         onBack={() => navigate({ name: "library" })}
