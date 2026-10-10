@@ -26,6 +26,14 @@ const MAX_PIXEL_RATIO = 2;
 /** Fixed, so the field is the same board to board and across a re-render. */
 const MOTE_SEED = 20261004;
 
+/** A canvas cannot take `var()`, and the candle does not change, so it is read once. */
+function candlelight(): string {
+  const declared = getComputedStyle(document.documentElement)
+    .getPropertyValue("--color-glow")
+    .trim();
+  return declared || "#ffc46e";
+}
+
 export function Ambient({ camera, count = 26, className }: AmbientProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const vignetteRef = useRef<HTMLDivElement>(null);
@@ -82,13 +90,13 @@ export function Ambient({ camera, count = 26, className }: AmbientProps) {
 
       context.clearRect(0, 0, bounds.width, bounds.height);
       context.globalCompositeOperation = "lighter";
+      context.fillStyle = candlelight();
 
       for (const mote of motes) {
         const position = moteScreenPosition(mote, cameraRef.current, bounds);
         context.globalAlpha = moteOpacity(mote, time);
         context.beginPath();
         context.arc(position.x, position.y, mote.radius, 0, Math.PI * 2);
-        context.fillStyle = "#ffd9a0";
         context.fill();
       }
 
@@ -163,7 +171,7 @@ export function Ambient({ camera, count = 26, className }: AmbientProps) {
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 60% 50% at 18% 8%, rgb(255 196 110 / 0.16), transparent 70%)",
+            "radial-gradient(ellipse 60% 50% at 18% 8%, color-mix(in srgb, var(--color-glow) 16%, transparent), transparent 70%)",
           mixBlendMode: "soft-light",
         }}
       />

@@ -33,7 +33,7 @@ export const EXPORT_HIDE_SELECTORS = [
 export const EXPORT_SELECTION_CLASSES = [
   "is-selected",
   "ring-2",
-  "ring-brass/70",
+  "ring-accent/70",
 ] as const;
 
 /**

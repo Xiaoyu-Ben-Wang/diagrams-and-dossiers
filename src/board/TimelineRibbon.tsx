@@ -90,7 +90,7 @@ export function TimelineRibbon({
         type="button"
         onClick={onTogglePlay}
         disabled={disabled || empty}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-brass/40 bg-cork-700/70 text-[9px] text-board-ink transition hover:border-brass hover:bg-cork-700 disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-accent/40 bg-cork-700/70 text-[9px] text-board-ink transition hover:border-accent hover:bg-cork-700 disabled:cursor-not-allowed disabled:opacity-40"
         aria-label={
           playing ? "Pause the recap" : "Play the campaign as a recap"
         }
@@ -138,11 +138,11 @@ export function TimelineRibbon({
               left: `${positionOf((cluster.start + cluster.end) / 2, timeline) * 100}%`,
               background:
                 cluster.start <= cursor
-                  ? "rgb(201 162 39 / 0.85)"
-                  : "rgb(201 180 138 / 0.25)",
+                  ? "color-mix(in srgb, var(--color-accent) 85%, transparent)"
+                  : "color-mix(in srgb, var(--color-border) 25%, transparent)",
               boxShadow:
                 cluster.start <= cursor
-                  ? "0 0 6px rgb(201 162 39 / 0.5)"
+                  ? "0 0 6px color-mix(in srgb, var(--color-accent) 50%, transparent)"
                   : "none",
             }}
           />
@@ -153,7 +153,7 @@ export function TimelineRibbon({
           style={{
             width: `${cursorPosition * 100}%`,
             background:
-              "linear-gradient(90deg, rgb(201 162 39 / 0.06), rgb(201 162 39 / 0.16))",
+              "linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 6%, transparent), color-mix(in srgb, var(--color-accent) 16%, transparent))",
           }}
         />
 
@@ -161,8 +161,9 @@ export function TimelineRibbon({
           className="pointer-events-none absolute top-0 h-full w-[2px] -translate-x-1/2"
           style={{
             left: `${cursorPosition * 100}%`,
-            background: "var(--color-brass)",
-            boxShadow: "0 0 8px rgb(201 162 39 / 0.8)",
+            background: "var(--color-accent)",
+            boxShadow:
+              "0 0 8px color-mix(in srgb, var(--color-accent) 80%, transparent)",
           }}
         />
 

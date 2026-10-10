@@ -12,8 +12,8 @@
 .import-dialog {
   max-width: 26rem;
   padding: 16px 18px 14px;
-  border: 1px solid var(--color-parchment-edge);
-  border-top: 2px solid rgb(201 162 39 / 0.8);
+  border: 1px solid var(--color-border);
+  border-top: 2px solid color-mix(in srgb, var(--color-accent) 80%, transparent);
   border-radius: 2px 8px 3px 7px;
   background-color: var(--color-parchment-100);
   color: var(--color-ink);
@@ -21,7 +21,7 @@
 }
 
 .import-dialog:focus-visible {
-  outline: 2px solid var(--color-brass);
+  outline: 2px solid var(--color-accent);
   outline-offset: 3px;
 }
 
@@ -59,11 +59,11 @@
 }
 
 .import-button:hover {
-  border-color: var(--color-brass);
+  border-color: var(--color-accent);
   color: var(--color-ink);
 }
 
 .import-button-primary {
-  border-color: var(--color-brass);
+  border-color: var(--color-accent);
   color: var(--color-ink);
 }

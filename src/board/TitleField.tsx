@@ -12,6 +12,8 @@ export interface TitleFieldProps {
   label: string;
   placeholder: string;
   className?: string;
+  /** Somebody else has it; still readable, just not writable. */
+  locked?: boolean;
 }
 
 export function TitleField({
@@ -20,6 +22,7 @@ export function TitleField({
   label,
   placeholder,
   className,
+  locked = false,
 }: TitleFieldProps) {
   const [draft, setDraft] = useState(value);
   // A different entity selected under the same field starts from its own title.
@@ -45,6 +48,7 @@ export function TitleField({
       aria-label={label}
       placeholder={placeholder}
       spellCheck={false}
+      readOnly={locked}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
       onKeyDown={(event) => {

@@ -564,7 +564,7 @@ function ZoomReadout({
   onRecentre?: () => void;
 }) {
   return (
-    <div className="absolute right-3 bottom-3 flex items-center gap-1 rounded border border-parchment-edge/30 bg-cork-900/80 px-1 py-1 text-[11px] backdrop-blur-sm">
+    <div className="absolute right-3 bottom-3 flex items-center gap-1 rounded border border-border/30 bg-cork-900/80 px-1 py-1 text-[11px] backdrop-blur-sm">
       {onRecentre ? (
         <button
           type="button"

@@ -25,6 +25,8 @@ import type { Point } from "./yarn";
 
 export interface ImageCardProps {
   id: string;
+  /** The board stack rank from `stackingRanks`. */
+  z?: number;
   src: string;
   alt?: string;
   x: number;
@@ -84,6 +86,7 @@ export function sizeFor(
 
 export const ImageCard = memo(function ImageCard({
   id,
+  z = 0,
   src,
   alt,
   x,
@@ -158,6 +161,7 @@ export const ImageCard = memo(function ImageCard({
       style={{
         left: x,
         top: y,
+        zIndex: z,
         width,
         height,
         transformOrigin: "50% 0",
@@ -176,7 +180,7 @@ export const ImageCard = memo(function ImageCard({
         className="image-shadow"
         style={{
           filter: selected
-            ? `${SHADOW} drop-shadow(0 0 3px rgb(201 162 39 / 0.95))`
+            ? `${SHADOW} drop-shadow(0 0 3px color-mix(in srgb, var(--color-accent) 95%, transparent))`
             : SHADOW,
         }}
       >

@@ -1,15 +1,61 @@
-/* The board list, in the board's own language: parchment on cork, brass for the
-   things you press. */
+/* The board list, in the board's own language: a card in the surface's colour,
+   the accent for the things you press. */
 
 .library-warning {
   max-width: 46rem;
   margin: 0 auto 14px;
   padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--color-wax) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 55%, transparent);
   border-radius: 3px;
-  background: color-mix(in srgb, var(--color-wax) 18%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
   color: var(--color-board-ink);
   font-size: 12px;
+}
+
+/* The headings that split your own boards from the ones somebody gave you a link
+   to, in the small-caps the rest of the board uses for a label. */
+.library-group + .library-group {
+  margin-top: 24px;
+}
+
+.library-group-title {
+  max-width: 46rem;
+  margin: 0 auto 0.25rem;
+  color: color-mix(in srgb, var(--color-accent) 80%, var(--color-ink));
+  font-family: "Special Elite", "Courier New", monospace;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* The board's own colour lifted towards paper, which stays pale in both themes — so a
+   card is always lighter than the board it lies on. Not `--editor-surface`: the light
+   theme pins that to the parchment ramp and it ignores the surface entirely. */
+.library-list,
+.library-empty {
+  --library-card: color-mix(
+    in srgb,
+    var(--board-surface) 72%,
+    var(--color-parchment-100)
+  );
+  --library-field: color-mix(
+    in srgb,
+    var(--board-surface) 88%,
+    var(--color-parchment-100)
+  );
+  --library-edge: color-mix(in srgb, var(--color-board-ink) 22%, transparent);
+  --library-ink-soft: color-mix(
+    in srgb,
+    var(--color-board-ink) 65%,
+    transparent
+  );
+  /* Wax is dark in both themes, and only legible on paper. */
+  --library-danger: color-mix(
+    in srgb,
+    var(--color-danger) 55%,
+    var(--color-board-ink)
+  );
 }
 
 .library-list {
@@ -27,14 +73,14 @@
   align-items: center;
   gap: 4px 12px;
   padding: 10px 12px 10px 14px;
-  border: 1px solid var(--color-parchment-edge);
-  border-left: 3px solid var(--color-folder);
+  border: 1px solid var(--library-edge);
+  border-left: 3px solid var(--color-accent);
   border-radius: 2px 6px 3px 5px;
-  background-color: var(--color-parchment-100);
-  color: var(--color-ink);
+  background-color: var(--library-card);
+  color: var(--color-board-ink);
   box-shadow:
-    0 1px 0 rgb(255 255 255 / 0.5) inset,
-    0 6px 14px -8px rgb(0 0 0 / 0.6);
+    0 1px 0 rgb(255 255 255 / 0.22) inset,
+    0 6px 14px -8px rgb(0 0 0 / 0.5);
 }
 
 .library-name {
@@ -57,16 +103,16 @@
 .library-meta {
   grid-column: 1 / -1;
   margin: 0;
-  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  color: var(--library-ink-soft);
   font-size: 11px;
 }
 
 .library-rename {
   padding: 3px 6px;
-  border: 1px solid var(--color-brass);
+  border: 1px solid var(--color-accent);
   border-radius: 2px;
-  background: #fffdf6;
-  color: var(--color-ink);
+  background: var(--library-field);
+  color: var(--color-board-ink);
   font-size: 14px;
   font-weight: 600;
 }
@@ -79,7 +125,7 @@
 
 .library-confirm {
   margin-right: 4px;
-  color: var(--color-wax);
+  color: var(--library-danger);
   font-size: 11px;
 }
 
@@ -88,10 +134,10 @@
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border: 1px solid color-mix(in srgb, var(--color-ink) 25%, transparent);
+  border: 1px solid var(--library-edge);
   border-radius: 2px;
   background: none;
-  color: var(--color-ink-soft);
+  color: var(--library-ink-soft);
   font-size: 11px;
   cursor: pointer;
   transition:
@@ -100,18 +146,40 @@
 }
 
 .library-button:hover {
-  border-color: var(--color-brass);
-  color: var(--color-ink);
+  border-color: var(--color-accent);
+  color: var(--color-board-ink);
 }
 
 .library-button-primary {
-  border-color: var(--color-brass);
-  color: var(--color-ink);
+  border-color: var(--color-accent);
+  color: var(--color-board-ink);
+}
+
+.library-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  color: var(--color-board-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 110ms ease,
+    border-color 110ms ease;
+}
+
+.library-new:hover {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .library-button-danger {
-  border-color: color-mix(in srgb, var(--color-wax) 60%, transparent);
-  color: var(--color-wax);
+  border-color: color-mix(in srgb, var(--library-danger) 60%, transparent);
+  color: var(--library-danger);
 }
 
 .library-link {
@@ -126,15 +194,17 @@
   flex: 1;
   min-width: 0;
   padding: 3px 6px;
-  border: 1px solid color-mix(in srgb, var(--color-ink) 25%, transparent);
+  border: 1px solid var(--library-edge);
   border-radius: 2px;
-  background: #fffdf6;
-  color: var(--color-ink);
+  background: var(--library-field);
+  color: var(--color-board-ink);
   font-size: 11px;
 }
 
 .library-link-hint {
-  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  /* Its own row under the board, not the cell beside the buttons. */
+  grid-column: 1 / -1;
+  color: var(--library-ink-soft);
   font-size: 12px;
 }
 
@@ -142,14 +212,20 @@
   max-width: 30rem;
   margin: 8vh auto 0;
   padding: 20px 22px;
-  border: 1px solid var(--color-parchment-edge);
+  border: 1px solid var(--library-edge);
   border-radius: 3px 8px 4px 7px;
-  background-color: var(--color-parchment-100);
-  color: var(--color-ink);
+  background-color: var(--library-card);
+  color: var(--color-board-ink);
   text-align: center;
   box-shadow:
-    0 1px 0 rgb(255 255 255 / 0.5) inset,
-    0 10px 22px -12px rgb(0 0 0 / 0.6);
+    0 1px 0 rgb(255 255 255 / 0.22) inset,
+    0 10px 22px -12px rgb(0 0 0 / 0.5);
+}
+
+/* Under the demo row it joins the list, rather than centring on a page that has
+   nothing else on it. */
+.library-group + .library-empty {
+  margin-top: 24px;
 }
 
 .library-empty-title {
@@ -159,7 +235,7 @@
 
 .library-empty-hint {
   margin: 0 0 16px;
-  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+  color: var(--library-ink-soft);
   font-size: 13px;
   line-height: 1.5;
 }

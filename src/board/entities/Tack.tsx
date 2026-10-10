@@ -10,6 +10,7 @@ const TACK_HALF = TACK_SIZE / 2;
 
 export const Tack = memo(function Tack({
   pin,
+  z = 0,
   x,
   y,
   selected,
@@ -23,6 +24,8 @@ export const Tack = memo(function Tack({
   onHover,
 }: {
   pin: PinView;
+  /** The board stack rank from `stackingRanks`; a pin anchored to a page has none. */
+  z?: number;
   x: number;
   y: number;
   selected: boolean;
@@ -130,6 +133,7 @@ export const Tack = memo(function Tack({
         style={{
           left: x,
           top: y,
+          zIndex: z,
           touchAction: "none",
           opacity: dimmed ? 0.2 : 1,
         }}

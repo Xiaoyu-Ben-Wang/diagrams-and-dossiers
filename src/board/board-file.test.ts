@@ -68,11 +68,11 @@ function tinyBoard(): BoardState {
         from: "a-note",
         to: "a-page",
         slack: 0.18,
-        color: "#a3302b",
         style: "solid",
         label: "the claim",
         labelAt: 0.5,
         visibility: "shared",
+        version: 1,
       },
     ],
   };

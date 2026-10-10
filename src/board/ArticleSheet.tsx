@@ -5,7 +5,7 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
-import { ChevronDown, ChevronRight, RotateCw, X } from "lucide-react";
+import { ChevronDown, ChevronRight, RotateCw, Trash2 } from "lucide-react";
 
 import type { ArticleEntity } from "../model/types";
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
@@ -33,6 +33,8 @@ import { pinPoint, type PinView } from "./view";
 
 export interface ArticleSheetProps {
   article: ArticleEntity;
+  /** The board stack rank from `stackingRanks`. */
+  z?: number;
   nodes: ArticleNodes;
 
   anchored: readonly PinView[];
@@ -56,6 +58,8 @@ export interface ArticleSheetProps {
   onRotate: (id: string, degrees: number) => void;
   onResize: (id: string, width: number) => void;
   onToggleCollapsed: (id: string) => void;
+  /** Takes the page, the pins anchored to it, and the notes on those pins. */
+  onDelete: (id: string) => void;
   onTapTab: (id: string) => void;
   onMove: (id: string, delta: Point) => void;
   toBoard: (clientX: number, clientY: number) => Point;
@@ -64,6 +68,7 @@ export interface ArticleSheetProps {
 
 export const ArticleSheet = memo(function ArticleSheet({
   article,
+  z = 0,
   nodes,
   anchored,
   selected,
@@ -81,6 +86,7 @@ export const ArticleSheet = memo(function ArticleSheet({
   onRotate,
   onResize,
   onToggleCollapsed,
+  onDelete,
   onTapTab,
   onMove,
   toBoard,
@@ -229,10 +235,11 @@ export const ArticleSheet = memo(function ArticleSheet({
       onClick={handleSheetClick}
       className={`parchment absolute top-0 left-0 rounded-sm rounded-tl-none shadow-xl ${
         collapsed ? "" : "px-9 py-8 sm:px-12 sm:py-10"
-      } ${selected ? "ring-2 ring-brass/70" : ""}`}
+      } ${selected ? "ring-2 ring-accent/70" : ""}`}
       style={{
         width,
         height: collapsed ? foldedHeight(openHeight) : undefined,
+        zIndex: z,
         transformOrigin: "50% 0",
         transform: `translate3d(${pos.x}px, ${pos.y}px, 0) rotate(${clampTilt(tilt)}deg)`,
       }}
@@ -306,7 +313,7 @@ export const ArticleSheet = memo(function ArticleSheet({
 
       <div
         className={`paper-tab-bar absolute -top-7 left-0 flex h-7 rounded-tl rounded-tr ${
-          selected ? "bg-brass/80" : "bg-parchment-200/85"
+          selected ? "bg-accent/80" : "bg-parchment-200/85"
         }`}
       >
         <button
@@ -338,7 +345,7 @@ export const ArticleSheet = memo(function ArticleSheet({
           aria-pressed={selected}
           className={`paper-tab drag-bar h-full rounded-tr py-1 pr-3 pl-2 text-[12px] transition ${
             selected
-              ? "bg-brass/80 text-cork-900"
+              ? "bg-accent/80 text-cork-900"
               : "bg-parchment-200/85 text-ink-soft hover:bg-parchment-200"
           }`}
           title="Click to edit, drag to move"
@@ -350,14 +357,15 @@ export const ArticleSheet = memo(function ArticleSheet({
       {selected && !collapsed ? (
         <button
           type="button"
-          data-testid="paper-close"
-          aria-label="Roll the page up"
+          data-testid="article-delete"
+          aria-label="Delete this page"
+          title="Delete this page"
           className="sheet-close"
           style={{ right: -CLOSE_HANDLE_HALF, top: -CLOSE_HANDLE_HALF }}
           onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => onToggleCollapsed(id)}
+          onClick={() => onDelete(id)}
         >
-          <X size={13} strokeWidth={2.5} aria-hidden="true" />
+          <Trash2 size={13} strokeWidth={2.5} aria-hidden="true" />
         </button>
       ) : null}
 

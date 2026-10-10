@@ -3,10 +3,11 @@
 // boards must not do.
 
 import { useEffect, useRef, useState } from "react";
-import { Link as LinkIcon, Pencil, Plus, Trash2 } from "lucide-react";
+import { Link as LinkIcon, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { TopBar } from "../app/TopBar";
-import type { BoardRecord } from "./board-record";
+import { ARTICLE_TITLE } from "../app/demo";
+import { isSharedBoard, type BoardRecord } from "./board-record";
 import type { BoardLibrary } from "./library";
 import { copyTextToClipboard, shareUrlFor } from "./share";
 import "./LibraryScreen.css";
@@ -33,9 +34,9 @@ export function LibraryScreen({
           type="button"
           onClick={onCreate}
           data-testid="new-board"
-          className="flex items-center gap-1.5 rounded border border-parchment-edge/25 px-2.5 py-1 text-xs text-board-ink-soft transition hover:border-brass hover:text-board-ink"
+          className="library-new"
         >
-          <Plus size={13} strokeWidth={2.2} aria-hidden="true" />
+          <Plus size={14} strokeWidth={2.2} aria-hidden="true" />
           New board
         </button>
       </TopBar>
@@ -56,32 +57,59 @@ export function LibraryScreen({
           </p>
         ) : null}
 
+        <DemoRow onOpen={onOpenDemo} />
+
         {records.length === 0 ? (
-          <EmptyLibrary onCreate={onCreate} onOpenDemo={onOpenDemo} />
+          <EmptyLibrary onCreate={onCreate} />
         ) : (
-          <ul className="library-list" aria-label="Your boards">
-            {records.map((record) => (
-              <BoardRow
-                key={record.id}
-                record={record}
-                library={library}
-                onOpen={onOpen}
-              />
-            ))}
-          </ul>
+          <>
+            <Group
+              title="Your boards"
+              records={records.filter((record) => !isSharedBoard(record))}
+              library={library}
+              onOpen={onOpen}
+            />
+            <Group
+              title="Shared with you"
+              records={records.filter(isSharedBoard)}
+              library={library}
+              onOpen={onOpen}
+            />
+          </>
         )}
       </main>
     </div>
   );
 }
 
-function EmptyLibrary({
-  onCreate,
-  onOpenDemo,
-}: {
-  onCreate: () => void;
-  onOpenDemo: () => void;
-}) {
+/**
+ * Always first, and never one of the records: the demo is a look at a finished
+ * board, so it has no name to change, no link to pass on and nothing to delete.
+ */
+function DemoRow({ onOpen }: { onOpen: () => void }) {
+  return (
+    <section className="library-group">
+      <h2 className="library-group-title">Demo</h2>
+      <ul className="library-list" aria-label="Demo">
+        <li className="library-board" data-testid="demo-board">
+          <button
+            type="button"
+            className="library-name"
+            onClick={onOpen}
+            data-testid="open-demo"
+          >
+            {ARTICLE_TITLE}
+          </button>
+          <p className="library-meta">
+            The demo board · nothing you do to it is kept
+          </p>
+        </li>
+      </ul>
+    </section>
+  );
+}
+
+function EmptyLibrary({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="library-empty" data-testid="library-empty">
       <h1 className="library-empty-title">No boards yet</h1>
@@ -97,25 +125,52 @@ function EmptyLibrary({
         >
           New board
         </button>
-        <button
-          type="button"
-          className="library-button"
-          onClick={onOpenDemo}
-          data-testid="open-demo"
-        >
-          Open the demo board
-        </button>
       </div>
     </div>
   );
 }
 
+/** A heading and the boards under it. A group with nothing in it draws nothing. */
+function Group({
+  title,
+  records,
+  library,
+  onOpen,
+}: {
+  title: string;
+  records: readonly BoardRecord[];
+  library: BoardLibrary;
+  onOpen: (id: string) => void;
+}) {
+  if (records.length === 0) return null;
+
+  return (
+    <section className="library-group">
+      <h2 className="library-group-title">{title}</h2>
+      <ul className="library-list" aria-label={title}>
+        {records.map((record) => (
+          <BoardRow
+            key={record.id}
+            record={record}
+            shared={isSharedBoard(record)}
+            library={library}
+            onOpen={onOpen}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function BoardRow({
   record,
+  shared,
   library,
   onOpen,
 }: {
   record: BoardRecord;
+  /** Somebody gave you a link to this one; you hold no link of your own to pass on. */
+  shared: boolean;
   library: BoardLibrary;
   onOpen: (id: string) => void;
 }) {
@@ -124,6 +179,8 @@ function BoardRow({
   const [armed, setArmed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [manualLink, setManualLink] = useState<string | null>(null);
+  const [localOnly, setLocalOnly] = useState(false);
+  const [refused, setRefused] = useState(false);
   const fieldRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -138,8 +195,26 @@ function BoardRow({
     else setDraft(record.name);
   };
 
+  /**
+   * Deleting is not forgetting. A board that is on the server goes there first,
+   * and if that cannot happen nothing is removed here: a board gone from the list
+   * but still on the server is the one thing nobody can put back.
+   */
+  const erase = async (): Promise<void> => {
+    setArmed(false);
+    setRefused(false);
+    if (await library.destroy(record.id)) return;
+    setRefused(true);
+  };
+
   const share = async (): Promise<void> => {
     const url = shareUrlFor(record, window.location.origin);
+    // A board that never reached the server has no token and so no door to offer.
+    if (url === null) {
+      setLocalOnly(true);
+      return;
+    }
+    setLocalOnly(false);
     if (await copyTextToClipboard(url)) {
       setCopied(true);
       setManualLink(null);
@@ -187,9 +262,13 @@ function BoardRow({
         <div
           className="library-actions"
           role="group"
-          aria-label={`Delete ${record.name}`}
+          aria-label={
+            shared ? `Remove ${record.name}` : `Delete ${record.name}`
+          }
         >
-          <span className="library-confirm">Delete for good?</span>
+          <span className="library-confirm">
+            {shared ? "Remove from this list?" : "Delete for good?"}
+          </span>
           <button
             type="button"
             className="library-button"
@@ -201,9 +280,9 @@ function BoardRow({
             type="button"
             className="library-button library-button-danger"
             data-testid={`confirm-delete-${record.id}`}
-            onClick={() => void library.remove(record.id)}
+            onClick={() => void erase()}
           >
-            Delete
+            {shared ? "Remove" : "Delete"}
           </button>
         </div>
       ) : (
@@ -221,25 +300,35 @@ function BoardRow({
             <Pencil size={12} strokeWidth={2.2} aria-hidden="true" />
             Rename
           </button>
-          <button
-            type="button"
-            className="library-button"
-            onClick={() => void share()}
-            aria-label={`Copy a link to ${record.name}`}
-            data-testid={`share-${record.id}`}
-          >
-            <LinkIcon size={12} strokeWidth={2.2} aria-hidden="true" />
-            {copied ? "Copied" : "Copy link"}
-          </button>
+          {shared ? null : (
+            <button
+              type="button"
+              className="library-button"
+              onClick={() => void share()}
+              aria-label={`Copy a link to ${record.name}`}
+              data-testid={`share-${record.id}`}
+            >
+              <LinkIcon size={12} strokeWidth={2.2} aria-hidden="true" />
+              {copied ? "Copied" : "Copy link"}
+            </button>
+          )}
           <button
             type="button"
             className="library-button"
             onClick={() => setArmed(true)}
-            aria-label={`Delete ${record.name}`}
+            aria-label={
+              shared
+                ? `Remove ${record.name} from your list`
+                : `Delete ${record.name}`
+            }
             data-testid={`delete-${record.id}`}
           >
-            <Trash2 size={12} strokeWidth={2.2} aria-hidden="true" />
-            Delete
+            {shared ? (
+              <X size={12} strokeWidth={2.2} aria-hidden="true" />
+            ) : (
+              <Trash2 size={12} strokeWidth={2.2} aria-hidden="true" />
+            )}
+            {shared ? "Remove" : "Delete"}
           </button>
         </div>
       )}
@@ -254,11 +343,35 @@ function BoardRow({
             data-testid={`link-${record.id}`}
             onFocus={(event) => event.target.select()}
           />
-          {/* Honest, because there is no service behind it yet. */}
           <span className="library-link-hint">
-            Opens on this device only, for now.
+            Anyone with this link can edit the board.
           </span>
         </div>
+      ) : null}
+
+      {refused ? (
+        <p
+          className="library-link-hint"
+          data-testid={`delete-failed-${record.id}`}
+        >
+          The server could not be told, so nothing was deleted — the board is
+          still there, here and everywhere else.
+        </p>
+      ) : null}
+
+      {shared ? (
+        <p className="library-link-hint" data-testid={`from-link-${record.id}`}>
+          You opened this from someone else's link. Anyone who has that link can
+          edit the board.
+        </p>
+      ) : null}
+
+      {localOnly ? (
+        <p className="library-link-hint" data-testid={`local-${record.id}`}>
+          No share link from this device. Either the board never reached the
+          server, or you arrived by someone else's link and hold none of your
+          own.
+        </p>
       ) : null}
     </li>
   );

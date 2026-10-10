@@ -1,3 +1,6 @@
+import type { CSSProperties } from "react";
+
+import { yarnColorCss } from "../board/yarn-color";
 import type { Point } from "../board/yarn";
 import { seedFromKey, yarnStrands, type YarnStyle } from "../board/yarn-style";
 import { YarnStrokes } from "../board/YarnStrokes";
@@ -12,13 +15,14 @@ const PREVIEW_WIDTH = 2.2;
 
 /** A level length of the board's own yarn, so a choice is seen rather than approximated. */
 export function YarnSample({ style }: { style: YarnStyle }) {
-  const { yarnShadow } = usePreferences();
+  const { yarnShadow, yarnColor } = usePreferences();
   const from: Point = { x: PAD, y: HEIGHT / 2 };
   const to: Point = { x: WIDTH - PAD, y: HEIGHT / 2 };
 
   return (
     <svg
-      className="prefs-yarn-sample"
+      className="prefs-yarn-sample yarn-paint"
+      style={{ "--yarn-base": yarnColorCss(yarnColor) } as CSSProperties}
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       width={WIDTH}
       height={HEIGHT}

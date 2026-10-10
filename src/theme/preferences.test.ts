@@ -153,6 +153,13 @@ describe("parsePreferences", () => {
     expect(parsePreferences({ noteStyle: "marbled" }).noteStyle).toBe("plain");
   });
 
+  it("keeps a wool it carries and drops one it does not", () => {
+    expect(parsePreferences({ yarnColor: "indigo" }).yarnColor).toBe("indigo");
+    expect(parsePreferences({ yarnColor: "chartreuse" }).yarnColor).toBe(
+      DEFAULT_PREFERENCES.yarnColor,
+    );
+  });
+
   it("notifies when only the note default changed", () => {
     const seen = vi.fn();
     const stop = subscribePreferences(seen);
@@ -176,6 +183,7 @@ describe("preference storage", () => {
       surface: "whiteboard",
       finish: "clean",
       yarnStyle: "realistic",
+      yarnColor: "emerald",
       yarnShadow: false,
       noteStyle: "ruled",
       noteColor: "#cfd6bd",

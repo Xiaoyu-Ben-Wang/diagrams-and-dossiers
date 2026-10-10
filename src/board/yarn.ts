@@ -135,5 +135,5 @@ export function anchorOnBox(
   return { x: centre.x + dx * scale, y: centre.y + dy * scale };
 }
 
-/** Deliberately one colour for every string; it holds contrast on both cork and paper. */
-export const YARN_COLOR = "#a3302b";
+/** What a new string is stored with. */
+export { DEFAULT_YARN_COLOR as YARN_COLOR } from "./yarn-color";

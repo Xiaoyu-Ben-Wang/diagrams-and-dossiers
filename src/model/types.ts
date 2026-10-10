@@ -155,13 +155,14 @@ export interface StringLink {
   to: string;
   /** Rope length as a fraction of the gap. */
   slack: number;
-  color: string;
   style: StringStyle;
   /** A tag describing what the string means, or none. */
   label?: string;
   /** Where along the string the tag hangs: 0 at `from`, 1 at `to`. */
   labelAt: number;
   visibility: Visibility;
+  /** The server version this is based on; the database owns it, as on an entity. */
+  version: number;
 }
 
 /** Schema only; no UI yet. */

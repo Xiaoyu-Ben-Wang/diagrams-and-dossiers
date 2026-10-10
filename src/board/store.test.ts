@@ -2,9 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { newArticle, newFreePin, newNote } from "../model/create";
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
+import { stackingOrder } from "../model/layering";
 import { recordingSync } from "../realtime/transport";
 import type { BoardEntity } from "../model/types";
-import { createBoardStore, type BoardState } from "./store";
+import {
+  createBoardStore,
+  GESTURE_QUIET_MS,
+  TYPING_QUIET_MS,
+  type BoardState,
+  type BoardStore,
+} from "./store";
 import { DEFAULT_SLACK, YARN_COLOR } from "./yarn";
 
 function open(role: "viewer" | "editor" | "dm" | "owner" = "owner") {
@@ -22,6 +29,7 @@ const link = (from: string, to: string, id = `${from}-${to}`) => ({
   style: "solid" as const,
   labelAt: 0.5,
   visibility: "shared" as const,
+  version: 1,
 });
 
 describe("adding", () => {
@@ -143,12 +151,14 @@ describe("replacing the board", () => {
     expect(store.get().entities).toEqual([page, note]);
   });
 
-  it("publishes nothing, because there is no one-thing change for it", () => {
+  it("publishes what it replaced, rather than stranding peers on the old board", () => {
     const { store, sync } = open();
 
     store.replaceAll({ entities: [newFreePin({ x: 0, y: 0 })], strings: [] });
 
-    expect(sync.published).toEqual([]);
+    expect(sync.published.map((change) => change.kind)).toEqual([
+      "entity/upsert",
+    ]);
   });
 
   it("copies, so the caller cannot edit the board through the object it kept", () => {
@@ -235,13 +245,104 @@ describe("updating", () => {
   });
 });
 
-describe("undoing", () => {
-  /** Not every entity carries a position, and the change sees the whole union. */
-  const movedTo =
-    (x: number) =>
-    (entity: BoardEntity): BoardEntity =>
-      "board" in entity ? { ...entity, board: { ...entity.board, x } } : entity;
+/** Not every entity carries a position, and the change sees the whole union. */
+const movedTo =
+  (x: number) =>
+  (entity: BoardEntity): BoardEntity =>
+    "board" in entity ? { ...entity, board: { ...entity.board, x } } : entity;
 
+describe("a gesture in flight", () => {
+  it("shows the move here and keeps it off the wire until it stops", async () => {
+    vi.useFakeTimers();
+    const { store, sync } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+    sync.published.length = 0;
+
+    store.previewEntities([pin.id], movedTo(50));
+    store.previewEntities([pin.id], movedTo(90));
+
+    // The person dragging sees it move...
+    expect(store.get().entities[0]).toMatchObject({ board: { x: 90 } });
+    // ...and the database has heard nothing, however many frames went by.
+    expect(sync.published).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(GESTURE_QUIET_MS + 20);
+
+    // Let go, and it is written once, at where it ended up.
+    expect(sync.published).toHaveLength(1);
+    expect(sync.published[0]).toMatchObject({
+      kind: "entity/upsert",
+      entity: { board: { x: 90 } },
+    });
+  });
+
+  it("keeps work nobody has written yet when someone else edits the same thing", () => {
+    vi.useFakeTimers();
+    const { store } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+
+    // Words typed but not yet sent.
+    store.previewEntities(
+      [pin.id],
+      (entity) => ({ ...entity, bodyMd: "the tide keeps" }),
+      TYPING_QUIET_MS,
+    );
+
+    // A peer moves the note while those words are still only here.
+    store.applyRemote({
+      kind: "entity/upsert",
+      entity: { ...pin, board: { x: 400, y: 0 }, version: 5 },
+    });
+
+    // Theirs survives, and so does ours — they touched different fields, and
+    // neither edit was thrown away for it.
+    expect(store.get().entities[0]).toMatchObject({
+      bodyMd: "the tide keeps",
+      board: { x: 400, y: 0 },
+    });
+  });
+
+  it("writes what was typed once the typing stops", async () => {
+    vi.useFakeTimers();
+    const { store, sync } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+    sync.published.length = 0;
+
+    store.previewEntities(
+      [pin.id],
+      (entity) => ({ ...entity, bodyMd: "kept" }),
+      TYPING_QUIET_MS,
+    );
+    expect(sync.published).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(TYPING_QUIET_MS + 20);
+
+    expect(sync.published).toHaveLength(1);
+    expect(sync.published[0]).toMatchObject({
+      kind: "entity/upsert",
+      entity: { bodyMd: "kept" },
+    });
+  });
+
+  it("is still one thing to undo", async () => {
+    vi.useFakeTimers();
+    const { store } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+
+    for (let i = 1; i <= 20; i += 1)
+      store.previewEntities([pin.id], movedTo(i));
+
+    store.undo();
+
+    expect(store.get().entities[0]).toMatchObject({ board: { x: 0 } });
+  });
+});
+
+describe("undoing", () => {
   it("has nothing to undo on a board that has not been touched", () => {
     const { store } = open();
 
@@ -279,6 +380,68 @@ describe("undoing", () => {
 
     expect(store.get().entities).toHaveLength(2);
     expect(store.get().strings).toHaveLength(1);
+  });
+
+  it("publishes what it put back, so peers see the undo and not a silence", () => {
+    const { store, sync } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+    store.updateEntities([pin.id], (entity) => ({ ...entity, bodyMd: "mine" }));
+    sync.published.length = 0;
+
+    store.undo();
+
+    expect(sync.published).toEqual([
+      {
+        kind: "entity/upsert",
+        entity: expect.objectContaining({ bodyMd: pin.bodyMd }),
+      },
+    ]);
+  });
+
+  it("keeps a peer's change to a field the step never touched", () => {
+    const { store } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+    store.updateEntities([pin.id], (entity) => ({ ...entity, bodyMd: "mine" }));
+    store.applyRemote({
+      kind: "entity/upsert",
+      entity: { ...pin, bodyMd: "mine", title: "theirs", version: 2 },
+    });
+
+    store.undo();
+
+    // The body comes back; the title the step never named is left alone.
+    expect(store.get().entities[0]).toMatchObject({
+      bodyMd: pin.bodyMd,
+      title: "theirs",
+    });
+  });
+
+  it("does not bring back what a peer has since deleted", () => {
+    const { store } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+    store.updateEntities([pin.id], (entity) => ({ ...entity, bodyMd: "mine" }));
+    store.applyRemote({ kind: "entity/delete", id: pin.id });
+
+    store.undo();
+
+    expect(store.get().entities).toHaveLength(0);
+  });
+
+  it("leaves no step when a run ends where it started", () => {
+    const { store } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+
+    store.updateEntities([pin.id], movedTo(50));
+    store.updateEntities([pin.id], movedTo(0));
+
+    store.undo();
+
+    // The run added no step, so this undo reached the creation underneath it.
+    expect(store.get().entities).toHaveLength(0);
   });
 
   it("takes a whole drag as one step", () => {
@@ -455,11 +618,31 @@ describe("changes from elsewhere", () => {
 
     store.applyRemote({
       kind: "entity/upsert",
-      entity: { ...pin, bodyMd: "from the other side" },
+      entity: {
+        ...pin,
+        bodyMd: "from the other side",
+        version: pin.version + 1,
+      },
     });
 
     expect(store.get().entities).toHaveLength(1);
     expect(store.get().entities[0].bodyMd).toBe("from the other side");
+  });
+
+  it("ignores a change it has already applied, however it arrives", () => {
+    const { store } = open();
+    const pin = newFreePin({ x: 0, y: 0 }, { id: "9".repeat(8) });
+    store.addEntities([pin]);
+    const fromElsewhere = { ...pin, bodyMd: "later", version: 4 };
+    store.applyRemote({ kind: "entity/upsert", entity: fromElsewhere });
+
+    store.applyRemote({ kind: "entity/upsert", entity: fromElsewhere });
+    store.applyRemote({
+      kind: "entity/upsert",
+      entity: { ...pin, bodyMd: "older", version: 2 },
+    });
+
+    expect(store.get().entities[0].bodyMd).toBe("later");
   });
 
   it("deletes an entity and the strings hanging off it", () => {
@@ -492,6 +675,52 @@ describe("changes from elsewhere", () => {
 
     expect(store.get().entities).toEqual([pin]);
   });
+
+  it("holds a string whose far end has not arrived yet, then lets it in", () => {
+    const { store } = open();
+    const a = newFreePin({ x: 0, y: 0 });
+    const b = newFreePin({ x: 1, y: 1 });
+    store.addEntities([a]);
+
+    // Catch-up is not topological, so the tie can land before the thing it ties.
+    store.applyRemote({ kind: "string/upsert", string: link(a.id, b.id) });
+    expect(store.get().strings).toHaveLength(0);
+
+    store.applyRemote({ kind: "entity/upsert", entity: b });
+    expect(store.get().strings).toHaveLength(1);
+  });
+
+  it("drops a held string whose end is deleted before it ever arrived", () => {
+    const { store } = open();
+    const a = newFreePin({ x: 0, y: 0 });
+    const b = newFreePin({ x: 1, y: 1 });
+    store.addEntities([a]);
+
+    store.applyRemote({ kind: "string/upsert", string: link(a.id, b.id) });
+    store.applyRemote({ kind: "entity/upsert", entity: b });
+    store.applyRemote({ kind: "entity/delete", id: b.id });
+
+    expect(store.get().strings).toHaveLength(0);
+  });
+
+  it("asks for the board again when a write is refused, and settles", () => {
+    const { store, sync } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+
+    expect(store.resyncing()).toBe(false);
+    sync.reject({ kind: "entity/upsert", entity: pin }, "stale");
+
+    expect(store.resyncing()).toBe(true);
+    expect(sync.resyncs()).toBe(1);
+
+    // The catch-up that answers the resync is what settles it back down.
+    store.applyRemote({
+      kind: "entity/upsert",
+      entity: { ...pin, bodyMd: "theirs", version: 2 },
+    });
+    expect(store.resyncing()).toBe(false);
+  });
 });
 
 describe("subscribing", () => {
@@ -517,5 +746,66 @@ describe("subscribing", () => {
     store.addEntities([note]);
 
     expect(store.get().entities[0].kind).toBe("note");
+  });
+});
+
+describe("reordering", () => {
+  /** Made in a known order, so the stack is not decided by three random ids. */
+  const made = (id: string, at: number) => ({
+    ...newNote({ x: 0, y: 0 }, { id }),
+    createdAt: at,
+  });
+
+  const stacked = (store: BoardStore) =>
+    stackingOrder(store.get().entities).map((entity) => entity.id);
+
+  it("brings a thing to the front, and publishes what it moved", () => {
+    const { store, sync } = open();
+    const a = made("a", 1);
+    const b = made("b", 2);
+    store.addEntities([a, b]);
+    sync.published.length = 0;
+
+    store.reorderEntities([a.id], "front");
+
+    expect(stacked(store)).toEqual(["b", "a"]);
+    const moved = store.get().entities.filter((entity) => entity.zIndex !== 0);
+    expect(sync.published).toEqual(
+      moved.map((entity) => ({ kind: "entity/upsert", entity })),
+    );
+  });
+
+  it("is a step of its own, however fast the two are pressed", () => {
+    const { store } = open();
+    const a = made("a", 1);
+    const b = made("b", 2);
+    const c = made("c", 3);
+    store.addEntities([a, b, c]);
+
+    const zOf = (id: string) =>
+      store.get().entities.find((entity) => entity.id === id)!.zIndex;
+
+    store.reorderEntities([a.id], "front");
+    store.reorderEntities([a.id], "back");
+
+    expect(zOf(a.id)).toBe(-3);
+    store.undo();
+    expect(zOf(a.id)).toBe(-1);
+    store.undo();
+    expect(zOf(a.id)).toBe(0);
+  });
+
+  it("does nothing when the move would not change the order", () => {
+    const { store, sync } = open();
+    const a = made("a", 1);
+    const b = made("b", 2);
+    store.addEntities([a, b]);
+    sync.published.length = 0;
+    const before = store.get();
+
+    store.reorderEntities([b.id], "front");
+
+    expect(store.get()).toBe(before);
+    expect(sync.published).toEqual([]);
   });
 });

@@ -16,7 +16,7 @@ function world(): HTMLElement {
   element.setAttribute("data-testid", "board-world");
   element.style.transform = "translate3d(10px, 20px, 0) scale(0.5)";
   element.innerHTML = `
-    <div class="parchment is-selected ring-2 ring-brass/70" data-article-id="a">
+    <div class="parchment is-selected ring-2 ring-accent/70" data-article-id="a">
       <button data-testid="paper-tab">The Drowned Bell</button>
       <div class="post-it is-selected">
         <textarea>He named a price.</textarea>
@@ -28,7 +28,9 @@ function world(): HTMLElement {
         <button class="image-resize"></button>
       </div>
       <div class="string-note"><span class="string-note-prompt">+ note</span></div>
-      <div class="string-note"><textarea>which of the two</textarea></div>
+      <div class="string-note">
+        <textarea>which of the two</textarea>
+      </div>
     </div>
   `;
   return element;
@@ -56,7 +58,7 @@ describe("preparing a clone to draw", () => {
 
     expect(clone.querySelector(".is-selected")).toBeNull();
     expect(clone.querySelector(".ring-2")).toBeNull();
-    expect(clone.querySelector(".ring-brass\\/70")).toBeNull();
+    expect(clone.querySelector(".ring-accent\\/70")).toBeNull();
   });
 
   it("writes a textarea’s value in, which React keeps as a property", () => {

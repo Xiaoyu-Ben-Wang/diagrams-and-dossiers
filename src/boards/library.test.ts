@@ -37,6 +37,35 @@ describe("the board library", () => {
     expect(library.ready()).toBe(true);
   });
 
+  it("removes a board that is nobody else's without asking the server", async () => {
+    // Local, and joined boards alike: there is no row of yours to delete.
+    const theirs = {
+      ...createBoardRecord("Aria's Campaign", board, 1),
+      remote: true as const,
+    };
+    const storage = memoryBoardStorage([theirs]);
+    const library = createBoardLibrary(storage);
+
+    expect(await library.destroy(theirs.id)).toBe(true);
+    expect(await storage.get(theirs.id)).toBeNull();
+  });
+
+  it("keeps the board when the server could not be told", async () => {
+    // No network in the unit suite, which is exactly the case this is for: a board
+    // gone from the list but still on the server is the one nobody can put back.
+    const mine = {
+      ...createBoardRecord("Ledger", board, 1),
+      remote: true as const,
+      editToken: "ledger-edit-token",
+    };
+    const storage = memoryBoardStorage([mine]);
+    const library = createBoardLibrary(storage);
+
+    expect(await library.destroy(mine.id)).toBe(false);
+    expect(await storage.get(mine.id)).not.toBeNull();
+    expect(library.get().map((record) => record.id)).toEqual([mine.id]);
+  });
+
   it("keeps the most recently changed board first", async () => {
     const library = createBoardLibrary(memoryBoardStorage());
     await library.create("first", board);

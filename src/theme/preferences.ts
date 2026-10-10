@@ -20,6 +20,11 @@ export const BOARD_FINISHES = ["dotted", "clean"] as const;
 export type BoardFinish = (typeof BOARD_FINISHES)[number];
 
 import { YARN_STYLES, type YarnStyle } from "../board/yarn-style";
+import {
+  DEFAULT_YARN_COLOR,
+  YARN_COLORS,
+  type YarnColor,
+} from "../board/yarn-color";
 
 export { YARN_STYLES, type YarnStyle };
 
@@ -33,6 +38,8 @@ export interface Preferences {
   surface: BoardSurface;
   finish: BoardFinish;
   yarnStyle: YarnStyle;
+  /** What a new string is drawn in, until its own note is used to pick another. */
+  yarnColor: YarnColor;
   /** Whether a string throws a shadow onto the board. */
   yarnShadow: boolean;
   /** What the palette's note pad makes, and what its menu starts on. */
@@ -46,6 +53,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   surface: "cork",
   finish: "dotted",
   yarnStyle: "realistic",
+  yarnColor: DEFAULT_YARN_COLOR,
   yarnShadow: true,
   noteStyle: "plain",
   noteColor: POST_IT_COLORS[0].color,
@@ -56,11 +64,13 @@ interface ThemePalette {
   parchment100: string;
   parchment200: string;
   parchment300: string;
-  parchmentEdge: string;
+  border: string;
   ink: string;
   inkSoft: string;
-  wax: string;
-  brass: string;
+  danger: string;
+  warning: string;
+  /** The brass a pin is pressed from, and the manila a folder is cut from. */
+  pin: string;
   boardInk: string;
   boardInkSoft: string;
 }
@@ -71,6 +81,8 @@ interface SurfaceRamp {
   cork500: string;
   cork300: string;
   base: string;
+  /** The surface's own accent: brass on cork, green on felt, steel on slate. */
+  accent: string;
 }
 
 /** Dark mirrors the tokens in index.css exactly, so dark + cork is a no-op repaint. */
@@ -79,11 +91,12 @@ const THEME_PALETTES: Record<ThemeMode, ThemePalette> = {
     parchment100: "#f7efdd",
     parchment200: "#efe3c8",
     parchment300: "#e3d2ae",
-    parchmentEdge: "#c9b48a",
+    border: "#c9b48a",
     ink: "#241a12",
     inkSoft: "#4a382a",
-    wax: "#8c2f1e",
-    brass: "#c9a227",
+    danger: "#8c2f1e",
+    warning: "#e8a94a",
+    pin: "#d4a83a",
     boardInk: "#f7efdd",
     boardInkSoft: "#e3d2ae",
   },
@@ -91,14 +104,35 @@ const THEME_PALETTES: Record<ThemeMode, ThemePalette> = {
     parchment100: "#fdf9ef",
     parchment200: "#f3ead6",
     parchment300: "#e6dabd",
-    parchmentEdge: "#b7a078",
+    border: "#b7a078",
     ink: "#241a12",
     inkSoft: "#4a382a",
-    wax: "#8c2f1e",
-    // Brass at full brightness is unreadable on paper; same hue, taken down.
-    brass: "#8a6a12",
+    danger: "#8c2f1e",
+    warning: "#d98a2b",
+    pin: "#a8842a",
     boardInk: "#2b2016",
     boardInkSoft: "#57452f",
+  },
+};
+
+/**
+ * The wool, twice over: the same five, lit for a bright board and lifted for a dark
+ * one. A thread dark enough to read on cork disappears into a candlelit room.
+ */
+const YARN_PALETTES: Record<ThemeMode, Record<YarnColor, string>> = {
+  light: {
+    crimson: "#a3302b",
+    indigo: "#2e4a7d",
+    emerald: "#2f6b4f",
+    gold: "#b8912f",
+    violet: "#5b3a72",
+  },
+  dark: {
+    crimson: "#d9544a",
+    indigo: "#5b83c4",
+    emerald: "#4fa87a",
+    gold: "#dcb44e",
+    violet: "#9b6fc4",
   },
 };
 
@@ -107,11 +141,12 @@ const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
   // theme the way the label does: cork in a lit room, dark leather in a dim one.
   cork: {
     dark: {
-      cork900: "#140d09",
-      cork700: "#221610",
-      cork500: "#33221a",
-      cork300: "#4b3428",
-      base: "#33221a",
+      cork900: "#1c1511",
+      cork700: "#2a1e18",
+      cork500: "#3b2a22",
+      cork300: "#533c30",
+      base: "#3b2a22",
+      accent: "#c9a227",
     },
     // Warm and grainy rather than cream: the light room is still a cork room, and
     // the old ramp was pale enough to read as paper. It cannot go much deeper —
@@ -122,15 +157,17 @@ const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
       cork500: "#efd4ad",
       cork300: "#c3a274",
       base: "#efd4ad",
+      accent: "#8a6a12",
     },
   },
   felt: {
     dark: {
-      cork900: "#0c1912",
-      cork700: "#13291c",
-      cork500: "#1e3c2a",
-      cork300: "#2e5a42",
-      base: "#1e3c2a",
+      cork900: "#14211a",
+      cork700: "#1b3124",
+      cork500: "#264432",
+      cork300: "#36624a",
+      base: "#264432",
+      accent: "#7fc48a",
     },
     light: {
       cork900: "#9fbfa6",
@@ -138,6 +175,7 @@ const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
       cork500: "#cfe0d2",
       cork300: "#7fa189",
       base: "#cfe0d2",
+      accent: "#3d6b3f",
     },
   },
   whiteboard: {
@@ -147,15 +185,18 @@ const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
       cork500: "#f7f9fa",
       cork300: "#a8b0b8",
       base: "#f7f9fa",
+      accent: "#6c6478",
     },
     // Neutral, not green: the old ramp was green-dominant, which left it a hair
-    // from the felt and reading as a darker felt rather than a blackboard.
+    // from the felt and reading as a darker felt rather than a blackboard. Lifted off
+    // true black, which read as a hole rather than a board.
     dark: {
-      cork900: "#080809",
-      cork700: "#111112",
-      cork500: "#1b1b1d",
-      cork300: "#2e2e31",
-      base: "#1b1b1d",
+      cork900: "#111113",
+      cork700: "#1a1a1c",
+      cork500: "#242427",
+      cork300: "#38383c",
+      base: "#242427",
+      accent: "#b9b2c5",
     },
   },
   slate: {
@@ -165,6 +206,7 @@ const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
       cork500: "#2a333d",
       cork300: "#3f4b58",
       base: "#2a333d",
+      accent: "#8fb4d9",
     },
     light: {
       cork900: "#b4bcc4",
@@ -172,6 +214,7 @@ const SURFACE_RAMPS: Record<BoardSurface, Record<ThemeMode, SurfaceRamp>> = {
       cork500: "#dbe0e5",
       cork300: "#8e97a1",
       base: "#dbe0e5",
+      accent: "#3f5b7a",
     },
   },
 };
@@ -198,6 +241,51 @@ export function surfaceColor(surface: BoardSurface, theme: ThemeMode): string {
   return SURFACE_RAMPS[surface][theme].base;
 }
 
+/** The manila of a folder tab and a board row's edge. The same sum as `--color-folder`. */
+export function folderColor(surface: BoardSurface, mode: ThemeMode): string {
+  const palette = THEME_PALETTES[mode];
+  return mixHex(
+    SURFACE_RAMPS[surface][mode].accent,
+    palette.parchment300,
+    0.55,
+  );
+}
+
+/**
+ * The writing surface. Paper in the light room; in the dark one the board's own cork
+ * taken down, so it stays darker than the board it is pinned to.
+ */
+function editorSurface(
+  mode: ThemeMode,
+  palette: ThemePalette,
+  ramp: SurfaceRamp,
+): string {
+  return mode === "light"
+    ? mixHex(palette.parchment100, ramp.base, 0.88)
+    : mixHex(ramp.cork900, "#000000", 0.72);
+}
+
+/**
+ * Ink and edges are drawn towards the board's deep tone; paper is drawn towards the
+ * board's own colour, since that is what it is lying on. Ink keeps more of itself than a
+ * border does — it has to stay legible, where a hairline only has to read as an edge.
+ */
+function mixWithBoard(color: string, ramp: SurfaceRamp, weight = 0.78): string {
+  return mixHex(color, ramp.cork900, weight);
+}
+
+/** Mixing two hexes by weight, worked out here so no value needs CSS to resolve. */
+function mixHex(a: string, b: string, aWeight: number): string {
+  const channel = (shift: number) => {
+    const av = (Number.parseInt(a.slice(1), 16) >> shift) & 255;
+    const bv = (Number.parseInt(b.slice(1), 16) >> shift) & 255;
+    return Math.round(av * aWeight + bv * (1 - aWeight))
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${channel(16)}${channel(8)}${channel(0)}`;
+}
+
 export function preferenceVariables(
   preferences: Preferences,
 ): Record<string, string> {
@@ -208,18 +296,27 @@ export function preferenceVariables(
     "--color-cork-700": surface.cork700,
     "--color-cork-500": surface.cork500,
     "--color-cork-300": surface.cork300,
-    "--color-parchment-100": theme.parchment100,
-    "--color-parchment-200": theme.parchment200,
-    "--color-parchment-300": theme.parchment300,
-    "--color-parchment-edge": theme.parchmentEdge,
+    "--color-parchment-100": mixHex(theme.parchment100, surface.base, 0.88),
+    "--color-parchment-200": mixHex(theme.parchment200, surface.base, 0.88),
+    "--color-parchment-300": mixHex(theme.parchment300, surface.base, 0.88),
+    "--color-border": mixWithBoard(theme.border, surface, 0.62),
     "--color-ink": theme.ink,
     "--color-ink-soft": theme.inkSoft,
-    "--color-wax": theme.wax,
-    "--color-brass": theme.brass,
+    "--color-danger": theme.danger,
+    "--color-warning": theme.warning,
+    "--color-pin": mixWithBoard(theme.pin, surface, 0.85),
+    "--color-accent": surface.accent,
     "--board-surface": surface.base,
+    "--editor-surface": editorSurface(preferences.theme, theme, surface),
     "--grid-dot-color": gridDotFor(preferences.surface, preferences.theme),
-    "--color-board-ink": theme.boardInk,
-    "--color-board-ink-soft": theme.boardInkSoft,
+    "--color-board-ink": mixWithBoard(theme.boardInk, surface),
+    "--color-board-ink-soft": mixWithBoard(theme.boardInkSoft, surface),
+    ...Object.fromEntries(
+      YARN_COLORS.map((name) => [
+        `--color-yarn-${name}`,
+        YARN_PALETTES[preferences.theme][name],
+      ]),
+    ),
   };
 }
 
@@ -239,6 +336,11 @@ export function parsePreferences(raw: unknown): Preferences {
       value.yarnStyle,
       YARN_STYLES,
       DEFAULT_PREFERENCES.yarnStyle,
+    ),
+    yarnColor: pick(
+      value.yarnColor,
+      YARN_COLORS,
+      DEFAULT_PREFERENCES.yarnColor,
     ),
     yarnShadow:
       typeof value.yarnShadow === "boolean"
@@ -285,6 +387,7 @@ function samePreferences(a: Preferences, b: Preferences): boolean {
     a.surface === b.surface &&
     a.finish === b.finish &&
     a.yarnStyle === b.yarnStyle &&
+    a.yarnColor === b.yarnColor &&
     a.yarnShadow === b.yarnShadow &&
     a.noteStyle === b.noteStyle &&
     a.noteColor === b.noteColor &&
@@ -312,7 +415,10 @@ export function applyPreferences(preferences: Preferences): void {
 
   // Body is repainted directly: the paper ramp is overloaded, so it cannot be flipped.
   if (document.body)
-    document.body.style.color = THEME_PALETTES[preferences.theme].boardInk;
+    document.body.style.color = mixWithBoard(
+      THEME_PALETTES[preferences.theme].boardInk,
+      SURFACE_RAMPS[preferences.surface][preferences.theme],
+    );
 }
 
 export const PREFERENCE_STORAGE_KEY = "detective-board.preferences";
