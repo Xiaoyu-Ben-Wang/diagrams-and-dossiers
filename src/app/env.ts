@@ -23,3 +23,8 @@ export function supabaseConfig(
     ),
   };
 }
+
+/** A build with no server: boards live only in this browser and cannot be shared. */
+export function isLocalOnly(env: ImportMetaEnv = import.meta.env): boolean {
+  return env.VITE_LOCAL_ONLY === "true";
+}

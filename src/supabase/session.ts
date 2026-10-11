@@ -10,6 +10,7 @@
  * board, and it answers `null` rather than throwing so a misconfigured project
  * degrades to the local library instead of taking the shell down.
  */
+import { isLocalOnly } from "../app/env";
 import { getSupabase } from "./client";
 
 export interface Session {
@@ -17,6 +18,7 @@ export interface Session {
 }
 
 export async function ensureSession(): Promise<Session | null> {
+  if (isLocalOnly()) return null;
   try {
     const supabase = getSupabase();
 

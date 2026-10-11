@@ -564,6 +564,39 @@ describe("App — the boards library", () => {
     expect(await storage.get(ledger.id)).toBeNull();
   });
 
+  describe("in a build with no server", () => {
+    beforeEach(() => vi.stubEnv("VITE_LOCAL_ONLY", "true"));
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("says on the list that nothing leaves the machine", () => {
+      openLibrary();
+
+      expect(screen.getByTestId("library-local").textContent).toMatch(
+        /kept in this browser/i,
+      );
+    });
+
+    it("offers no link to share, since there is nowhere for one to lead", () => {
+      openLibrary([ledger]);
+
+      expect(screen.queryByTestId(`share-${ledger.id}`)).toBeNull();
+    });
+
+    it("treats a join link as an address it does not have", () => {
+      window.history.replaceState(null, "", "/j/some-token");
+      render(<App storage={memoryBoardStorage([])} />);
+
+      expect(screen.queryByText("Join this board")).toBeNull();
+      expect(screen.getByTestId("not-found")).toBeTruthy();
+    });
+  });
+
+  it("makes no claim about staying on the machine when there is a server", () => {
+    openLibrary();
+
+    expect(screen.queryByTestId("library-local")).toBeNull();
+  });
+
   it("copies a link to a board", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {

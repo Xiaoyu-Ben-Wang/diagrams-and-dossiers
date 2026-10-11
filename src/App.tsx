@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ARTICLE_TITLE, demoBoard } from "./app/demo";
+import { isLocalOnly } from "./app/env";
 import { EntryScreen } from "./app/JoinScreen";
 import { NotFound } from "./app/NotFound";
 import { useRoute } from "./app/router";
@@ -128,7 +129,9 @@ export function App({ seed, storage, now }: AppProps = {}) {
     // On the server first, so a board that can be shared gets a link from the
     // start. `null` means it could not be — no invite, no session, no network —
     // and the board stays on this machine rather than not existing at all.
-    const remote = await newBoardOnServer("Untitled board");
+    const remote = isLocalOnly()
+      ? null
+      : await newBoardOnServer("Untitled board");
     const record = await library.create(
       "Untitled board",
       undefined,
@@ -170,6 +173,14 @@ export function App({ seed, storage, now }: AppProps = {}) {
   if (seed) return <BoardScreen board={seed} />;
 
   if (route.name === "join" || route.name === "invite") {
+    if (isLocalOnly()) {
+      return (
+        <NotFound
+          path={window.location.pathname}
+          onHome={() => navigate({ name: "library" })}
+        />
+      );
+    }
     return (
       <EntryScreen
         kind={route.name}

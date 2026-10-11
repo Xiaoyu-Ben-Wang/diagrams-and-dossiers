@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link as LinkIcon, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { TopBar } from "../app/TopBar";
+import { isLocalOnly } from "../app/env";
 import { ARTICLE_TITLE } from "../app/demo";
 import { isSharedBoard, type BoardRecord } from "./board-record";
 import type { BoardLibrary } from "./library";
@@ -45,6 +46,13 @@ export function LibraryScreen({
         className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6"
         data-testid="library"
       >
+        {isLocalOnly() ? (
+          <p className="library-local" data-testid="library-local">
+            Everything is kept in this browser. Nothing is uploaded, and no
+            personal data leaves your machine.
+          </p>
+        ) : null}
+
         {library.degraded() ? (
           // Visible on purpose. Preferences fail quietly; a board is a session's work.
           <p
@@ -300,7 +308,7 @@ function BoardRow({
             <Pencil size={12} strokeWidth={2.2} aria-hidden="true" />
             Rename
           </button>
-          {shared ? null : (
+          {shared || isLocalOnly() ? null : (
             <button
               type="button"
               className="library-button"

@@ -14,6 +14,17 @@
 
 /* The headings that split your own boards from the ones somebody gave you a link
    to, in the small-caps the rest of the board uses for a label. */
+.library-local {
+  max-width: 46rem;
+  margin: 0 auto 14px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-board-ink);
+  font-size: 12px;
+}
+
 .library-group + .library-group {
   margin-top: 24px;
 }
