@@ -3405,6 +3405,25 @@ describe("App — pins in words", () => {
     expect(container.querySelector("[data-drop]")).toBeNull();
   });
 
+  it("pulls a pin off its words when it is middle-dragged away", () => {
+    const { container } = renderBoard();
+    withCaret(container, () => pinWordByMenu(container));
+
+    withCaret(container, () => {
+      const pin = tack(container);
+      fireEvent.pointerDown(pin, {
+        button: 1,
+        pointerId: 18,
+        clientX: 181,
+        clientY: 52,
+      });
+      fireEvent.pointerMove(pin, { pointerId: 18, ...client(OFF_WORDS) });
+      fireEvent.pointerUp(pin, { pointerId: 18, ...client(OFF_WORDS) });
+    });
+
+    expect(tack(container).getAttribute("data-status")).toBe("free");
+  });
+
   it("keeps a pin on its words when it is only nudged", () => {
     const { container } = renderBoard();
     withCaret(container, () => pinWordByMenu(container));

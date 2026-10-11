@@ -1640,11 +1640,24 @@ export function BoardScreen({
   );
 
   const handleEntityDrag = useCallback(
-    (element: Element, delta: Point) => {
+    (element: Element, delta: Point, client: Point) => {
       const id = entityIdFromElement(element);
-      if (id) moveEntity(id, delta);
+      if (!id) return;
+      moveEntity(id, delta);
+      if (isPinElement(element)) aimPin(id, client);
     },
-    [moveEntity],
+    [moveEntity, aimPin],
+  );
+
+  /** A pin moved by the middle button is let go like one moved any other way. */
+  const handleEntityDragEnd = useCallback(
+    (element: Element, client: Point | null) => {
+      const id = entityIdFromElement(element);
+      if (!id || !isPinElement(element)) return;
+      aimPin(id, null);
+      if (client) handlePinDrop(id, client.x, client.y);
+    },
+    [aimPin, handlePinDrop],
   );
 
   useEffect(() => {
@@ -2589,6 +2602,7 @@ export function BoardScreen({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <BoardCanvas
               onEntityDrag={handleEntityDrag}
+              onEntityDragEnd={handleEntityDragEnd}
               onHover={handleCanvasHover}
               idleCursor={hoveredString ? "pointer" : "default"}
               camera={camera}
@@ -3000,4 +3014,8 @@ function dropKey(drop: PinDrop): string {
 /** How far a page's sheet is turned, as `ArticleSheet` draws it. */
 function pageTurn(article: ArticleEntity | undefined): number {
   return article ? clampTilt(article.rotation) : 0;
+}
+
+function isPinElement(element: Element): boolean {
+  return element.closest("[data-pin-id]") !== null;
 }
