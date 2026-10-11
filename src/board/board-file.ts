@@ -1,6 +1,7 @@
 import type { TextAnchor } from "../anchors/types";
 import { parseArticleOptions } from "../model/article-options";
 import { fieldReaders } from "../model/fields";
+import { clampSpot } from "../model/image-mark";
 import {
   DATE_PRECISIONS,
   ENTITY_KINDS,
@@ -16,6 +17,7 @@ import {
   type ItemStatus,
   type NoteFont,
   type NoteStyle,
+  type Spot,
   type StringLink,
   type StringStyle,
   type Visibility,
@@ -213,6 +215,14 @@ function parseAnchor(value: unknown, where: string): TextAnchor {
   };
 }
 
+function parseSpot(value: unknown, where: string): Spot {
+  const raw = record(value, where);
+  return clampSpot({
+    u: number(raw.u, `${where}.u`),
+    v: number(raw.v, `${where}.v`),
+  });
+}
+
 function parseEntity(value: unknown, where: string): BoardEntity {
   const raw = record(value, where);
   const kind = text(raw.kind, `${where}.kind`);
@@ -223,6 +233,14 @@ function parseEntity(value: unknown, where: string): BoardEntity {
 
   switch (kind) {
     case "pin":
+      if ("imageId" in raw) {
+        return {
+          ...base,
+          kind: "pin",
+          imageId: text(raw.imageId, `${where}.imageId`),
+          spot: parseSpot(raw.spot, `${where}.spot`),
+        };
+      }
       return "anchor" in raw
         ? {
             ...base,

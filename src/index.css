@@ -701,6 +701,18 @@ body {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
+.anchor-mark[data-drop="onto"] {
+  background: color-mix(in srgb, var(--color-glow) 30%, transparent);
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--color-glow) 95%, transparent),
+    0 0 10px color-mix(in srgb, var(--color-glow) 85%, transparent);
+}
+
+.anchor-mark[data-drop="leaving"] {
+  background: rgb(140 140 140 / 0.25);
+  box-shadow: 0 0 0 1px rgb(140 140 140 / 0.6);
+}
+
 .editor {
   background: var(--editor-surface);
   color: var(--color-board-ink);

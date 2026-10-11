@@ -13,6 +13,7 @@
 import type { TextAnchor } from "../anchors/types";
 import { parseArticleOptions } from "../model/article-options";
 import { fieldReaders } from "../model/fields";
+import { clampSpot } from "../model/image-mark";
 import { NOTE_FONT_DEFAULT } from "../model/kinds";
 import {
   DATE_PRECISIONS,
@@ -30,6 +31,7 @@ import {
   type ItemStatus,
   type NoteFont,
   type NoteStyle,
+  type Spot,
   type StringLink,
   type StringStyle,
   type Visibility,
@@ -69,6 +71,9 @@ export interface ItemRow {
   board_y: number | null;
   article_id: string | null;
   anchor: unknown;
+  image_id: string | null;
+  spot_u: number | null;
+  spot_v: number | null;
   status: string;
   date_label: string | null;
   occurred_at: string | null;
@@ -162,6 +167,14 @@ function parseAnchor(value: unknown, where: string): TextAnchor {
   };
 }
 
+/** A row naming a picture must carry both numbers, and a fraction is never out of range. */
+function parseSpot(raw: Record<string, unknown>, where: string): Spot {
+  return clampSpot({
+    u: number(raw.spot_u, `${where}.spot_u`),
+    v: number(raw.spot_v, `${where}.spot_v`),
+  });
+}
+
 function pointFrom(raw: Record<string, unknown>, where: string): Point {
   return {
     x: number(raw.board_x, `${where}.board_x`),
@@ -199,6 +212,14 @@ export function rowToEntity(value: unknown): BoardEntity {
 
   switch (kind) {
     case "pin":
+      if (raw.image_id !== null && raw.image_id !== undefined) {
+        return {
+          ...base,
+          kind: "pin",
+          imageId: text(raw.image_id, `${where}.image_id`),
+          spot: parseSpot(raw, where),
+        };
+      }
       return raw.article_id === null || raw.article_id === undefined
         ? { ...base, kind: "pin", board: pointFrom(raw, where) }
         : {
@@ -301,6 +322,9 @@ export function entityToRow(entity: BoardEntity, boardId: string): ItemWrite {
     board_y: placed?.y ?? null,
     article_id: null,
     anchor: null,
+    image_id: null,
+    spot_u: null,
+    spot_v: null,
     status: entity.status,
     date_label: entity.dateLabel ?? null,
     occurred_at: iso(entity.occurredAt),
@@ -328,6 +352,13 @@ export function entityToRow(entity: BoardEntity, boardId: string): ItemWrite {
       if ("anchor" in entity) {
         row.article_id = requireUuid(entity.articleId, "article");
         row.anchor = entity.anchor;
+      } else if ("imageId" in entity) {
+        row.image_id = requireUuid(entity.imageId, "image");
+        // Clamped here as well as on the way in, because a drag holds a fraction the pointer
+        // has taken off the photo until the drop decides whether it stayed.
+        const spot = clampSpot(entity.spot);
+        row.spot_u = spot.u;
+        row.spot_v = spot.v;
       }
       return row;
     case "note":

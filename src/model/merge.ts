@@ -27,13 +27,24 @@ export function changedKeys<T extends object>(before: T, after: T): string[] {
   return changed;
 }
 
-/** `current`, with the named fields taken from `from`. Everything else is kept. */
+/**
+ * `current`, with the named fields taken from `from`. Everything else is kept.
+ *
+ * A field `from` does not carry is deleted rather than set to `undefined`, because the guards
+ * ask whether a key is *present* (`"anchor" in entity`): a leftover key claiming a placement the
+ * entity no longer has reads as the wrong kind of pin, and an anchored pin with an undefined
+ * `articleId` resolves to an orphan and is drawn nowhere.
+ */
 export function withFields<T extends object>(
   current: T,
   from: T,
   keys: readonly string[],
 ): T {
   const next = { ...current } as Record<string, unknown>;
-  for (const key of keys) next[key] = (from as Record<string, unknown>)[key];
+  const source = from as Record<string, unknown>;
+  for (const key of keys) {
+    if (source[key] === undefined) delete next[key];
+    else next[key] = source[key];
+  }
   return next as T;
 }

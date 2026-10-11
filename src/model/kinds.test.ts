@@ -31,6 +31,7 @@ import {
   type EntityContext,
   type FreePin,
   type ImageEntity,
+  type ImagePin,
   type NoteEntity,
 } from "./types";
 
@@ -120,7 +121,23 @@ const emptyContext: EntityContext = {
   articleToBoard: () => null,
   anchorRect: () => null,
   articleSize: () => null,
+  imageById: () => null,
 };
+
+/** A mark on the picture `image()` makes: 260x200 at 50,60. */
+const imagePin = (over: Partial<ImagePin> = {}): ImagePin => ({
+  ...base,
+  id: "m1",
+  kind: "pin",
+  imageId: "e1",
+  spot: { u: 0.25, v: 0.5 },
+  ...over,
+});
+
+const withImage = (picture: ImageEntity): EntityContext => ({
+  ...emptyContext,
+  imageById: (id) => (id === picture.id ? picture : null),
+});
 
 describe("the registry covers every kind", () => {
   it("answers for each kind in the union", () => {
@@ -149,6 +166,7 @@ describe("placement is carried by the shape", () => {
     expect(isPlaced(note())).toBe(true);
     expect(isPlaced(article())).toBe(true);
     expect(isPlaced(image())).toBe(true);
+    expect(isPlaced(imagePin())).toBe(true);
     expect(isPlaced(anchoredPin())).toBe(false);
   });
 });
@@ -367,23 +385,28 @@ describe("bounds", () => {
 
 describe("move", () => {
   it("moves a free pin by its position", () => {
-    const moved = descriptorFor(freePin()).move(freePin(), { x: 5, y: 7 });
+    const moved = descriptorFor(freePin()).move(
+      freePin(),
+      { x: 5, y: 7 },
+      emptyContext,
+    );
     expect(moved).toMatchObject({ board: { x: 105, y: 207 } });
   });
 
   it("stores the shift of an anchored pin as an offset, leaving the anchor alone", () => {
     const pin = anchoredPin();
-    const moved = descriptorFor(pin).move(pin, { x: 5, y: 7 });
+    const moved = descriptorFor(pin).move(pin, { x: 5, y: 7 }, emptyContext);
     expect(moved).toMatchObject({ nudge: { x: 5, y: 7 } });
     expect((moved as AnchoredPin).anchor).toBe(pin.anchor);
   });
 
   it("accumulates a nudge across repeated moves", () => {
-    const once = descriptorFor(anchoredPin()).move(anchoredPin(), {
-      x: 5,
-      y: 5,
-    });
-    const twice = descriptorFor(once).move(once, { x: 2, y: -1 });
+    const once = descriptorFor(anchoredPin()).move(
+      anchoredPin(),
+      { x: 5, y: 5 },
+      emptyContext,
+    );
+    const twice = descriptorFor(once).move(once, { x: 2, y: -1 }, emptyContext);
     expect(twice.nudge).toEqual({ x: 7, y: 4 });
   });
 
@@ -394,7 +417,11 @@ describe("move", () => {
       [image(), { x: 50, y: 60 }],
     ] as const;
     for (const [entity, start] of cases) {
-      const moved = descriptorFor(entity).move(entity, { x: 3, y: 4 });
+      const moved = descriptorFor(entity).move(
+        entity,
+        { x: 3, y: 4 },
+        emptyContext,
+      );
       expect((moved as { board: { x: number; y: number } }).board).toEqual({
         x: start.x + 3,
         y: start.y + 4,
@@ -404,15 +431,81 @@ describe("move", () => {
 
   it("leaves rotation alone when an image is dragged", () => {
     const tilted = image({ rotation: 30 });
-    expect(descriptorFor(tilted).move(tilted, { x: 1, y: 1 })).toMatchObject({
+    expect(
+      descriptorFor(tilted).move(tilted, { x: 1, y: 1 }, emptyContext),
+    ).toMatchObject({
       rotation: 30,
     });
   });
 
   it("does not mutate the entity it was given", () => {
     const pin = freePin();
-    descriptorFor(pin).move(pin, { x: 99, y: 99 });
+    descriptorFor(pin).move(pin, { x: 99, y: 99 }, emptyContext);
     expect(pin.board).toEqual({ x: 100, y: 200 });
+  });
+});
+
+describe("a pin marked on a picture", () => {
+  it("sits at its fraction of the photo rather than at a board point", () => {
+    const at = descriptorFor(imagePin()).anchorPoint(
+      imagePin(),
+      withImage(image()),
+    );
+
+    expect(at).toEqual({ x: 50 + 0.25 * 260, y: 60 + 0.5 * 200 });
+  });
+
+  it("rides the picture when the picture is moved and resized", () => {
+    const still = descriptorFor(imagePin()).anchorPoint(
+      imagePin(),
+      withImage(image()),
+    )!;
+    const bigger = descriptorFor(imagePin()).anchorPoint(
+      imagePin(),
+      withImage(image({ board: { x: 150, y: 160 }, width: 520, height: 400 })),
+    )!;
+
+    expect(bigger.x - 150).toBeCloseTo((still.x - 50) * 2);
+    expect(bigger.y - 160).toBeCloseTo((still.y - 60) * 2);
+  });
+
+  it("is drawn nowhere when its picture is gone", () => {
+    expect(
+      descriptorFor(imagePin()).anchorPoint(imagePin(), emptyContext),
+    ).toBeNull();
+    expect(
+      descriptorFor(imagePin()).bounds(imagePin(), emptyContext),
+    ).toBeNull();
+  });
+
+  it("re-derives its fraction when it is dragged, so a resize keeps it in place", () => {
+    const pin = imagePin();
+    const moved = descriptorFor(pin).move(
+      pin,
+      // 26 across a 260-wide photo is a tenth of it; 10 down a 200-tall one is a twentieth.
+      { x: 26, y: 10 },
+      withImage(image()),
+    ) as ImagePin;
+
+    expect(moved.spot.u).toBeCloseTo(0.35);
+    expect(moved.spot.v).toBeCloseTo(0.55);
+  });
+
+  it("stays put when the picture it names cannot be found", () => {
+    const pin = imagePin();
+
+    expect(descriptorFor(pin).move(pin, { x: 5, y: 5 }, emptyContext)).toBe(
+      pin,
+    );
+  });
+
+  it("will not be band-selected, so a marquee cannot move it twice", () => {
+    expect(
+      descriptorFor(imagePin()).capabilities(imagePin()).marqueeSelectable,
+    ).toBe(false);
+    expect(
+      descriptorFor(freePin()).capabilities(freePin()).marqueeSelectable,
+    ).toBe(true);
   });
 });
 

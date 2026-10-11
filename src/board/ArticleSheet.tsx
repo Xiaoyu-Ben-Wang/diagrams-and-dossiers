@@ -7,6 +7,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
 import { ChevronDown, ChevronRight, RotateCw, Trash2 } from "lucide-react";
 
+import type { AnchorRect } from "../anchors/dom";
 import type { ArticleEntity } from "../model/types";
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
 import { TACK_OFFSET_X, TACK_OFFSET_Y, TACK_RADIUS } from "../model/kinds";
@@ -53,6 +54,11 @@ export interface ArticleSheetProps {
   ) => void;
   onMoveOne: (id: string, delta: Point) => void;
   onPinDrop: (id: string, clientX: number, clientY: number) => void;
+  onPinAim: (id: string, at: Point | null) => void;
+  /** The boxes of a word on this page a pin in hand would stick into. */
+  dropWord: readonly AnchorRect[] | null;
+  /** A pin on this page that letting go would pull off its words. */
+  leavingPin: string | null;
   onOpenPinEditor: (id: string, clientX: number, clientY: number) => void;
   onPinHover: (pin: PinView, element: Element | null) => void;
   onRotate: (id: string, degrees: number) => void;
@@ -81,6 +87,9 @@ export const ArticleSheet = memo(function ArticleSheet({
   onStartYarn,
   onMoveOne,
   onPinDrop,
+  onPinAim,
+  dropWord,
+  leavingPin,
   onOpenPinEditor,
   onPinHover,
   onRotate,
@@ -401,6 +410,7 @@ export const ArticleSheet = memo(function ArticleSheet({
                   key={`mark-${pin.id}`}
                   className="anchor-mark absolute transition-opacity duration-300"
                   data-status={pin.status}
+                  data-drop={pin.id === leavingPin ? "leaving" : undefined}
                   style={{
                     left: pin.rect.x,
                     top: pin.rect.y,
@@ -410,6 +420,21 @@ export const ArticleSheet = memo(function ArticleSheet({
                 />
               ) : null,
             )}
+
+            {dropWord?.map((rect, index) => (
+              <div
+                key={`drop-${index}`}
+                className="anchor-mark absolute"
+                data-drop="onto"
+                data-testid="word-drop-target"
+                style={{
+                  left: rect.x,
+                  top: rect.y,
+                  width: rect.width,
+                  height: rect.height,
+                }}
+              />
+            ))}
 
             {anchored.map((pin) =>
               pin.rect ? (
@@ -424,6 +449,7 @@ export const ArticleSheet = memo(function ArticleSheet({
                   onStartYarn={startPinYarn}
                   onMove={onMoveOne}
                   onDrop={onPinDrop}
+                  onAim={onPinAim}
                   onOpenEditor={onOpenPinEditor}
                   onHover={onPinHover}
                 />

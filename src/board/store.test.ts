@@ -3,8 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { newArticle, newFreePin, newNote } from "../model/create";
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
 import { stackingOrder } from "../model/layering";
+import { pinToText } from "../model/pinning";
 import { recordingSync } from "../realtime/transport";
-import type { BoardEntity } from "../model/types";
+import { isPin, type BoardEntity } from "../model/types";
 import {
   createBoardStore,
   GESTURE_QUIET_MS,
@@ -416,6 +417,32 @@ describe("undoing", () => {
       bodyMd: pin.bodyMd,
       title: "theirs",
     });
+  });
+
+  it("leaves one placement, not a ghost of the one it left", () => {
+    const { store } = open();
+    const pin = newFreePin({ x: 0, y: 0 });
+    store.addEntities([pin]);
+    store.updateEntities([pin.id], (entity) =>
+      isPin(entity)
+        ? pinToText(entity, "art-1", {
+            quote: "Saltmarsh",
+            prefix: "returned to ",
+            suffix: " with the",
+            startOffset: 22,
+            endOffset: 31,
+          })
+        : entity,
+    );
+
+    store.undo();
+
+    // A leftover `anchor` key would read as a placement this pin no longer has, and an
+    // anchored pin whose `articleId` is undefined resolves to an orphan drawn nowhere.
+    const unstuck = store.get().entities[0];
+    expect("anchor" in unstuck).toBe(false);
+    expect("articleId" in unstuck).toBe(false);
+    expect("board" in unstuck).toBe(true);
   });
 
   it("does not bring back what a peer has since deleted", () => {

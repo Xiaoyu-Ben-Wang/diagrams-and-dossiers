@@ -7,11 +7,13 @@ import type { Rect } from "../board/camera";
 import type { Point } from "../board/yarn";
 import {
   isAnchoredPin,
+  isImagePin,
   type BoardEntity,
   type EntityContext,
   type EntityKind,
   type NoteFont,
 } from "./types";
+import { imageMarkPoint, imageSpot } from "./image-mark";
 
 export const TACK_SIZE = 14;
 export const TACK_RADIUS = TACK_SIZE / 2;
@@ -150,9 +152,6 @@ export const PIN_RADIUS = 10;
 /** How far inside a picture's top edge its pin sits, in board px — enough to fit the whole tack. */
 export const IMAGE_PIN_INSET = 10;
 
-/** A polaroid's border, in board px; the top clears the tack before the title line. */
-export const POLAROID_INSETS = { top: 40, side: 10, bottom: 58 } as const;
-
 /** Between the tack's inset and the title's first line, so the pin clears the words. */
 export const POLAROID_TITLE_GAP = 8;
 
@@ -176,7 +175,7 @@ export interface EntityDescriptor<E extends BoardEntity> {
   /** Zoom-to-fit box; pins override it, since a zero-size box contributes nothing to a fit. */
   frameBounds?(entity: E, context: EntityContext): Rect | null;
   /** Apply a board-space delta. Returns the same entity when it cannot move. */
-  move(entity: E, delta: Point): E;
+  move(entity: E, delta: Point, context: EntityContext): E;
 }
 
 /** The tack's centre, in an article's own coordinates. */
@@ -200,7 +199,9 @@ const boxAt = (
 const pin: EntityDescriptor<BoardEntity & { kind: "pin" }> = {
   kind: "pin",
   capabilities: (entity) => ({
-    marqueeSelectable: !isAnchoredPin(entity),
+    // A mark rides its picture's fractions, so a band that enclosed both would move each
+    // independently and drag the mark off the spot the picture just carried it to.
+    marqueeSelectable: !isAnchoredPin(entity) && !isImagePin(entity),
     movable: true,
     connectable: true,
     dated: true,
@@ -208,6 +209,12 @@ const pin: EntityDescriptor<BoardEntity & { kind: "pin" }> = {
     editable: true,
   }),
   anchorPoint: (entity, context) => {
+    if (isImagePin(entity)) {
+      const image = context.imageById(entity.imageId);
+      const at = image && imageMarkPoint(image, entity.spot);
+      if (!at) return null;
+      return { x: at.x + entity.nudge.x, y: at.y + entity.nudge.y };
+    }
     if (!isAnchoredPin(entity)) {
       return {
         x: entity.board.x + entity.nudge.x,
@@ -239,8 +246,17 @@ const pin: EntityDescriptor<BoardEntity & { kind: "pin" }> = {
       height: PIN_RADIUS * 2,
     };
   },
-  move: (entity, delta) =>
-    isAnchoredPin(entity)
+  move: (entity, delta, context) => {
+    if (isImagePin(entity)) {
+      const image = context.imageById(entity.imageId);
+      const at = image && imageMarkPoint(image, entity.spot);
+      if (!image || !at) return entity;
+      // Re-derived from where it now sits rather than nudged, so the fraction stays a
+      // fraction and the next resize keeps it on the same part of the photo.
+      const spot = imageSpot(image, { x: at.x + delta.x, y: at.y + delta.y });
+      return spot ? { ...entity, spot } : entity;
+    }
+    return isAnchoredPin(entity)
       ? // The shift is kept as a nudge against the words, so the tack follows them.
         {
           ...entity,
@@ -249,7 +265,8 @@ const pin: EntityDescriptor<BoardEntity & { kind: "pin" }> = {
       : {
           ...entity,
           board: { x: entity.board.x + delta.x, y: entity.board.y + delta.y },
-        },
+        };
+  },
 };
 
 const note: EntityDescriptor<BoardEntity & { kind: "note" }> = {

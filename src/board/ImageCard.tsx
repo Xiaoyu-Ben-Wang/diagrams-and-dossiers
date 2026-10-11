@@ -6,10 +6,10 @@ import { memo, useCallback } from "react";
 import { edgeClipPath, type EdgeStyle } from "./edges";
 import {
   IMAGE_PIN_INSET,
-  POLAROID_INSETS,
   POLAROID_TITLE_GAP,
   TACK_RADIUS,
 } from "../model/kinds";
+import { POLAROID_INSETS } from "../model/image-mark";
 import type { ImageFrame } from "../model/types";
 import { clampTilt, rotateAbout } from "./pivot";
 import {
@@ -41,6 +41,8 @@ export interface ImageCardProps {
   title: string;
   description: string;
   selected: boolean;
+  /** A pin in hand: `onto` is where it would stick, `leaving` the one it is pulled off. */
+  drop?: "onto" | "leaving";
   zoom: number;
   // Passed in, not derived: the card is rotated, so its own bounding rect is axis-aligned and
   // says nothing about where its contents are.
@@ -96,6 +98,7 @@ export const ImageCard = memo(function ImageCard({
   rotation,
   fit,
   selected,
+  drop,
   zoom,
   toBoard,
   edge,
@@ -116,6 +119,20 @@ export const ImageCard = memo(function ImageCard({
   const clipPath = polaroid
     ? undefined
     : edgeClipPath(edge, width, height, edgeSeed);
+
+  // One `filter`, because these are all the same idea — how the picture reads while a pin is in
+  // hand — and a second writer would lose to this one anyway. Selection wins the tie.
+  //
+  // The drop hint lifts the whole picture rather than only rimming it: a rim here is a few screen
+  // pixels at board zoom, and the accent is a dark gold that sits close to the cork, so a rim in
+  // it goes unseen — which is the one thing this has to avoid.
+  const rim = selected
+    ? "drop-shadow(0 0 3px color-mix(in srgb, var(--color-accent) 95%, transparent))"
+    : drop === "onto"
+      ? "saturate(1.35) brightness(1.06) drop-shadow(0 0 6px color-mix(in srgb, var(--color-glow) 95%, transparent)) drop-shadow(0 0 18px color-mix(in srgb, var(--color-glow) 85%, transparent))"
+      : drop === "leaving"
+        ? "grayscale(0.7) brightness(0.96) drop-shadow(0 0 5px rgb(140 140 140 / 0.9))"
+        : "";
 
   const drag = useBoardDrag({
     zoom,
@@ -178,11 +195,8 @@ export const ImageCard = memo(function ImageCard({
           silhouette rather than the rectangle. */}
       <div
         className="image-shadow"
-        style={{
-          filter: selected
-            ? `${SHADOW} drop-shadow(0 0 3px color-mix(in srgb, var(--color-accent) 95%, transparent))`
-            : SHADOW,
-        }}
+        data-drop={drop}
+        style={{ filter: rim ? `${SHADOW} ${rim}` : SHADOW }}
       >
         {polaroid ? (
           <div

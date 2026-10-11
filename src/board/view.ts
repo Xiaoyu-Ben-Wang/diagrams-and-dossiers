@@ -7,12 +7,14 @@ export interface PinView {
   quote: string;
   body: string;
   nudge: Point;
-  /** 'free' is a pin stuck into the board rather than into text. */
-  status: "exact" | "repaired" | "orphaned" | "free";
+  /** 'free' is a pin stuck into the board, 'marked' one held by a picture — neither is in text. */
+  status: "exact" | "repaired" | "orphaned" | "free" | "marked";
   detail: string;
   dateLabel: string;
-  /** The article `rect` is measured in; null for a tack in the cork. */
+  /** The article `rect` is measured in; null for a tack in the cork or on a picture. */
   articleId: string | null;
+  /** The picture a mark is held by; null for every other placement. */
+  imageId: string | null;
   rect: AnchorRect | null;
   board: Point | null;
 }
@@ -92,4 +94,18 @@ export function articleIdFromRange(range: Range): string | null {
 export function px(value: string): number {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * The id of the first thing in a hit stack that is not a pin. A pin being dragged sits under
+ * the pointer at the moment of the drop, so asking what is topmost and taking the answer
+ * literally says "the pin you are holding" — which is never the thing being aimed at.
+ */
+export function entityUnderPins(stack: readonly Element[]): string | null {
+  for (const node of stack) {
+    if (node.closest("[data-pin-id]")) continue;
+    const carrier = node.closest("[data-entity-id]");
+    if (carrier) return carrier.getAttribute("data-entity-id");
+  }
+  return null;
 }

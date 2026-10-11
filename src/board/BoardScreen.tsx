@@ -8,8 +8,15 @@ import {
 } from "react";
 
 import { createAnchor } from "../anchors/create";
-import { domRangeToFlatRange } from "../anchors/dom";
-import { caretRangeFromPoint, caretRangeThroughPins } from "../anchors/caret";
+import {
+  clientToLocal,
+  domRangeToFlatRange,
+  flatRangeToDomRange,
+  rangeToContainerRects,
+  type AnchorRect,
+} from "../anchors/dom";
+import type { TextAnchor } from "../anchors/types";
+import { caretRangeThroughPins } from "../anchors/caret";
 import { CAMPAIGN_EPOCH, FIRST_SESSION, SESSION_GAP_MS } from "../app/demo";
 import {
   CAMERA_SAVE_DEBOUNCE_MS,
@@ -20,6 +27,7 @@ import {
   SLACK_STEP,
   SNAP_RADIUS,
   STRING_HIT_PX,
+  WORD_SLOP_PX,
 } from "./tuning";
 import { DRAG_THRESHOLD } from "./useBoardDrag";
 
@@ -34,7 +42,12 @@ import {
   resolveMention,
   rewriteMentions,
 } from "../markdown/mentions";
-import { articleIdFromRange, entityIdFromElement, withinSlop } from "./view";
+import {
+  articleIdFromRange,
+  entityIdFromElement,
+  entityUnderPins,
+  withinSlop,
+} from "./view";
 import { useArticleViews, usePinViews } from "./useArticleViews";
 import { ExportImageDialog, type ExportOptions } from "./ExportImageDialog";
 import { SHADOW as IMAGE_SHADOW } from "./ImageCard";
@@ -139,13 +152,21 @@ import {
   newArticle,
   newFreePin,
   newImage,
+  newImagePin,
   newNote,
   withImageFrame,
 } from "../model/create";
+import { imageSpotHit } from "../model/image-mark";
 import { descriptorFor, NOTE_SIZE } from "../model/kinds";
-import { pinToBoard, pinToText, sameAnchor } from "../model/pinning";
+import {
+  pinToBoard,
+  pinToImage,
+  pinToText,
+  sameAnchor,
+} from "../model/pinning";
 import {
   isAnchoredPin,
+  isImagePin,
   isPin,
   isPlaced,
   type ArticleEntity,
@@ -156,6 +177,8 @@ import {
   type NoteEntity,
   type NoteFont,
   type NoteStyle,
+  type PinEntity,
+  type Spot,
 } from "../model/types";
 import {
   PREFERENCES_PANEL_ID,
@@ -447,6 +470,20 @@ export function BoardScreen({
     [articles],
   );
 
+  const images = useSameItems(
+    useMemo(
+      () =>
+        entities.filter(
+          (entity): entity is ImageEntity => entity.kind === "image",
+        ),
+      [entities],
+    ),
+  );
+  const imagesById = useMemo(
+    () => new Map(images.map((image) => [image.id, image])),
+    [images],
+  );
+
   const [dragFrom, setDragFrom] = useState<string | null>(null);
   const stringStartRef = useRef<{ x: number; y: number } | null>(null);
   const [fontsLoaded, setFontsLoaded] = useState(
@@ -478,7 +515,13 @@ export function BoardScreen({
   viewsRef.current = articleViews.views;
   const articleViewsRef = useRef(articleViews);
   articleViewsRef.current = articleViews;
-  const pins = usePinViews(placed, articlesById, articleViews, zoomRef);
+  const pins = usePinViews(
+    placed,
+    articlesById,
+    imagesById,
+    articleViews,
+    zoomRef,
+  );
 
   const [editingPin, setEditingPin] = useState<{
     id: string;
@@ -493,7 +536,13 @@ export function BoardScreen({
     [],
   );
   const [contextMenu, setContextMenu] = useState<
-    (BoardContextTarget & { board: Point; entityId: string | null }) | null
+    | (BoardContextTarget & {
+        board: Point;
+        entityId: string | null;
+        /** Read at the right-click, before the menu opens over the very word it names. */
+        word: WordTarget | null;
+      })
+    | null
   >(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [imageLink, setImageLink] = useState<{ x: number; y: number } | null>(
@@ -529,6 +578,7 @@ export function BoardScreen({
     return {
       articleToBoard,
       anchorRect: (id) => rects.get(id) ?? null,
+      imageById: (id) => imagesById.get(id) ?? null,
       articleSize: (articleId) => {
         const size = articleViews.views.get(articleId)?.size;
         // An unmeasured page (jsdom, or a first frame) is not a zero-size one:
@@ -536,7 +586,7 @@ export function BoardScreen({
         return size && size.width > 0 && size.height > 0 ? size : null;
       },
     };
-  }, [articleToBoard, pins, articleViews]);
+  }, [articleToBoard, pins, articleViews, imagesById]);
   const entityContextRef = useRef(entityContext);
   entityContextRef.current = entityContext;
 
@@ -727,6 +777,20 @@ export function BoardScreen({
     [nextDateLabel],
   );
 
+  const createImagePin = useCallback(
+    (imageId: string, spot: Spot) => {
+      store.addEntities((state) => [
+        newImagePin(imageId, spot, {
+          occurredAt:
+            CAMPAIGN_EPOCH +
+            state.entities.filter(isPin).length * SESSION_GAP_MS,
+          dateLabel: nextDateLabel(state.entities.filter(isPin).length),
+        }),
+      ]);
+    },
+    [nextDateLabel],
+  );
+
   const worldPoint = useCallback((clientX: number, clientY: number): Point => {
     const box = document
       .querySelector('[data-testid="board-canvas"]')
@@ -738,38 +802,63 @@ export function BoardScreen({
     });
   }, []);
 
-  const pinAt = useCallback(
-    (clientX: number, clientY: number) => {
-      const range = caretRangeFromPoint(clientX, clientY);
+  const createAnchoredPin = useCallback(
+    (articleId: string, anchor: TextAnchor) => {
+      store.addEntities((state) => [
+        newAnchoredPin(articleId, anchor, {
+          occurredAt:
+            CAMPAIGN_EPOCH +
+            state.entities.filter(isPin).length * SESSION_GAP_MS,
+          dateLabel: nextDateLabel(state.entities.filter(isPin).length),
+        }),
+      ]);
+    },
+    [nextDateLabel],
+  );
+
+  /**
+   * The word under a screen point, and where it is drawn on its page. Only a point on the word
+   * counts: the caret API answers for the margin too, snapping to the nearest word on the line,
+   * which would pin a word the pointer was nowhere near.
+   */
+  const wordAt = useCallback(
+    (clientX: number, clientY: number): WordTarget | null => {
+      const range = caretRangeThroughPins(clientX, clientY);
       const articleId = range ? articleIdFromRange(range) : null;
       const view = articleId ? viewsRef.current.get(articleId) : null;
+      const element = articleId
+        ? (articleViewsRef.current.nodes().get(articleId)?.article ?? null)
+        : null;
+      if (!range || !articleId || !view || !element) return null;
 
-      if (range && articleId && view) {
-        const flatRange = domRangeToFlatRange(view.projection, range);
-        const anchor = flatRange
-          ? createAnchor(
-              view.projection.flat.text,
-              flatRange.start,
-              flatRange.end,
-            )
-          : null;
+      const flatRange = domRangeToFlatRange(view.projection, range);
+      if (!flatRange) return null;
+      const anchor = createAnchor(
+        view.projection.flat.text,
+        flatRange.start,
+        flatRange.end,
+      );
+      if (!anchor.quote) return null;
 
-        if (anchor?.quote) {
-          store.addEntities((state) => [
-            newAnchoredPin(articleId, anchor, {
-              occurredAt:
-                CAMPAIGN_EPOCH +
-                state.entities.filter(isPin).length * SESSION_GAP_MS,
-              dateLabel: nextDateLabel(state.entities.filter(isPin).length),
-            }),
-          ]);
-          return;
-        }
+      const zoom = cameraRef.current.zoom || 1;
+      const turn = pageTurn(articlesByIdRef.current.get(articleId));
+      const word = flatRangeToDomRange(
+        view.projection,
+        anchor.startOffset,
+        anchor.endOffset,
+      );
+      const rects = word
+        ? rangeToContainerRects(word, element, zoom, turn)
+        : [];
+      // jsdom measures nothing; an unmeasured word is taken at the caret's word.
+      if (rects.length > 0) {
+        const local = clientToLocal(element, clientX, clientY, zoom, turn);
+        const slack = WORD_SLOP_PX / zoom;
+        if (!rects.some((rect) => withinSlop(local, rect, slack))) return null;
       }
-
-      createFreePin(worldPoint(clientX, clientY));
+      return { articleId, anchor, rects };
     },
-    [createFreePin, nextDateLabel, worldPoint],
+    [],
   );
 
   const replaceEntity = useCallback(
@@ -964,73 +1053,150 @@ export function BoardScreen({
     [store],
   );
 
-  const overAnyArticle = useCallback((board: Point): boolean => {
-    for (const article of articlesByIdRef.current.values()) {
-      const size = viewsRef.current.get(article.id)?.size;
-      if (!size || size.width <= 0 || size.height <= 0) continue;
-      if (
-        board.x >= article.board.x &&
-        board.x <= article.board.x + size.width &&
-        board.y >= article.board.y &&
-        board.y <= article.board.y + size.height
-      ) {
-        return true;
+  /** The topmost picture under a board point. `imageSpotHit` un-turns the point about the
+      card's pivot, so this is exact for a picture that has been swung. */
+  const imageAt = useCallback(
+    (board: Point): ImageEntity | null => {
+      let best: ImageEntity | null = null;
+      let bestRank = Number.NEGATIVE_INFINITY;
+      for (const image of images) {
+        if (!imageSpotHit(image, board)) continue;
+        const rank = stackRank.get(image.id) ?? 0;
+        if (rank >= bestRank) {
+          best = image;
+          bestRank = rank;
+        }
       }
-    }
-    return false;
-  }, []);
+      return best;
+    },
+    [images, stackRank],
+  );
+
+  /** Where on a picture a pin let go here would be marked, or null if no picture would take it.
+      The caret API can answer with text lying under a picture, so the picture only takes the
+      drop when the pointer is genuinely on it. */
+  const markAt = useCallback(
+    (
+      clientX: number,
+      clientY: number,
+    ): { imageId: string; spot: Spot } | null => {
+      const board = worldPoint(clientX, clientY);
+      const image = imageAt(board);
+      if (!image || !topmostIs(clientX, clientY, image.id)) return null;
+      const spot = imageSpotHit(image, board);
+      return spot ? { imageId: image.id, spot } : null;
+    },
+    [imageAt, worldPoint],
+  );
+
+  /**
+   * What letting a pin go at a screen point would do. The drop and the highlight that
+   * announces it both ask this, so the board never lights up one thing and then does another.
+   * `pin` is null for a pin still being carried off the palette.
+   */
+  const resolveDrop = useCallback(
+    (pin: PinEntity | null, clientX: number, clientY: number): PinDrop => {
+      const word = wordAt(clientX, clientY);
+
+      if (pin && isAnchoredPin(pin)) {
+        if (
+          word &&
+          word.articleId === pin.articleId &&
+          sameAnchor(pin.anchor, word.anchor)
+        ) {
+          return { at: "stay" };
+        }
+        // Close to its own words is a nudge against them, not a move off them.
+        const rect = pinsRef.current.find((entry) => entry.id === pin.id)?.rect;
+        const element =
+          articleViewsRef.current.nodes().get(pin.articleId)?.article ?? null;
+        if (rect && element) {
+          const zoom = cameraRef.current.zoom || 1;
+          const turn = pageTurn(articlesByIdRef.current.get(pin.articleId));
+          const local = clientToLocal(element, clientX, clientY, zoom, turn);
+          if (withinSlop(local, rect, NUDGE_SLOP_PX / zoom)) {
+            return { at: "stay" };
+          }
+        }
+      }
+
+      if (word) return { at: "word", ...word };
+      const mark = markAt(clientX, clientY);
+      if (mark) return { at: "image", ...mark };
+      return { at: "board", board: worldPoint(clientX, clientY) };
+    },
+    [wordAt, markAt, worldPoint],
+  );
+
+  /** A pin in hand and what letting it go would do, while it is being dragged or carried. */
+  const [aim, setAim] = useState<{
+    pinId: string | null;
+    drop: PinDrop;
+  } | null>(null);
+  const aimKeyRef = useRef("");
+
+  const aimPin = useCallback(
+    (pinId: string | null, at: Point | null) => {
+      if (!at) {
+        aimKeyRef.current = "";
+        setAim(null);
+        return;
+      }
+      const pin = pinId
+        ? entitiesRef.current.find((entity) => entity.id === pinId)
+        : null;
+      const drop = resolveDrop(pin && isPin(pin) ? pin : null, at.x, at.y);
+      const key = `${pinId}|${dropKey(drop)}`;
+      if (key === aimKeyRef.current) return;
+      aimKeyRef.current = key;
+      setAim({ pinId, drop });
+    },
+    [resolveDrop],
+  );
+  const carryPin = useCallback(
+    (at: { x: number; y: number } | null) => aimPin(null, at),
+    [aimPin],
+  );
+
+  const dropHint = useMemo(() => {
+    const none = {
+      overImage: null as string | null,
+      leavingImage: null as string | null,
+      overWord: null as WordTarget | null,
+      leavingPin: null as string | null,
+    };
+    if (!aim) return none;
+    const { drop } = aim;
+    const pin = aim.pinId
+      ? entities.find((entity) => entity.id === aim.pinId)
+      : null;
+    const fromImage = pin && isImagePin(pin) ? pin.imageId : null;
+    const sameImage = drop.at === "image" && drop.imageId === fromImage;
+    return {
+      overImage: drop.at === "image" && !sameImage ? drop.imageId : null,
+      leavingImage:
+        fromImage && drop.at !== "stay" && !sameImage ? fromImage : null,
+      overWord: drop.at === "word" ? drop : null,
+      leavingPin:
+        pin && isAnchoredPin(pin) && drop.at !== "stay" ? pin.id : null,
+    };
+  }, [aim, entities]);
 
   const handlePinDrop = useCallback(
     (pinId: string, clientX: number, clientY: number) => {
       const pin = entitiesRef.current.find((entity) => entity.id === pinId);
       if (!pin || !isPin(pin)) return;
 
-      const range = caretRangeThroughPins(clientX, clientY);
-      const articleId = range ? articleIdFromRange(range) : null;
-      const view = articleId ? viewsRef.current.get(articleId) : null;
-      const element = articleId
-        ? (articleViewsRef.current.nodes().get(articleId)?.article ?? null)
-        : null;
-
-      if (range && articleId && view && element) {
-        const flatRange = domRangeToFlatRange(view.projection, range);
-        const anchor = flatRange
-          ? createAnchor(
-              view.projection.flat.text,
-              flatRange.start,
-              flatRange.end,
-            )
-          : null;
-
-        if (anchor?.quote) {
-          // The nudge test is only about the pin's own words: on a different page
-          // the pointer offset is between two coordinate spaces and means nothing.
-          if (isAnchoredPin(pin) && pin.articleId === articleId) {
-            if (sameAnchor(pin.anchor, anchor)) return;
-
-            const box = element.getBoundingClientRect();
-            const zoom = cameraRef.current.zoom || 1;
-            const local = {
-              x: (clientX - box.left) / zoom,
-              y: (clientY - box.top) / zoom,
-            };
-            const rect = pinsRef.current.find(
-              (entry) => entry.id === pinId,
-            )?.rect;
-            if (rect && withinSlop(local, rect, NUDGE_SLOP_PX / zoom)) return;
-          }
-
-          replaceEntity(pinToText(pin, articleId, anchor));
-          return;
-        }
+      const drop = resolveDrop(pin, clientX, clientY);
+      if (drop.at === "word") {
+        replaceEntity(pinToText(pin, drop.articleId, drop.anchor));
+      } else if (drop.at === "image") {
+        replaceEntity(pinToImage(pin, drop.imageId, drop.spot));
+      } else if (drop.at === "board") {
+        replaceEntity(pinToBoard(pin, drop.board));
       }
-
-      const board = worldPoint(clientX, clientY);
-      if (overAnyArticle(board)) return;
-
-      replaceEntity(pinToBoard(pin, board));
     },
-    [overAnyArticle, replaceEntity, worldPoint],
+    [resolveDrop, replaceEntity],
   );
 
   const stringAt = useCallback((boardPoint: Point): string | null => {
@@ -1054,38 +1220,21 @@ export function BoardScreen({
   }, []);
 
   const handleBackgroundClick = useCallback(
-    ({
-      point,
-      ctrlKey,
-      metaKey,
-    }: {
-      point: Point;
-      ctrlKey: boolean;
-      metaKey: boolean;
-    }) => {
+    ({ point }: { point: Point }) => {
       if (movingPin) {
         setMovingPin(null);
         return;
       }
 
       const board = screenToBoard(cameraRef.current, point);
-
-      if (!ctrlKey && !metaKey) {
-        const string = stringAt(board);
-        if (string) {
-          setSelection(new Set([string]));
-          return;
-        }
-        setSelection(new Set());
+      const string = stringAt(board);
+      if (string) {
+        setSelection(new Set([string]));
         return;
       }
-      const box = document
-        .querySelector('[data-testid="board-canvas"]')
-        ?.getBoundingClientRect();
-      if (!box) return;
-      pinAt(point.x + box.left, point.y + box.top);
+      setSelection(new Set());
     },
-    [pinAt, movingPin, stringAt],
+    [movingPin, stringAt],
   );
 
   // Declared before the click handler that calls it: a `useCallback` reads its
@@ -1108,38 +1257,33 @@ export function BoardScreen({
 
   const handleArticleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!event.ctrlKey && !event.metaKey) {
-        // `closest` is on Element only, and a click usually lands on a text node.
-        const target = event.target;
-        const element =
-          target instanceof Element
-            ? target
-            : target instanceof Node
-              ? target.parentElement
-              : null;
-        const mention = element?.closest(`[${MENTION_ATTRIBUTE}]`) ?? null;
-        if (mention) {
-          // Always, resolved or not: the href is a `#mention:` fragment, and
-          // letting an unresolved one through puts it in the address bar.
-          event.preventDefault();
-          const name = mention.getAttribute(MENTION_ATTRIBUTE) ?? "";
-          const entity = resolveMention(name, entitiesRef.current);
-          if (entity) flyToEntity(entity);
-          return;
-        }
-
-        // A real link: the browser's new-tab default is the whole point, so leave
-        // it alone — and do not also read the press as a pick on a string.
-        if (element?.closest("a[href]")) return;
-
-        const string = stringAt(worldPoint(event.clientX, event.clientY));
-        if (string) setSelection(new Set([string]));
+      // `closest` is on Element only, and a click usually lands on a text node.
+      const target = event.target;
+      const element =
+        target instanceof Element
+          ? target
+          : target instanceof Node
+            ? target.parentElement
+            : null;
+      const mention = element?.closest(`[${MENTION_ATTRIBUTE}]`) ?? null;
+      if (mention) {
+        // Always, resolved or not: the href is a `#mention:` fragment, and
+        // letting an unresolved one through puts it in the address bar.
+        event.preventDefault();
+        const name = mention.getAttribute(MENTION_ATTRIBUTE) ?? "";
+        const entity = resolveMention(name, entitiesRef.current);
+        if (entity) flyToEntity(entity);
         return;
       }
 
-      pinAt(event.clientX, event.clientY);
+      // A real link: the browser's new-tab default is the whole point, so leave
+      // it alone — and do not also read the press as a pick on a string.
+      if (element?.closest("a[href]")) return;
+
+      const string = stringAt(worldPoint(event.clientX, event.clientY));
+      if (string) setSelection(new Set([string]));
     },
-    [flyToEntity, pinAt, stringAt, worldPoint],
+    [flyToEntity, stringAt, worldPoint],
   );
 
   const handleFileDrop = useCallback(
@@ -1355,7 +1499,7 @@ export function BoardScreen({
       if (presenceRef.current?.editors().has(entity.id)) return entity;
       const descriptor = descriptorFor(entity);
       if (!descriptor.capabilities(entity).movable) return entity;
-      const moved = descriptor.move(entity, delta);
+      const moved = descriptor.move(entity, delta, entityContextRef.current);
       const at = "board" in moved ? moved.board : null;
       if (at) presenceRef.current?.moveThing(entity.id, at.x, at.y);
       return moved;
@@ -1401,11 +1545,12 @@ export function BoardScreen({
         ...target,
         board: screenToBoard(cameraRef.current, viewportPoint),
         entityId: onEntity,
+        word: wordAt(target.clientX, target.clientY),
       });
 
       if (onEntity) setSelection(new Set([onEntity]));
     },
-    [openPinEditorAt],
+    [openPinEditorAt, wordAt],
   );
 
   const createPostIt = useCallback(
@@ -1476,7 +1621,7 @@ export function BoardScreen({
     store.previewEntities([id], (entity) => {
       const descriptor = descriptorFor(entity);
       if (!descriptor.capabilities(entity).movable) return entity;
-      const moved = descriptor.move(entity, delta);
+      const moved = descriptor.move(entity, delta, entityContextRef.current);
       const at = "board" in moved ? moved.board : null;
       if (at) presenceRef.current?.moveThing(id, at.x, at.y);
       return moved;
@@ -1655,7 +1800,7 @@ export function BoardScreen({
     }));
   }, []);
 
-  const [pendingPageDelete, setPendingPageDelete] = useState<{
+  const [pendingDelete, setPendingDelete] = useState<{
     ids: readonly string[];
     title: string;
     body: string;
@@ -1671,6 +1816,21 @@ export function BoardScreen({
             entity.kind === "pin" &&
             "articleId" in entity &&
             entity.articleId === id,
+        )
+        .map((entity) => entity.id),
+    [store],
+  );
+
+  /** The marks on a picture, resolved or not — one whose picture is gone is still on it. */
+  const pinsOnImage = useCallback(
+    (id: string): string[] =>
+      store
+        .get()
+        .entities.filter(
+          (entity) =>
+            entity.kind === "pin" &&
+            "imageId" in entity &&
+            entity.imageId === id,
         )
         .map((entity) => entity.id),
     [store],
@@ -1696,46 +1856,54 @@ export function BoardScreen({
   );
 
   /**
-   * The one way anything leaves the board, whoever asked. A page carries its pins —
-   * they anchor to its text and each one may hold a note — so a page takes them, and
-   * asks first when there is anything to lose. Which pins is worked out at the press
-   * and again at the answer, because one can be added while the question is on screen.
+   * The one way anything leaves the board, whoever asked. A page carries its pins and a
+   * picture carries its marks — each may hold a note — so the thing takes them, and asks
+   * first when there is anything to lose. Which pins is worked out at the press and again
+   * at the answer, because one can be added while the question is on screen.
    */
   const removeEntities = useCallback(
     (ids: readonly string[]) => {
       if (ids.length === 0) return;
       const wanted = new Set(ids);
-      const pages = store
+      const carriers = store
         .get()
         .entities.filter(
-          (entity) => wanted.has(entity.id) && entity.kind === "article",
+          (entity): entity is ArticleEntity | ImageEntity =>
+            wanted.has(entity.id) &&
+            (entity.kind === "article" || entity.kind === "image"),
         );
-      const pinned = pages.flatMap((page) => pinsOnPage(page.id));
+      const pinned = carriers.flatMap((carrier) =>
+        carrier.kind === "article"
+          ? pinsOnPage(carrier.id)
+          : pinsOnImage(carrier.id),
+      );
       if (pinned.length === 0) {
         forget(ids);
         return;
       }
 
-      const one = pages.length === 1 && ids.length === 1 ? pages[0] : null;
-      const name = one?.title?.trim() || "Untitled sheet";
-      setPendingPageDelete({
+      const one =
+        carriers.length === 1 && ids.length === 1 ? carriers[0] : null;
+      const name = one?.title?.trim() || untitledName(one?.kind);
+      const on = one?.kind === "image" ? "marked on it" : "on it";
+      setPendingDelete({
         ids: [...ids, ...pinned],
         title: one ? `Delete “${name}”?` : `Delete ${ids.length} things?`,
         body: one
           ? pinned.length === 1
-            ? "The pin on it goes too, and the note written on that pin."
-            : `The ${pinned.length} pins on it go too, and the notes written on them.`
-          : `The ${pinned.length} pins anchored to them go too, and the notes written on those pins.`,
+            ? `The pin ${on} goes too, and the note written on that pin.`
+            : `The ${pinned.length} pins ${on} go too, and the notes written on them.`
+          : `The ${pinned.length} pins on them go too, and the notes written on those pins.`,
       });
     },
-    [store, pinsOnPage, forget],
+    [store, pinsOnPage, pinsOnImage, forget],
   );
 
-  const confirmPageDelete = useCallback(() => {
-    if (!pendingPageDelete) return;
-    forget(pendingPageDelete.ids);
-    setPendingPageDelete(null);
-  }, [pendingPageDelete, forget]);
+  const confirmDelete = useCallback(() => {
+    if (!pendingDelete) return;
+    forget(pendingDelete.ids);
+    setPendingDelete(null);
+  }, [pendingDelete, forget]);
 
   const removeEntity = useCallback(
     (id: string) => removeEntities([id]),
@@ -2022,16 +2190,6 @@ export function BoardScreen({
     store,
   ]);
 
-  const images = useSameItems(
-    useMemo(
-      () =>
-        entities.filter(
-          (entity): entity is ImageEntity => entity.kind === "image",
-        ),
-      [entities],
-    ),
-  );
-
   const selectedImage = useMemo(
     () =>
       selection.size === 1
@@ -2203,7 +2361,7 @@ export function BoardScreen({
     anchoredByArticleRef.current = grouped;
     return grouped;
   }, [pins]);
-  const freePins = useMemo(() => pins.filter((pin) => pin.board), [pins]);
+  const boardPins = useMemo(() => pins.filter((pin) => pin.board), [pins]);
 
   const selectedArticleId = selectedArticle?.id ?? null;
   const setSelectedArticleBody = useCallback(
@@ -2247,9 +2405,13 @@ export function BoardScreen({
     [createPostIt, worldPoint],
   );
   const dropPin = useCallback(
-    (clientX: number, clientY: number) =>
-      createFreePin(worldPoint(clientX, clientY)),
-    [createFreePin, worldPoint],
+    (clientX: number, clientY: number) => {
+      const drop = resolveDrop(null, clientX, clientY);
+      if (drop.at === "word") createAnchoredPin(drop.articleId, drop.anchor);
+      else if (drop.at === "image") createImagePin(drop.imageId, drop.spot);
+      else if (drop.at === "board") createFreePin(drop.board);
+    },
+    [resolveDrop, createAnchoredPin, createImagePin, createFreePin],
   );
   const activePin = editingPin ? byId.get(editingPin.id) : null;
 
@@ -2283,6 +2445,20 @@ export function BoardScreen({
       }))
     : [];
 
+  // "Add pin" would drop one on the cork behind the picture, so a picture offers its own.
+  const markItem: ContextMenuEntry[] = [];
+  if (contextEntity?.kind === "image" && contextMenu) {
+    const at = imageSpotHit(contextEntity, contextMenu.board);
+    const imageId = contextEntity.id;
+    if (at) {
+      markItem.push({
+        id: "pin-here",
+        label: "Pin here",
+        onSelect: () => createImagePin(imageId, at),
+      });
+    }
+  }
+
   const contextItems: ContextMenuEntry[] = contextMenu
     ? [
         ...layerItems,
@@ -2291,6 +2467,7 @@ export function BoardScreen({
           : []),
         ...(contextEntity
           ? [
+              ...markItem,
               {
                 id: "delete-entity",
                 label: `Delete ${ENTITY_NOUN[contextEntity.kind]}`,
@@ -2321,7 +2498,11 @@ export function BoardScreen({
         {
           id: "pin",
           label: "Add pin",
-          onSelect: () => pinAt(contextMenu.clientX, contextMenu.clientY),
+          onSelect: () => {
+            const { word } = contextMenu;
+            if (word) createAnchoredPin(word.articleId, word.anchor);
+            else createFreePin(contextMenu.board);
+          },
         },
         { id: "sep-1", separator: true },
         {
@@ -2465,6 +2646,7 @@ export function BoardScreen({
                     onDropNote={dropNote}
                     onDropPage={dropPage}
                     onDropPin={dropPin}
+                    onCarryPin={carryPin}
                     onOpenNoteMenu={openStyleMenuForPad}
                     noteMenuOpen={noteStyleMenu?.at === "pad"}
                     noteStyle={preferences.noteStyle}
@@ -2512,6 +2694,13 @@ export function BoardScreen({
                   onStartYarn={beginString}
                   onMoveOne={moveOne}
                   onPinDrop={handlePinDrop}
+                  onPinAim={aimPin}
+                  dropWord={
+                    dropHint.overWord?.articleId === article.id
+                      ? dropHint.overWord.rects
+                      : null
+                  }
+                  leavingPin={dropHint.leavingPin}
                   onOpenPinEditor={openPinEditorAt}
                   onPinHover={handlePinHover}
                   onRotate={rotateEntity}
@@ -2528,9 +2717,12 @@ export function BoardScreen({
               <EntityLayer
                 presence={presence}
                 stackRank={stackRank}
-                freePins={freePins}
+                boardPins={boardPins}
                 images={images}
                 postIts={postIts}
+                dropOverId={dropHint.overImage}
+                dropLeavingId={dropHint.leavingImage}
+                onPinAim={aimPin}
                 selection={selection}
                 movingPin={movingPin}
                 zoom={camera.zoom}
@@ -2691,7 +2883,11 @@ export function BoardScreen({
         <PinEditor
           entityId={editingPin.id}
           quote={activePin.quote}
-          status={activePin.status === "free" ? "exact" : activePin.status}
+          status={
+            activePin.status === "free" || activePin.status === "marked"
+              ? "exact"
+              : activePin.status
+          }
           dateLabel={
             placed.find((item) => item.id === editingPin.id)?.dateLabel ?? ""
           }
@@ -2733,12 +2929,12 @@ export function BoardScreen({
         />
       ) : null}
 
-      {pendingPageDelete ? (
+      {pendingDelete ? (
         <ConfirmDelete
-          title={pendingPageDelete.title}
-          body={pendingPageDelete.body}
-          onDelete={confirmPageDelete}
-          onCancel={() => setPendingPageDelete(null)}
+          title={pendingDelete.title}
+          body={pendingDelete.body}
+          onDelete={confirmDelete}
+          onCancel={() => setPendingDelete(null)}
         />
       ) : null}
 
@@ -2754,4 +2950,54 @@ export function BoardScreen({
       ) : null}
     </div>
   );
+}
+
+/**
+ * Whether the pointer is really over a given thing, rather than over something covering it.
+ * A board with no layout engine cannot answer, so an unanswerable question counts as yes.
+ */
+function topmostIs(clientX: number, clientY: number, id: string): boolean {
+  let stack: Element[] = [];
+  try {
+    stack = document.elementsFromPoint(clientX, clientY);
+  } catch {
+    return true;
+  }
+  const under = entityUnderPins(stack);
+  return under === null || under === id;
+}
+
+/** What an unnamed thing of a kind is called in the delete question. */
+function untitledName(kind: "article" | "image" | undefined): string {
+  return kind === "image" ? "Untitled picture" : "Untitled sheet";
+}
+
+/** A word a pin could be stuck into, and the boxes it is drawn in on its page. */
+interface WordTarget {
+  articleId: string;
+  anchor: TextAnchor;
+  rects: AnchorRect[];
+}
+
+type PinDrop =
+  | { at: "stay" }
+  | ({ at: "word" } & WordTarget)
+  | { at: "image"; imageId: string; spot: Spot }
+  | { at: "board"; board: Point };
+
+/** Equal for two drops that would light up the same thing. */
+function dropKey(drop: PinDrop): string {
+  switch (drop.at) {
+    case "word":
+      return `word|${drop.articleId}|${drop.anchor.startOffset}|${drop.anchor.endOffset}`;
+    case "image":
+      return `image|${drop.imageId}`;
+    default:
+      return drop.at;
+  }
+}
+
+/** How far a page's sheet is turned, as `ArticleSheet` draws it. */
+function pageTurn(article: ArticleEntity | undefined): number {
+  return article ? clampTilt(article.rotation) : 0;
 }

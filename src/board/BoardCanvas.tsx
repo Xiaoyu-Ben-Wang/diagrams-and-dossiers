@@ -41,11 +41,7 @@ export interface BoardCanvasProps {
   overlay?: ReactNode;
   backdrop?: (viewport: Viewport) => ReactNode;
   onViewportChange?: (viewport: Viewport) => void;
-  onBackgroundClick?: (click: {
-    point: Point;
-    ctrlKey: boolean;
-    metaKey: boolean;
-  }) => void;
+  onBackgroundClick?: (click: { point: Point }) => void;
   onMarquee?: (rect: Rect | null) => void;
   onEntityDrag?: (element: Element, delta: Point) => void;
   onHover?: (point: Point | null) => void;
@@ -463,8 +459,6 @@ export function BoardCanvas({
           x: event.clientX - bounds.left,
           y: event.clientY - bounds.top,
         },
-        ctrlKey: event.ctrlKey,
-        metaKey: event.metaKey,
       });
     },
     [onBackgroundClick],

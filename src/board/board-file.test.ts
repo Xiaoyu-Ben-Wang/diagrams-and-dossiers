@@ -116,6 +116,56 @@ describe("a board file", () => {
     expect(result).toEqual({ ok: true, board: { entities: [], strings: [] } });
   });
 
+  it("round-trips a pin marked on a picture", () => {
+    const board: BoardState = {
+      entities: [
+        {
+          id: "a-picture",
+          kind: "image",
+          bodyMd: "",
+          visibility: "shared",
+          status: "theory",
+          dateInherit: true,
+          nudge: { x: 0, y: 0 },
+          zIndex: 0,
+          version: 1,
+          createdAt: 1,
+          updatedAt: 2,
+          board: { x: 30, y: 40 },
+          src: "data:image/png;base64,AAAA",
+          width: 260,
+          height: 200,
+          fit: "cover",
+          rotation: 0,
+          edge: "clean",
+          edgeSeed: 7,
+        },
+        {
+          id: "a-mark",
+          kind: "pin",
+          bodyMd: "",
+          visibility: "shared",
+          status: "theory",
+          dateInherit: true,
+          nudge: { x: 0, y: 0 },
+          zIndex: 0,
+          version: 1,
+          createdAt: 1,
+          updatedAt: 2,
+          imageId: "a-picture",
+          spot: { u: 0.25, v: 0.8 },
+        },
+      ],
+      strings: [],
+    };
+
+    const result = parseBoardFile(serializeBoard(board));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.board.entities).toEqual(board.entities);
+  });
+
   it("says what it is, so a reader can tell one file from another", () => {
     const file = JSON.parse(serializeBoard(tinyBoard()));
 
@@ -190,6 +240,20 @@ describe("refusing a file", () => {
     };
 
     expect(refusal(fileWith(broken))).toContain("entities[1].board.x");
+  });
+
+  it("refuses a mark whose fraction is not two numbers", () => {
+    const board = tinyBoard();
+    const mark: Record<string, unknown> = {
+      ...board.entities[1],
+      kind: "pin",
+      board: undefined,
+      imageId: "a-page",
+      spot: { u: 0.5 },
+    };
+    const broken = { ...board, entities: [board.entities[0], mark] };
+
+    expect(refusal(fileWith(broken))).toMatch(/spot/);
   });
 
   it("refuses two things sharing an id", () => {

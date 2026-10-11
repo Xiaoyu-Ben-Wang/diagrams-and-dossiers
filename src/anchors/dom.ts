@@ -215,13 +215,16 @@ export interface AnchorRect {
 }
 
 /**
- * Subtract the origin and divide by `scale` (the camera zoom), or pins drift off
- * their words by an amount that grows with zoom. Await `document.fonts.ready` first.
+ * Rects in the container's own unscaled, unturned pixels, from the screen boxes the browser
+ * reports. Divide out `scale` (the camera zoom), or pins drift off their words by an amount
+ * that grows with zoom; undo `turn` (degrees), or they drift on any page that is tilted.
+ * Await `document.fonts.ready` first.
  */
 export function rangeToContainerRects(
   range: Range,
   container: Element,
   scale: number,
+  turn = 0,
 ): AnchorRect[] {
   // jsdom and some embedded webviews have no layout: no rects, so return [].
   if (
@@ -231,14 +234,74 @@ export function rangeToContainerRects(
     return [];
   }
 
-  const factor = scale > 0 ? 1 / scale : 1;
-  const origin = container.getBoundingClientRect();
-  return Array.from(range.getClientRects()).map((rect) => ({
-    x: (rect.left - origin.left) * factor,
-    y: (rect.top - origin.top) * factor,
-    width: rect.width * factor,
-    height: rect.height * factor,
-  }));
+  const zoom = scale > 0 ? scale : 1;
+  return Array.from(range.getClientRects()).map((rect) => {
+    const centre = clientToLocal(
+      container,
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+      zoom,
+      turn,
+    );
+    const size = unturnedSize(rect.width / zoom, rect.height / zoom, turn);
+    return {
+      x: centre.x - size.width / 2,
+      y: centre.y - size.height / 2,
+      width: size.width,
+      height: size.height,
+    };
+  });
+}
+
+/**
+ * A screen point in an element's own unscaled, unturned pixels. A turned element's screen
+ * box is still centred on the element, but its corner is no longer the element's corner, so
+ * the point is turned back about the centre rather than measured from the corner.
+ */
+export function clientToLocal(
+  element: Element,
+  clientX: number,
+  clientY: number,
+  scale: number,
+  turn = 0,
+): { x: number; y: number } {
+  const zoom = scale > 0 ? scale : 1;
+  const box = element.getBoundingClientRect();
+  const layout = element as Partial<HTMLElement>;
+  const width = layout.offsetWidth || box.width / zoom;
+  const height = layout.offsetHeight || box.height / zoom;
+
+  const radians = (-turn * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const dx = (clientX - (box.left + box.width / 2)) / zoom;
+  const dy = (clientY - (box.top + box.height / 2)) / zoom;
+  return {
+    x: dx * cos - dy * sin + width / 2,
+    y: dx * sin + dy * cos + height / 2,
+  };
+}
+
+/**
+ * The size of a box turned by `turn` degrees, from the axis-aligned box around it. Near 45°
+ * the two equations stop telling width from height, so the screen box is kept as it is.
+ */
+function unturnedSize(
+  boxWidth: number,
+  boxHeight: number,
+  turn: number,
+): { width: number; height: number } {
+  const radians = (turn * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+  const determinant = cos * cos - sin * sin;
+  if (sin === 0 || determinant < 0.05) {
+    return { width: boxWidth, height: boxHeight };
+  }
+  return {
+    width: Math.max(0, (boxWidth * cos - boxHeight * sin) / determinant),
+    height: Math.max(0, (boxHeight * cos - boxWidth * sin) / determinant),
+  };
 }
 
 export async function fontsReady(doc: Document): Promise<void> {

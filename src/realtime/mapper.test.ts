@@ -6,6 +6,7 @@ import {
   newArticle,
   newFreePin,
   newImage,
+  newImagePin,
   newNote,
   withImageFrame,
 } from "../model/create";
@@ -50,6 +51,10 @@ const SAMPLES: [string, BoardEntity][] = [
   [
     "an anchored pin",
     newAnchoredPin(ARTICLE, ANCHOR, { id: PIN, title: "Anchored" }),
+  ],
+  [
+    "a pin marked on a picture",
+    newImagePin(IMAGE, { u: 0.25, v: 0.8 }, { id: PIN, title: "Marked" }),
   ],
   ["a note", newNote({ x: -200, y: 40 }, { id: NOTE, bodyMd: "What we know" })],
   [
@@ -169,6 +174,65 @@ describe("entityToRow", () => {
     expect(row.article_id).toBeNull();
     expect(row.anchor).toBeNull();
     expect([row.board_x, row.board_y]).toEqual([5, 6]);
+  });
+
+  it("names the picture a mark sits on, with its fraction and no board point", () => {
+    const row = entityToRow(
+      newImagePin(IMAGE, { u: 0.25, v: 0.8 }, { id: PIN }),
+      BOARD,
+    );
+
+    expect(row.image_id).toBe(IMAGE);
+    expect([row.spot_u, row.spot_v]).toEqual([0.25, 0.8]);
+    expect([row.board_x, row.board_y]).toEqual([null, null]);
+    expect(row.article_id).toBeNull();
+    expect(row.anchor).toBeNull();
+  });
+
+  it("clamps a fraction a drag has taken off the photo", () => {
+    const row = entityToRow(
+      newImagePin(IMAGE, { u: 1.4, v: -0.2 }, { id: PIN }),
+      BOARD,
+    );
+
+    expect([row.spot_u, row.spot_v]).toEqual([1, 0]);
+  });
+});
+
+describe("reading a mark", () => {
+  const row = () => asStored(newFreePin({ x: 0, y: 0 }, { id: PIN }));
+
+  it("reads a row that names a picture as a mark, whatever else is set", () => {
+    const read = rowToEntity({
+      ...row(),
+      image_id: IMAGE,
+      spot_u: 0.25,
+      spot_v: 0.8,
+    });
+
+    expect(read).toMatchObject({
+      kind: "pin",
+      imageId: IMAGE,
+      spot: { u: 0.25, v: 0.8 },
+    });
+    expect("board" in read).toBe(false);
+  });
+
+  it("refuses a row naming a picture with no usable fraction", () => {
+    expect(() =>
+      rowToEntity({ ...row(), image_id: IMAGE, spot_u: null, spot_v: null }),
+    ).toThrow(/spot_u/);
+  });
+
+  it("pulls a fraction that has drifted back into range", () => {
+    const read = rowToEntity({
+      ...row(),
+      image_id: IMAGE,
+      spot_u: 1.4,
+      spot_v: -0.2,
+    });
+
+    expect(read).toMatchObject({ spot: { u: 1, v: 0 } });
   });
 });
 

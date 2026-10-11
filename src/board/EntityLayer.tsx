@@ -31,9 +31,12 @@ export interface EntityLayerProps {
   presence: BoardPresence | null;
   /** What each thing paints at, from `stackingRanks`. A pin's is above every other kind's. */
   stackRank: ReadonlyMap<string, number>;
-  freePins: readonly PinView[];
+  boardPins: readonly PinView[];
   images: readonly ImageEntity[];
   postIts: readonly NoteEntity[];
+  /** A picture a pin in hand would stick to if let go, and one it is being pulled off. */
+  dropOverId: string | null;
+  dropLeavingId: string | null;
 
   selection: ReadonlySet<string>;
   movingPin: string | null;
@@ -51,6 +54,7 @@ export interface EntityLayerProps {
   onMoveOne: (id: string, delta: Point) => void;
   onMoveEntity: (id: string, delta: Point) => void;
   onPinDrop: (id: string, clientX: number, clientY: number) => void;
+  onPinAim: (id: string, at: Point | null) => void;
   onOpenPinEditor: (id: string, clientX: number, clientY: number) => void;
   onPinHover: (pin: PinView, element: Element | null) => void;
   onRotate: (id: string, degrees: number) => void;
@@ -201,9 +205,11 @@ function nodeFor(id: string): HTMLElement | null {
 export const EntityLayer = memo(function EntityLayer({
   presence,
   stackRank,
-  freePins,
+  boardPins,
   images,
   postIts,
+  dropOverId,
+  dropLeavingId,
   selection,
   movingPin,
   zoom,
@@ -214,6 +220,7 @@ export const EntityLayer = memo(function EntityLayer({
   onMoveOne,
   onMoveEntity,
   onPinDrop,
+  onPinAim,
   onOpenPinEditor,
   onPinHover,
   onRotate,
@@ -232,11 +239,11 @@ export const EntityLayer = memo(function EntityLayer({
   const resting = useRef<ReadonlyMap<string, Point>>(new Map());
   resting.current = useMemo(() => {
     const map = new Map<string, Point>();
-    for (const pin of freePins) if (pin.board) map.set(pin.id, pin.board);
+    for (const pin of boardPins) if (pin.board) map.set(pin.id, pin.board);
     for (const picture of images) map.set(picture.id, picture.board);
     for (const note of postIts) map.set(note.id, note.board);
     return map;
-  }, [freePins, images, postIts]);
+  }, [boardPins, images, postIts]);
 
   useEasedMotion(presence, resting);
 
@@ -254,7 +261,7 @@ export const EntityLayer = memo(function EntityLayer({
   /** The top-right corner of a thing, where its badge hangs. */
   const cornerOf = useCallback(
     (id: string): Point | null => {
-      const pin = freePins.find((each) => each.id === id);
+      const pin = boardPins.find((each) => each.id === id);
       if (pin?.board) return { x: pin.board.x, y: pin.board.y - TACK_RADIUS };
       const picture = images.find((each) => each.id === id);
       if (picture) {
@@ -265,7 +272,7 @@ export const EntityLayer = memo(function EntityLayer({
       // A pin on a page, or the page itself: wherever its anchor lands.
       return anchorOf(id);
     },
-    [freePins, images, postIts, anchorOf],
+    [boardPins, images, postIts, anchorOf],
   );
 
   const startPinYarn = useCallback(
@@ -281,10 +288,10 @@ export const EntityLayer = memo(function EntityLayer({
 
   return (
     <>
-      {freePins.map((pin) =>
+      {boardPins.map((pin) =>
         pin.board ? (
           <Tack
-            key={`free-${pin.id}`}
+            key={`board-${pin.id}`}
             pin={pin}
             z={stackRank.get(pin.id) ?? 0}
             x={pin.board.x - TACK_RADIUS + pin.nudge.x}
@@ -295,6 +302,7 @@ export const EntityLayer = memo(function EntityLayer({
             onStartYarn={startPinYarn}
             onMove={onMoveOne}
             onDrop={onPinDrop}
+            onAim={onPinAim}
             onOpenEditor={onOpenPinEditor}
             onHover={onPinHover}
           />
@@ -320,6 +328,13 @@ export const EntityLayer = memo(function EntityLayer({
           title={picture.title ?? ""}
           description={picture.bodyMd}
           selected={selection.has(picture.id)}
+          drop={
+            picture.id === dropOverId
+              ? "onto"
+              : picture.id === dropLeavingId
+                ? "leaving"
+                : undefined
+          }
           zoom={zoom}
           toBoard={toBoard}
           onMove={onMoveEntity}
