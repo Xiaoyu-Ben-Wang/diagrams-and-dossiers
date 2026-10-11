@@ -14,18 +14,26 @@ this: `cp -r dist/*` at the root would put the app back at `/` and undo the
 
 ## Publishing an update
 
-From the source branch, with the working tree in the state you want to publish:
+The source is the `demo-source` branch, which follows `main`. The demo is `main`
+built with `VITE_LOCAL_ONLY=true`: boards stay in the browser, there is no
+sharing or join link, and the board list says so. The Supabase variables are
+blanked as well, so the project's address is not in the bundle at all —
+`.env.local` would otherwise put it there.
 
 ```
-npm run build -- --base=/diagrams-and-dossiers/
+VITE_LOCAL_ONLY=true VITE_SUPABASE_URL= VITE_SUPABASE_PUBLISHABLE_KEY= \
+  pnpm exec vite build --base=/diagrams-and-dossiers/ --outDir <out>
 cd /path/to/a/checkout/of/this/branch/
 rm -rf assets demo/index.html
-cp -r <source>/dist/assets assets
-cp <source>/dist/index.html demo/index.html
-cp <source>/dist/favicon.svg favicon.svg
-cp <source>/dist/_redirects _redirects
-touch .nojekyll && git add -A && git commit -m "Demo: <what changed>" && git push
+cp -r <out>/assets assets
+cp <out>/index.html demo/index.html
+cp <out>/favicon.svg favicon.svg
+touch .nojekyll && git add -A
+git commit --no-verify -m "Demo: <what changed>" && git push
 ```
+
+`--no-verify` matters: the repository's pre-commit hook runs Prettier over
+staged `.js` and `.css`, and on this branch that reflows the minified bundle.
 
 Two files here are not the build's and must be left alone: the root `index.html`
 (the redirect) and `404.html`, which sends a deep link to `/demo` rather than to
