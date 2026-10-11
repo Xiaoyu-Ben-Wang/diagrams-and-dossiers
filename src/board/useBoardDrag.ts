@@ -11,6 +11,10 @@ export interface BoardDragOptions {
   /** Board-space movement since the last event. */
   onDrag: (delta: Point) => void;
   onDragStart?: () => void;
+  /** Screen coords of the pointer, after every `onDrag`. */
+  onDragTo?: (clientX: number, clientY: number) => void;
+  /** A drag the browser took away, which ends without `onEnd`. */
+  onCancel?: () => void;
   onTap?: () => void;
   /** Screen coords, and runs before `onTap` even when the press never became a drag. */
   onEnd?: (end: {
@@ -52,6 +56,8 @@ interface DragState {
 export function useBoardDrag({
   onDrag,
   onDragStart,
+  onDragTo,
+  onCancel,
   onTap,
   onEnd,
   zoom,
@@ -67,6 +73,10 @@ export function useBoardDrag({
   dragRef.current = onDrag;
   const startRef = useRef(onDragStart);
   startRef.current = onDragStart;
+  const dragToRef = useRef(onDragTo);
+  dragToRef.current = onDragTo;
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = onCancel;
   const tapRef = useRef(onTap);
   tapRef.current = onTap;
   const endRef = useRef(onEnd);
@@ -121,10 +131,12 @@ export function useBoardDrag({
           x: (event.clientX - state.startX) / scale,
           y: (event.clientY - state.startY) / scale,
         });
+        dragToRef.current?.(event.clientX, event.clientY);
         return;
       }
 
       dragRef.current({ x: dx / scale, y: dy / scale });
+      dragToRef.current?.(event.clientX, event.clientY);
     },
     [captureOnPress],
   );
@@ -153,7 +165,9 @@ export function useBoardDrag({
 
   const onPointerCancel = useCallback((event: React.PointerEvent) => {
     const state = stateRef.current;
-    if (state && state.pointerId === event.pointerId) stateRef.current = null;
+    if (!state || state.pointerId !== event.pointerId) return;
+    stateRef.current = null;
+    if (state.dragging) cancelRef.current?.();
   }, []);
 
   return { onPointerDown, onPointerMove, onPointerUp, onPointerCancel };

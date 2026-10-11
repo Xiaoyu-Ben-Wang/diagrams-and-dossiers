@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   articleIdFromRange,
   entityIdFromElement,
+  entityUnderPins,
   px,
   withinSlop,
 } from "./view";
@@ -106,5 +107,37 @@ describe("px", () => {
     // jsdom reports computed lengths as empty strings; parseFloat would yield NaN.
     expect(px("")).toBe(0);
     expect(px("auto")).toBe(0);
+  });
+});
+
+describe("entityUnderPins", () => {
+  const host = (html: string) => {
+    const node = document.createElement("div");
+    node.innerHTML = html;
+    document.body.append(node);
+    return node;
+  };
+
+  it("looks past a pin to the thing the pin is over", () => {
+    // What a drop actually sees: the tack in your hand is under the pointer, over the picture.
+    const node = host(
+      '<button data-pin-id="dragged"></button><div data-entity-id="picture"></div>',
+    );
+
+    expect(entityUnderPins([...node.children])).toBe("picture");
+  });
+
+  it("stops at a thing that is not a pin covering the one behind it", () => {
+    const node = host(
+      '<div data-entity-id="note-1" data-post-it-id="note-1"></div><div data-entity-id="picture"></div>',
+    );
+
+    expect(entityUnderPins([...node.children])).toBe("note-1");
+  });
+
+  it("gives nothing for a stack with no entity in it", () => {
+    const node = host('<div class="board-canvas"></div>');
+
+    expect(entityUnderPins([...node.children])).toBeNull();
   });
 });

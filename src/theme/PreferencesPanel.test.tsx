@@ -177,6 +177,26 @@ describe("PreferencesPanel board finish", () => {
   });
 });
 
+describe("PreferencesPanel string colour", () => {
+  it("offers the wool palette and remembers the one picked", () => {
+    panel();
+
+    const group = screen.getByRole("group", { name: "New string colour" });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios.map((radio) => radio.getAttribute("value"))).toEqual([
+      "crimson",
+      "indigo",
+      "emerald",
+      "gold",
+      "violet",
+    ]);
+    expect((radios[0] as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(radios[1]);
+    expect(getPreferences().yarnColor).toBe("indigo");
+  });
+});
+
 describe("the preferences store inside components", () => {
   function Probe() {
     const preferences = usePreferences();

@@ -20,6 +20,12 @@ import {
   type YarnStyle,
 } from "./preferences";
 import { POST_IT_COLORS } from "../board/tuning";
+import {
+  YARN_COLORS,
+  yarnColorCss,
+  yarnColorLabel,
+  type YarnColor,
+} from "../board/yarn-color";
 import { NOTE_FONT_LABELS } from "../model/kinds";
 import {
   NOTE_FONTS,
@@ -54,6 +60,14 @@ const NOTE_COLOR_OPTIONS: readonly ChoiceOption<string>[] = POST_IT_COLORS.map(
     value: entry.color,
     label: entry.name,
     swatch: entry.color,
+  }),
+);
+
+const YARN_COLOR_OPTIONS: readonly ChoiceOption<YarnColor>[] = YARN_COLORS.map(
+  (id) => ({
+    value: id,
+    label: yarnColorLabel(id),
+    swatch: yarnColorCss(id),
   }),
 );
 
@@ -543,6 +557,13 @@ export function PreferencesPanel({
               onChange={(yarnShadow) => setPreferences({ yarnShadow })}
             />
           </ChoiceGroup>
+          <ChoiceGroup
+            legend="New string colour"
+            name="prefs-yarn-color"
+            value={preferences.yarnColor}
+            options={YARN_COLOR_OPTIONS}
+            onChange={(yarnColor) => setPreferences({ yarnColor })}
+          />
 
           <ChoiceGroup
             legend="New post-it paper"

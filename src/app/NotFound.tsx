@@ -12,7 +12,7 @@ export function NotFound({ path, onHome }: NotFoundProps) {
   return (
     <div className="app-shell flex h-screen items-center justify-center p-6">
       <div
-        className="not-found flex max-w-sm flex-col items-start gap-3 rounded border border-parchment-edge/30 bg-cork-900/55 px-5 py-4"
+        className="not-found flex max-w-sm flex-col items-start gap-3 rounded border border-border/30 bg-cork-900/55 px-5 py-4"
         data-testid="not-found"
       >
         <h1 className="text-sm font-semibold text-board-ink">
@@ -25,7 +25,7 @@ export function NotFound({ path, onHome }: NotFoundProps) {
         <button
           type="button"
           onClick={onHome}
-          className="flex items-center gap-1.5 rounded border border-parchment-edge/25 px-2.5 py-1 text-xs text-board-ink-soft transition hover:border-brass hover:text-board-ink"
+          className="flex items-center gap-1.5 rounded border border-border/25 px-2.5 py-1 text-xs text-board-ink-soft transition hover:border-accent hover:text-board-ink"
         >
           <ArrowLeft size={13} strokeWidth={2.2} aria-hidden="true" />
           Go to your boards

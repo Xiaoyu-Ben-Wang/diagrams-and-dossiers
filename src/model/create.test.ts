@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { descriptorFor, IMAGE_SIZE, NOTE_SIZE, POLAROID_INSETS } from "./kinds";
+import { descriptorFor, IMAGE_SIZE, NOTE_SIZE } from "./kinds";
+import { POLAROID_INSETS } from "./image-mark";
 import {
   imageFootprint,
   MAX_IMAGE_EDGE,

@@ -18,6 +18,8 @@ export interface PalettePadProps {
   icon: ReactNode;
   ghost: (at: { x: number; y: number }) => ReactNode;
   onDrop: (clientX: number, clientY: number) => void;
+  /** Where the thing in hand is while it is carried, and null once it is let go or dropped. */
+  onCarry?: (at: { x: number; y: number } | null) => void;
   /** A press that never travelled. Given one, the pad opens a menu instead of doing nothing. */
   onOpen?: () => void;
   expanded?: boolean;
@@ -30,6 +32,7 @@ export function PalettePad({
   icon,
   ghost,
   onDrop,
+  onCarry,
   onOpen,
   expanded,
   disabled = false,
@@ -74,6 +77,7 @@ export function PalettePad({
         Math.abs(event.clientY - lastRef.current.y);
       lastRef.current = { x: event.clientX, y: event.clientY };
       setCarrying({ x: event.clientX, y: event.clientY });
+      onCarry?.({ x: event.clientX, y: event.clientY });
     };
 
     const drop = (event: PointerEvent): void => {
@@ -83,6 +87,7 @@ export function PalettePad({
       pointerRef.current = null;
       const travelled = travelRef.current >= DRAG_THRESHOLD;
       setCarrying(null);
+      onCarry?.(null);
 
       // Released back over the pad: a click, however far the pointer wandered on
       // the way there. Dropping would bury a note under the pad, where it then
@@ -118,6 +123,7 @@ export function PalettePad({
       carryingRef.current = false;
       pointerRef.current = null;
       setCarrying(null);
+      onCarry?.(null);
     };
 
     window.addEventListener("pointermove", move);
@@ -130,7 +136,7 @@ export function PalettePad({
       window.removeEventListener("pointercancel", cancel);
       window.removeEventListener("blur", cancel);
     };
-  }, [carrying, onDrop, onOpen]);
+  }, [carrying, onDrop, onCarry, onOpen]);
 
   return (
     <>
@@ -180,6 +186,7 @@ export interface BoardPaletteProps {
   onDropNote: (clientX: number, clientY: number) => void;
   onDropPage: (clientX: number, clientY: number) => void;
   onDropPin: (clientX: number, clientY: number) => void;
+  onCarryPin?: (at: { x: number; y: number } | null) => void;
   /** Opens the note pad's style and colour menu. */
   onOpenNoteMenu?: () => void;
   noteMenuOpen?: boolean;
@@ -193,6 +200,7 @@ export const BoardPalette = memo(function BoardPalette({
   onDropNote,
   onDropPage,
   onDropPin,
+  onCarryPin,
   onOpenNoteMenu,
   noteMenuOpen,
   noteStyle = "plain",
@@ -213,6 +221,7 @@ export const BoardPalette = memo(function BoardPalette({
           />
         )}
         onDrop={onDropPin}
+        onCarry={onCarryPin}
       />
       <PalettePad
         index={1}

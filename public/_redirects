@@ -1,9 +1,0 @@
-# SPA fallback.
-#
-# /wiki is a real URL, so a reload or a pasted deep link asks the host for that
-# path directly. A static host would 404 it without this; every unmatched path
-# has to be served index.html and let the client router take over.
-#
-# The cost of getting this wrong is deferred and invisible: it works perfectly
-# in the dev server, which already does this, and only breaks in production.
-/*    /index.html   200

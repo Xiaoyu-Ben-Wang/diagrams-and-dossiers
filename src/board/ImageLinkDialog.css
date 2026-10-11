@@ -16,8 +16,8 @@
   width: 100%;
   max-width: 24rem;
   padding: 16px 18px 14px;
-  border: 1px solid var(--color-parchment-edge);
-  border-top: 2px solid rgb(201 162 39 / 0.8);
+  border: 1px solid var(--color-border);
+  border-top: 2px solid color-mix(in srgb, var(--color-accent) 80%, transparent);
   border-radius: 2px 8px 3px 7px;
   background-color: var(--color-parchment-100);
   color: var(--color-ink);
@@ -42,7 +42,7 @@
   padding: 5px 7px;
   border: 1px solid color-mix(in srgb, var(--color-ink) 25%, transparent);
   border-radius: 2px;
-  background: #fffdf6;
+  background: var(--color-parchment-100);
   color: var(--color-ink);
   font-family: ui-monospace, Menlo, monospace;
   font-size: 12px;
@@ -50,8 +50,8 @@
 }
 
 .link-input:focus {
-  border-color: var(--color-brass);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brass) 14%, transparent);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent);
 }
 
 .link-hint {
@@ -63,7 +63,7 @@
 }
 
 .link-hint-error {
-  color: var(--color-wax);
+  color: var(--color-danger);
 }
 
 .link-actions {
@@ -87,7 +87,7 @@
 }
 
 .link-button:hover:not(:disabled) {
-  border-color: var(--color-brass);
+  border-color: var(--color-accent);
   color: var(--color-ink);
 }
 
@@ -97,6 +97,6 @@
 }
 
 .link-button-primary {
-  border-color: var(--color-brass);
+  border-color: var(--color-accent);
   color: var(--color-ink);
 }

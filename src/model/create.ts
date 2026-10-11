@@ -12,9 +12,9 @@ import {
   NOTE_FONT_DEFAULT,
   NOTE_FONT_SCALE_DEFAULT,
   NOTE_SIZE,
-  POLAROID_INSETS,
   seededTilt,
 } from "./kinds";
+import { POLAROID_INSETS, clampSpot } from "./image-mark";
 import type {
   AnchoredPin,
   ArticleEntity,
@@ -22,10 +22,12 @@ import type {
   ImageEntity,
   ImageFit,
   ImageFrame,
+  ImagePin,
   ItemStatus,
   NoteEntity,
   NoteFont,
   NoteStyle,
+  Spot,
   Visibility,
 } from "./types";
 
@@ -83,6 +85,14 @@ export function newAnchoredPin(
 
 export function newFreePin(board: Point, seed: EntitySeed = {}): FreePin {
   return { ...base(seed), kind: "pin", board };
+}
+
+export function newImagePin(
+  imageId: string,
+  spot: Spot,
+  seed: EntitySeed = {},
+): ImagePin {
+  return { ...base(seed), kind: "pin", imageId, spot: clampSpot(spot) };
 }
 
 export function newNote(

@@ -80,22 +80,28 @@ create table public.articles (
   reveal_at   timestamptz,
   board_x     double precision not null default 0,
   board_y     double precision not null default 0,
+  rotation    double precision not null default 0,
   version     integer not null default 1,
   created_by  uuid references auth.users (id) on delete set null,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
-  unique (board_id, slug)
+  unique (board_id, slug),
+  constraint articles_rotation_check check (rotation >= -45 and rotation <= 45)
 );
 
 create index articles_board_idx on public.articles (board_id);
 
 -- A thing on the board is located EITHER by a board position OR by a text
 -- anchor, never both.
+--
+-- `options` carries a default of '{}' and has no CHECK on its keys or types: the
+-- client parser is the sole authority and supplies defaults, so an old row reads
+-- today's defaults.
 create table public.items (
   id             uuid primary key default gen_random_uuid(),
   board_id       uuid not null references public.boards (id) on delete cascade,
   kind           text not null default 'note'
-                   check (kind in ('note', 'article_ref', 'image')),
+                   check (kind in ('pin', 'note', 'article', 'image')),
   title          text,
   body_md        text not null default '',
   color          text,
@@ -114,6 +120,15 @@ create table public.items (
   date_precision text check (date_precision in ('year', 'month', 'day', 'exact')),
   date_inherit   boolean not null default true,
 
+  src            text,
+  width          double precision,
+  height         double precision,
+  rotation       double precision not null default 0,
+  edge           text not null default 'clean',
+  edge_seed      integer not null default 0,
+  options        jsonb not null default '{}'::jsonb,
+  style          text not null default 'plain',
+
   z_index        integer not null default 0,
   version        integer not null default 1,
   created_by     uuid references auth.users (id) on delete set null,
@@ -123,6 +138,43 @@ create table public.items (
   constraint items_location_check check (
     (article_id is not null and anchor is not null)
     or (board_x is not null and board_y is not null)
+  ),
+
+  constraint items_rotation_check check (rotation >= -45 and rotation <= 45),
+
+  -- This list must match `src/board/edges.ts`; an unknown value there falls back
+  -- to `clean`, so drift is survivable but visible only here.
+  constraint items_edge_check
+  check (edge in ('clean', 'stamped', 'scalloped', 'burnt', 'torn',
+                  'scorched', 'frayed', 'nibbled', 'chipped')),
+
+  constraint items_image_columns_check check (
+    kind = 'image'
+    or (src is null and width is null and height is null
+        and rotation = 0 and edge_seed = 0)
+  ),
+
+  constraint items_image_footprint_check check (
+    kind <> 'image'
+    or (src is not null and width is not null and height is not null
+        and width > 0 and height > 0)
+  ),
+
+  -- `jsonb_typeof`, not a bare `options = '{}'`: this arm admits `'[]'`/`'null'`,
+  -- which the parser coerces to defaults.
+  constraint items_options_check check (
+    kind = 'article'
+    or jsonb_typeof(options) <> 'object'
+    or options = '{}'::jsonb
+  ),
+
+  -- This list must match `NOTE_STYLES` in `src/model/types.ts`; an unknown value
+  -- there falls back to `plain`, so drift is survivable but visible only here.
+  constraint items_style_check
+  check (style in ('plain', 'ruled', 'grid', 'torn', 'taped')),
+
+  constraint items_style_columns_check check (
+    kind = 'note' or style = 'plain'
   )
 );
 
@@ -153,6 +205,8 @@ create table public.group_items (
   primary key (group_id, item_id)
 );
 
+-- The client's `MAX_SLACK` is (8 / 3) * MAX_SAG_RATIO^2 with MAX_SAG_RATIO at
+-- 0.55; a database cannot import that constant, so this literal is the copy that drifts.
 create table public.strings (
   id         uuid primary key default gen_random_uuid(),
   board_id   uuid not null references public.boards (id) on delete cascade,
@@ -161,10 +215,12 @@ create table public.strings (
   color      text not null default 'crimson',
   style      text not null default 'solid' check (style in ('solid', 'dashed', 'double')),
   label      text,
+  slack      double precision not null default 0.18,
   visibility text not null default 'shared' check (visibility in ('shared', 'dm')),
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now(),
-  constraint strings_no_self_loop check (from_item <> to_item)
+  constraint strings_no_self_loop check (from_item <> to_item),
+  constraint strings_slack_check check (slack >= 0 and slack <= 0.8067)
 );
 
 create index strings_board_idx on public.strings (board_id);

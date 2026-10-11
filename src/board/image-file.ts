@@ -1,3 +1,5 @@
+import { shrinkImageFile } from "./image-compress";
+
 export interface DecodedImage {
   src: string;
   width: number;
@@ -39,6 +41,16 @@ export function isImageFile(file: { type?: string; name?: string }): boolean {
 }
 
 export async function decodeImageFile(file: File): Promise<DecodedImage> {
+  const shrunk = await shrinkImageFile(file);
+  if (shrunk) {
+    return {
+      src: await readAsDataUrl(shrunk.blob),
+      width: shrunk.width,
+      height: shrunk.height,
+      name: file.name,
+    };
+  }
+
   const src = await readAsDataUrl(file);
   const { width, height } = await measure(src);
   return { src, width, height, name: file.name };

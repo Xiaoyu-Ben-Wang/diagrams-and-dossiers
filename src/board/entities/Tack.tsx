@@ -10,6 +10,7 @@ const TACK_HALF = TACK_SIZE / 2;
 
 export const Tack = memo(function Tack({
   pin,
+  z = 0,
   x,
   y,
   selected,
@@ -19,10 +20,13 @@ export const Tack = memo(function Tack({
   onStartYarn,
   onMove,
   onDrop,
+  onAim,
   onOpenEditor,
   onHover,
 }: {
   pin: PinView;
+  /** The board stack rank from `stackingRanks`; a pin anchored to a page has none. */
+  z?: number;
   x: number;
   y: number;
   selected: boolean;
@@ -32,14 +36,21 @@ export const Tack = memo(function Tack({
   onStartYarn: (event: PointerEvent, pin: PinView) => void;
   onMove: (id: string, delta: Point) => void;
   onDrop: (id: string, clientX: number, clientY: number) => void;
+  /** Where the pin would be let go if the drag ended now, in screen coords; null once it has. */
+  onAim?: (id: string, at: Point | null) => void;
   onOpenEditor: (id: string, clientX: number, clientY: number) => void;
   onHover: (pin: PinView, element: Element | null) => void;
 }) {
   const drag = useBoardDrag({
     zoom,
     onDrag: (delta) => onMove(pin.id, delta),
+    onDragTo: (x, y) => onAim?.(pin.id, { x, y }),
+    onCancel: () => onAim?.(pin.id, null),
     // The drag handlers are bound only in move mode, so this can only fire while repositioning.
-    onEnd: (end) => onDrop(pin.id, end.clientX, end.clientY),
+    onEnd: (end) => {
+      onAim?.(pin.id, null);
+      onDrop(pin.id, end.clientX, end.clientY);
+    },
   });
 
   const described = pin.body.trim().length > 0;
@@ -51,7 +62,13 @@ export const Tack = memo(function Tack({
   const tagDrag = useBoardDrag({
     zoom,
     onDrag: (delta) => onMove(pin.id, delta),
+    onDragTo: (x, y) => {
+      const grab = tagGrabRef.current ?? { dx: 0, dy: 0 };
+      onAim?.(pin.id, { x: x - grab.dx, y: y - grab.dy });
+    },
+    onCancel: () => onAim?.(pin.id, null),
     onEnd: (end) => {
+      onAim?.(pin.id, null);
       if (!end.travelled) {
         onOpenEditor(pin.id, end.clientX, end.clientY);
         return;
@@ -130,6 +147,7 @@ export const Tack = memo(function Tack({
         style={{
           left: x,
           top: y,
+          zIndex: z,
           touchAction: "none",
           opacity: dimmed ? 0.2 : 1,
         }}

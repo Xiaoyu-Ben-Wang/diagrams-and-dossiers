@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ImageCard, type ImageCardProps } from "./ImageCard";
-import { POLAROID_INSETS } from "../model/kinds";
+import { POLAROID_INSETS } from "../model/image-mark";
 
 function card(over: Partial<ImageCardProps> = {}) {
   return render(

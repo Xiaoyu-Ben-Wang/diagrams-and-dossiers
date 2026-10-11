@@ -10,9 +10,10 @@
   pointer-events: none;
   max-width: 264px;
   padding: 7px 11px 8px 12px;
-  border: 1px solid var(--color-parchment-edge);
+  border: 1px solid var(--color-border);
   border-radius: 3px 7px 3px 6px;
-  border-left: 2px solid color-mix(in srgb, var(--color-brass) 75%, transparent);
+  border-left: 2px solid
+    color-mix(in srgb, var(--color-accent) 75%, transparent);
   background-color: var(--color-parchment-100);
   background-image: linear-gradient(
     155deg,
@@ -53,14 +54,14 @@
 
 .pin-tooltip[data-side="below"] .pin-tooltip__tail {
   top: -5px;
-  border-top: 1px solid var(--color-parchment-edge);
-  border-left: 1px solid var(--color-parchment-edge);
+  border-top: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-border);
 }
 
 .pin-tooltip[data-side="above"] .pin-tooltip__tail {
   bottom: -5px;
-  border-right: 1px solid var(--color-parchment-edge);
-  border-bottom: 1px solid var(--color-parchment-edge);
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .pin-tooltip__quote {
@@ -82,8 +83,7 @@
 .pin-tooltip__date {
   margin: 5px 0 0;
   padding-top: 4px;
-  border-top: 1px solid
-    color-mix(in srgb, var(--color-parchment-edge) 50%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
   color: var(--color-ink-soft);
   font-size: 10px;
   letter-spacing: 0.07em;
@@ -97,11 +97,6 @@
   height: 5px;
   margin-right: 5px;
   border-radius: 50%;
-  background: radial-gradient(
-    circle at 35% 30%,
-    #f4e2a1,
-    var(--color-brass) 55%,
-    #7a5f12
-  );
+  background: var(--tack-face);
   vertical-align: 1px;
 }

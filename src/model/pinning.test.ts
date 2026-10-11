@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { TextAnchor } from "../anchors/types";
-import { newAnchoredPin, newFreePin } from "./create";
-import { pinToBoard, pinToText, sameAnchor } from "./pinning";
-import { isAnchoredPin, type EntityBase } from "./types";
+import { newAnchoredPin, newFreePin, newImagePin } from "./create";
+import { pinToBoard, pinToImage, pinToText, sameAnchor } from "./pinning";
+import { isAnchoredPin, isImagePin, type EntityBase } from "./types";
 
 const anchor: TextAnchor = {
   quote: "Saltmarsh",
@@ -54,7 +54,7 @@ describe("pinToText", () => {
   });
 
   it("drops the old board position rather than keeping both placements", () => {
-    // A board and an anchor together is the state the schema's anchor-XOR-board CHECK forbids.
+    // A board and an anchor together is the state the schema's location CHECK forbids.
     const pin = newFreePin({ x: 10, y: 20 });
 
     const anchored = pinToText(pin, "art-1", anchor);
@@ -120,6 +120,16 @@ describe("pinToBoard", () => {
     expect("articleId" in free).toBe(false);
   });
 
+  it("drops a mark's picture and fraction", () => {
+    const free = pinToBoard(newImagePin("img-1", { u: 0.25, v: 0.8 }), {
+      x: 0,
+      y: 0,
+    });
+
+    expect("imageId" in free).toBe(false);
+    expect("spot" in free).toBe(false);
+  });
+
   it("carries every shared column across", () => {
     const pin = { ...newAnchoredPin("art-1", anchor), ...FULL };
 
@@ -128,6 +138,73 @@ describe("pinToBoard", () => {
     for (const [key, value] of Object.entries(FULL)) {
       expect(free[key as keyof EntityBase], key).toEqual(value);
     }
+  });
+});
+
+describe("pinToImage", () => {
+  it("sticks a pin onto a picture, keeping its identity", () => {
+    const pin = {
+      ...newFreePin({ x: 10, y: 20 }),
+      ...FULL,
+      version: 4,
+      id: "pin-3",
+    };
+
+    const marked = pinToImage(pin, "img-1", { u: 0.25, v: 0.8 });
+
+    expect(marked.id).toBe("pin-3");
+    expect(marked.version).toBe(4);
+    expect(marked.imageId).toBe("img-1");
+    expect(marked.spot).toEqual({ u: 0.25, v: 0.8 });
+    expect(isImagePin(marked)).toBe(true);
+  });
+
+  it("carries every shared column across", () => {
+    const pin = { ...newFreePin({ x: 0, y: 0 }), ...FULL };
+
+    const marked = pinToImage(pin, "img-1", { u: 0, v: 0 });
+
+    for (const [key, value] of Object.entries(FULL)) {
+      expect(marked[key as keyof EntityBase], key).toEqual(value);
+    }
+  });
+
+  it("drops the old board position rather than keeping both placements", () => {
+    const marked = pinToImage(newFreePin({ x: 10, y: 20 }), "img-1", {
+      u: 0.5,
+      v: 0.5,
+    });
+
+    expect("board" in marked).toBe(false);
+    expect("anchor" in marked).toBe(false);
+  });
+
+  it("drops the quote and the anchor it was pinned to", () => {
+    const marked = pinToImage(newAnchoredPin("art-1", anchor), "img-1", {
+      u: 0.5,
+      v: 0.5,
+    });
+
+    expect("anchor" in marked).toBe(false);
+    expect("articleId" in marked).toBe(false);
+  });
+
+  it("clamps a spot onto the picture", () => {
+    const marked = pinToImage(newFreePin({ x: 0, y: 0 }), "img-1", {
+      u: 2,
+      v: -1,
+    });
+
+    expect(marked.spot).toEqual({ u: 1, v: 0 });
+  });
+
+  it("clears the nudge, which was measured against the old home", () => {
+    const pin = { ...newFreePin({ x: 0, y: 0 }), nudge: { x: 40, y: -12 } };
+
+    expect(pinToImage(pin, "img-1", { u: 0, v: 0 }).nudge).toEqual({
+      x: 0,
+      y: 0,
+    });
   });
 });
 

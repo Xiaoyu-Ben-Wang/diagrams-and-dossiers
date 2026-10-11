@@ -10,7 +10,12 @@ import {
   SECOND_ARTICLE_ID,
   THIRD_ARTICLE_ID,
 } from "./app/demo";
-import { DEFAULT_SLACK, sagFor, YARN_COLOR } from "./board/yarn";
+import { DEFAULT_SLACK, sagFor } from "./board/yarn";
+import {
+  DEFAULT_YARN_COLOR,
+  YARN_BASE,
+  yarnColorCss,
+} from "./board/yarn-color";
 import { demoBoard, demoPages } from "./app/demo";
 import {
   parseBoardFile,
@@ -19,10 +24,16 @@ import {
 } from "./board/board-file";
 import { memoryBoardStorage } from "./boards/board-storage";
 import { createBoardRecord, type BoardRecord } from "./boards/board-record";
+import { recordingSync } from "./realtime/transport";
 import { POST_IT_COLORS } from "./board/tuning";
-import { newArticle } from "./model/create";
+import { newAnchoredPin, newArticle, newImage } from "./model/create";
+import { createAnchor } from "./anchors/create";
 import type { BoardEntity } from "./model/types";
-import { getPreferences, resetPreferences } from "./theme/preferences";
+import {
+  getPreferences,
+  resetPreferences,
+  setPreferences,
+} from "./theme/preferences";
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
@@ -55,6 +66,71 @@ function dragEdge(handle: Element, from: number, to: number): void {
 function rightClick(element: Element, clientX = 400, clientY = 300): void {
   fireEvent.pointerDown(element, { button: 2, pointerId: 3, clientX, clientY });
   fireEvent.pointerUp(element, { button: 2, pointerId: 3, clientX, clientY });
+}
+
+/**
+ * jsdom cannot hit-test, so a test that cares what a drop landed on supplies the stack.
+ * Without one the drop takes the "no layout engine" path and proves nothing about the guard.
+ */
+function withHitStack<T>(stack: Element[], run: () => T): T {
+  const doc = document as Omit<Document, "elementsFromPoint"> & {
+    elementsFromPoint?: (x: number, y: number) => Element[];
+  };
+  const had = doc.elementsFromPoint;
+  doc.elementsFromPoint = () => stack;
+  try {
+    return run();
+  } finally {
+    if (had) doc.elementsFromPoint = had;
+    else delete doc.elementsFromPoint;
+  }
+}
+
+/** The drag from a palette pad, which is tracked on the window rather than captured.
+    jsdom measures nothing, so the canvas is given a box for the drop to land in. */
+function padDrag(pad: string, to: { x: number; y: number }): void {
+  const canvas = screen.getByTestId("board-canvas");
+  const box = vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
+    left: 0,
+    top: 0,
+    right: 1200,
+    bottom: 800,
+    width: 1200,
+    height: 800,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect);
+
+  try {
+    fireEvent.pointerDown(screen.getByTestId(pad), {
+      button: 0,
+      pointerId: 9,
+      clientX: 40,
+      clientY: 500,
+    });
+    fireEvent.pointerMove(window, {
+      pointerId: 9,
+      clientX: to.x,
+      clientY: to.y,
+    });
+    fireEvent.pointerUp(window, {
+      pointerId: 9,
+      clientX: to.x,
+      clientY: to.y,
+    });
+  } finally {
+    box.mockRestore();
+  }
+}
+
+/**
+ * There is no ctrl-click to make a pin with any more, so a test makes one the way a person does:
+ * the board menu's "Add pin", at the point the press was on.
+ */
+function addPin(target: Element, clientX: number, clientY: number): void {
+  rightClick(target, clientX, clientY);
+  fireEvent.click(screen.getByText("Add pin"));
 }
 
 /** A click on the bare board, which in a browser always follows a press on it. Without
@@ -296,7 +372,7 @@ describe("App — four pages on the board", () => {
     };
 
     try {
-      fireEvent.click(body, { ctrlKey: true, clientX: 120, clientY: 60 });
+      addPin(body, 120, 60);
 
       const tacks = container.querySelectorAll("button[data-pin-id]");
       expect(tacks.length).toBe(1);
@@ -352,7 +428,10 @@ describe("App — the demo board on its own address", () => {
 
 describe("App — the boards library", () => {
   const board = { entities: [], strings: [] };
-  const ledger = { ...createBoardRecord("Ledger", board, 1) };
+  const ledger = {
+    ...createBoardRecord("Ledger", board, 1),
+    editToken: "ledger-edit-token",
+  };
   const manifest = { ...createBoardRecord("Manifest", board, 2) };
 
   const openLibrary = (
@@ -364,14 +443,6 @@ describe("App — the boards library", () => {
     render(<App storage={storage} />);
     return storage;
   };
-
-  it("says on the list that nothing leaves the machine", () => {
-    openLibrary();
-
-    expect(screen.getByTestId("library-local").textContent).toMatch(
-      /kept in this browser/i,
-    );
-  });
 
   it("lists the boards you have, most recently changed first", () => {
     openLibrary();
@@ -493,6 +564,39 @@ describe("App — the boards library", () => {
     expect(await storage.get(ledger.id)).toBeNull();
   });
 
+  describe("in a build with no server", () => {
+    beforeEach(() => vi.stubEnv("VITE_LOCAL_ONLY", "true"));
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("says on the list that nothing leaves the machine", () => {
+      openLibrary();
+
+      expect(screen.getByTestId("library-local").textContent).toMatch(
+        /kept in this browser/i,
+      );
+    });
+
+    it("offers no link to share, since there is nowhere for one to lead", () => {
+      openLibrary([ledger]);
+
+      expect(screen.queryByTestId(`share-${ledger.id}`)).toBeNull();
+    });
+
+    it("treats a join link as an address it does not have", () => {
+      window.history.replaceState(null, "", "/j/some-token");
+      render(<App storage={memoryBoardStorage([])} />);
+
+      expect(screen.queryByText("Join this board")).toBeNull();
+      expect(screen.getByTestId("not-found")).toBeTruthy();
+    });
+  });
+
+  it("makes no claim about staying on the machine when there is a server", () => {
+    openLibrary();
+
+    expect(screen.queryByTestId("library-local")).toBeNull();
+  });
+
   it("copies a link to a board", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -504,7 +608,7 @@ describe("App — the boards library", () => {
     fireEvent.click(screen.getByTestId(`share-${ledger.id}`));
 
     expect(writeText).toHaveBeenCalledWith(
-      expect.stringContaining(`/b/${ledger.id}`),
+      expect.stringContaining(`/j/${ledger.editToken}`),
     );
     Reflect.deleteProperty(navigator, "clipboard");
   });
@@ -515,17 +619,48 @@ describe("App — the boards library", () => {
     fireEvent.click(screen.getByTestId(`share-${ledger.id}`));
 
     const field = await screen.findByTestId(`link-${ledger.id}`);
-    expect((field as HTMLInputElement).value).toContain(`/b/${ledger.id}`);
+    expect((field as HTMLInputElement).value).toContain(
+      `/j/${ledger.editToken}`,
+    );
+  });
+
+  it("says so rather than making up a link for a board with no token", async () => {
+    openLibrary([manifest]);
+
+    fireEvent.click(screen.getByTestId(`share-${manifest.id}`));
+
+    expect(await screen.findByTestId(`local-${manifest.id}`)).toBeTruthy();
   });
 
   it("starts empty, and offers the demo board rather than saving it for you", async () => {
-    openLibrary([]);
+    const storage = openLibrary([]);
 
     expect(screen.getByTestId("library-empty")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("open-demo"));
 
     expect(await screen.findByTestId("board-canvas")).toBeTruthy();
+    // The sample board is its own address, not a copy filed into the library.
+    expect(window.location.pathname).toBe("/demo");
+    expect(await storage.list()).toHaveLength(0);
+  });
+
+  it("keeps the demo board at the top, above the boards you have", async () => {
+    const storage = openLibrary();
+
+    const demo = screen.getByTestId("demo-board");
+    const yours = screen.getByTestId(`board-${manifest.id}`);
+    expect(
+      demo.compareDocumentPosition(yours) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("open-demo"));
+
+    expect(await screen.findByTestId("board-canvas")).toBeTruthy();
+    expect(window.location.pathname).toBe("/demo");
+    // A row of its own rather than a record: opening it files nothing.
+    await act(async () => {});
+    expect(await storage.list()).toHaveLength(2);
   });
 
   it("makes a new board and opens it", async () => {
@@ -578,6 +713,171 @@ describe("App — the boards library", () => {
       "Ledger",
     ]);
   });
+
+  it("says so rather than forgetting a board it could not delete", async () => {
+    // On the server, and made here — so deleting it means deleting the row, and
+    // this test has no server. The row must survive and the reason must be visible.
+    const mine = {
+      ...createBoardRecord("Ledger", board, 2),
+      remote: true as const,
+      editToken: "ledger-edit-token",
+    };
+    const storage = openLibrary([mine]);
+
+    fireEvent.click(screen.getByTestId(`delete-${mine.id}`));
+    fireEvent.click(screen.getByTestId(`confirm-delete-${mine.id}`));
+
+    expect(await screen.findByTestId(`delete-failed-${mine.id}`)).toBeTruthy();
+    expect(screen.getByTestId(`open-${mine.id}`)).toBeTruthy();
+    expect(await storage.get(mine.id)).not.toBeNull();
+  });
+
+  it("keeps somebody else's board in its own group, with no link to give", async () => {
+    const mine = {
+      ...createBoardRecord("Ledger", board, 2),
+      remote: true as const,
+      editToken: "ledger-edit-token",
+    };
+    // What the join path writes: on the server, and holding no token, because the
+    // link that let you in was redeemed and stripped on the way.
+    const theirs = {
+      ...createBoardRecord("Aria's Campaign", board, 3),
+      remote: true as const,
+    };
+    // Never reached the server, so nobody shared it — it is simply yours.
+    const local = createBoardRecord("Saltmarsh Notes", board, 1);
+
+    openLibrary([mine, theirs, local]);
+
+    expect(screen.getByRole("heading", { name: "Your boards" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Shared with you" }),
+    ).toBeTruthy();
+
+    const yours = screen.getByRole("list", { name: "Your boards" });
+    const shared = screen.getByRole("list", { name: "Shared with you" });
+
+    expect(within(yours).getByTestId(`open-${mine.id}`)).toBeTruthy();
+    expect(within(yours).getByTestId(`open-${local.id}`)).toBeTruthy();
+    expect(within(shared).getByTestId(`open-${theirs.id}`)).toBeTruthy();
+
+    // The token is what a share link is made of, and a joiner holds none.
+    expect(within(yours).getByTestId(`share-${mine.id}`)).toBeTruthy();
+    expect(within(shared).queryByTestId(`share-${theirs.id}`)).toBeNull();
+    expect(screen.getByTestId(`from-link-${theirs.id}`)).toBeTruthy();
+
+    // Removing it forgets it here; the board itself belongs to somebody else.
+    fireEvent.click(within(shared).getByTestId(`delete-${theirs.id}`));
+    expect(screen.getByText("Remove from this list?")).toBeTruthy();
+    fireEvent.click(screen.getByTestId(`confirm-delete-${theirs.id}`));
+
+    expect(await screen.findByTestId(`open-${mine.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`open-${theirs.id}`)).toBeNull();
+    // Nothing left to put under it, so the heading goes with it.
+    expect(
+      screen.queryByRole("heading", { name: "Shared with you" }),
+    ).toBeNull();
+  });
+});
+
+describe("App — deleting a page", () => {
+  /** A page carries its pins: this one has one anchored to its first words. */
+  const openWithPinOnTheFirstPage = () => {
+    const page = demoPages()[0];
+    return render(
+      <App
+        seed={{
+          entities: [
+            ...demoPages(),
+            newAnchoredPin(page.id, createAnchor("The Drowned Bell", 0, 3), {
+              id: "pin-on-the-page",
+            }),
+          ],
+          strings: [],
+        }}
+      />,
+    ).container;
+  };
+
+  const selectPage = (container: HTMLElement): void =>
+    tap(within(sheet(container, FIRST_PAGE)).getByTestId("paper-tab"));
+
+  it("takes the pins on a page, after saying how many", () => {
+    const container = openWithPinOnTheFirstPage();
+    selectPage(container);
+
+    fireEvent.click(
+      within(sheet(container, FIRST_PAGE)).getByTestId("article-delete"),
+    );
+
+    expect(screen.getByTestId("entity-delete-ask")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The pin on it goes too, and the note written on that pin.",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("entity-delete-confirm"));
+
+    expect(
+      container.querySelector(`[data-article-id="${FIRST_PAGE}"]`),
+    ).toBeNull();
+    expect(container.querySelector("footer")!.textContent).toContain("0 pins");
+  });
+
+  it("asks the same question from the editor, and Cancel keeps everything", () => {
+    const container = openWithPinOnTheFirstPage();
+    selectPage(container);
+
+    fireEvent.click(screen.getByTestId("paper-editor-delete"));
+    expect(screen.getByTestId("entity-delete-ask")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("entity-delete-cancel"));
+
+    expect(screen.queryByTestId("entity-delete-ask")).toBeNull();
+    expect(sheet(container, FIRST_PAGE)).toBeTruthy();
+    expect(container.querySelector("footer")!.textContent).toContain("1 pin");
+  });
+
+  it("deletes a page with nothing on it without a word", () => {
+    const { container } = renderBoard();
+    selectPage(container);
+
+    fireEvent.click(
+      within(sheet(container, FIRST_PAGE)).getByTestId("article-delete"),
+    );
+
+    // Nothing to lose, so nothing to ask.
+    expect(screen.queryByTestId("entity-delete-ask")).toBeNull();
+    expect(
+      container.querySelector(`[data-article-id="${FIRST_PAGE}"]`),
+    ).toBeNull();
+  });
+
+  it("deletes a selected page with the Delete key, under the same rule", () => {
+    const container = openWithPinOnTheFirstPage();
+    selectPage(container);
+
+    fireEvent.keyDown(document, { key: "Delete" });
+
+    // The page has a pin on it, so the key asks the same question the buttons do.
+    expect(screen.getByTestId("entity-delete-ask")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("entity-delete-confirm"));
+
+    expect(
+      container.querySelector(`[data-article-id="${FIRST_PAGE}"]`),
+    ).toBeNull();
+    expect(container.querySelector("footer")!.textContent).toContain("0 pins");
+  });
+
+  it("offers the same delete on the right-click menu", () => {
+    const container = openWithPinOnTheFirstPage();
+
+    rightClick(sheet(container, FIRST_PAGE));
+
+    fireEvent.click(screen.getByText("Delete page"));
+    expect(screen.getByTestId("entity-delete-ask")).toBeTruthy();
+  });
 });
 
 describe("App — pinning by click", () => {
@@ -590,16 +890,16 @@ describe("App — pinning by click", () => {
     expect(freePins(container)).toBe(0);
   });
 
-  it("pins on a ctrl-click", () => {
+  it("does not pin on a ctrl-click either", () => {
     const { container } = renderBoard();
     fireEvent.click(screen.getByTestId("board-canvas"), { ctrlKey: true });
-    expect(freePins(container)).toBe(1);
+    expect(freePins(container)).toBe(0);
   });
 
-  it("pins on a cmd-click too, since ctrl-click is the macOS context menu", () => {
+  it("does not pin on a cmd-click, which was the macOS spelling of it", () => {
     const { container } = renderBoard();
     fireEvent.click(screen.getByTestId("board-canvas"), { metaKey: true });
-    expect(freePins(container)).toBe(1);
+    expect(freePins(container)).toBe(0);
   });
 });
 
@@ -652,7 +952,7 @@ describe("App — placing pins", () => {
     };
 
     try {
-      fireEvent.click(article, { ctrlKey: true, clientX: 120, clientY: 60 });
+      addPin(article, 120, 60);
 
       const tack = container.querySelector(
         "button[data-pin-id]",
@@ -717,7 +1017,7 @@ describe("App — placing pins", () => {
     };
 
     try {
-      fireEvent.click(article, { ctrlKey: true, clientX: 120, clientY: 60 });
+      addPin(article, 120, 60);
       const tack = container.querySelector(
         "button[data-pin-id]",
       ) as HTMLElement;
@@ -750,11 +1050,7 @@ describe("App — placing pins", () => {
 
   it("opens the editor when a pin is clicked rather than dragged", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
     const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
 
     fireEvent.pointerDown(tack, {
@@ -770,11 +1066,7 @@ describe("App — placing pins", () => {
 
   it("does not open the editor when the same press travels", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
     const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
 
     fireEvent.pointerDown(tack, {
@@ -795,11 +1087,7 @@ describe("App — placing pins", () => {
 
   it("opens the editor on a pin stuck through a word too", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
 
     const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
     fireEvent.pointerDown(tack, {
@@ -817,8 +1105,8 @@ describe("App — placing pins", () => {
     const { container } = renderBoard();
     const canvas = screen.getByTestId("board-canvas");
 
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 });
+    addPin(canvas, 300, 200);
+    addPin(canvas, 520, 260);
 
     const tacks = container.querySelectorAll("button[data-pin-id]");
     expect(tacks.length).toBe(2);
@@ -844,11 +1132,14 @@ describe("App — placing pins", () => {
     // The shadow is a pass of its own, so the string is the pass in the yarn's colour.
     expect(
       [...strands].map((strand) => strand.getAttribute("stroke")),
-    ).toContain(YARN_COLOR);
+    ).toContain(YARN_BASE);
 
     const group = container.querySelector(
       '[data-testid="yarn"]',
     ) as SVGGElement;
+    expect(group.style.getPropertyValue("--yarn-base")).toBe(
+      yarnColorCss(DEFAULT_YARN_COLOR),
+    );
     expect(group.style.opacity).toBe("");
   });
 
@@ -864,8 +1155,8 @@ describe("App — placing pins", () => {
     const { container } = renderBoard();
     const canvas = screen.getByTestId("board-canvas");
 
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 });
+    addPin(canvas, 300, 200);
+    addPin(canvas, 520, 260);
     const tacks = container.querySelectorAll("button[data-pin-id]");
     fireEvent.pointerDown(tacks[0], {
       button: 0,
@@ -930,12 +1221,48 @@ describe("App — placing pins", () => {
     expect(yarnControlY(container)).toBeLessThan(sagged);
   });
 
+  it("strings the board in one wool, and re-string it when the wool changes", () => {
+    const { container } = renderBoard();
+    const canvas = screen.getByTestId("board-canvas");
+
+    addPin(canvas, 300, 200);
+    addPin(canvas, 520, 260);
+    const tacks = container.querySelectorAll("button[data-pin-id]");
+    fireEvent.pointerDown(tacks[0], {
+      button: 0,
+      pointerId: 21,
+      clientX: 300,
+      clientY: 200,
+    });
+    fireEvent.pointerMove(canvas, {
+      pointerId: 21,
+      clientX: 520,
+      clientY: 260,
+    });
+    fireEvent.pointerUp(canvas, { pointerId: 21, clientX: 520, clientY: 260 });
+
+    const span = Math.hypot(520 - 300, 260 - 200);
+    clickBoard(canvas, 410, 230 + sagFor(span, DEFAULT_SLACK) / 2);
+
+    const painted = () =>
+      (
+        container.querySelector('[data-testid="yarn"]') as SVGGElement
+      ).style.getPropertyValue("--yarn-base");
+    expect(painted()).toBe(yarnColorCss(DEFAULT_YARN_COLOR));
+
+    act(() => {
+      setPreferences({ yarnColor: "indigo" });
+    });
+
+    expect(painted()).toBe(yarnColorCss("indigo"));
+  });
+
   it("removes a selected string on Delete, and lets go of it on Escape", () => {
     const { container } = renderBoard();
     const canvas = screen.getByTestId("board-canvas");
 
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 });
+    addPin(canvas, 300, 200);
+    addPin(canvas, 520, 260);
     const tacks = container.querySelectorAll("button[data-pin-id]");
     fireEvent.pointerDown(tacks[0], {
       button: 0,
@@ -968,8 +1295,8 @@ describe("App — placing pins", () => {
   it("does not delete while a field has focus", () => {
     const { container } = renderBoard();
     const canvas = screen.getByTestId("board-canvas");
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 });
+    addPin(canvas, 300, 200);
+    addPin(canvas, 520, 260);
     const tacks = container.querySelectorAll("button[data-pin-id]");
     fireEvent.pointerDown(tacks[0], {
       button: 0,
@@ -1002,8 +1329,8 @@ describe("App — placing pins", () => {
     const { container } = renderBoard();
     const canvas = screen.getByTestId("board-canvas");
 
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 });
+    addPin(canvas, 300, 200);
+    addPin(canvas, 520, 260);
 
     const tacks = container.querySelectorAll("button[data-pin-id]");
     fireEvent.pointerDown(tacks[0], {
@@ -1037,7 +1364,7 @@ describe("App — placing pins", () => {
     const { container } = renderBoard();
     const canvas = screen.getByTestId("board-canvas");
 
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
+    addPin(canvas, 300, 200);
     const tack = container.querySelector('[data-status="free"]') as HTMLElement;
     expect(tack).not.toBeNull();
 
@@ -1065,7 +1392,7 @@ describe("App — placing pins", () => {
     const { container } = renderBoard();
     const canvas = screen.getByTestId("board-canvas");
 
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
+    addPin(canvas, 300, 200);
     expect(container.querySelectorAll(".is-selected").length).toBe(0);
 
     fireEvent.pointerDown(canvas, {
@@ -1114,7 +1441,7 @@ describe("App — placing pins", () => {
     const { container } = renderBoard();
     const canvas = screen.getByTestId("board-canvas");
 
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
+    addPin(canvas, 300, 200);
     fireEvent.pointerDown(canvas, {
       button: 0,
       pointerId: 9,
@@ -1151,8 +1478,8 @@ describe("App — undo", () => {
     const { container } = renderBoard();
     const canvas = screen.getByTestId("board-canvas");
 
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 520, clientY: 260 });
+    addPin(canvas, 300, 200);
+    addPin(canvas, 520, 260);
     stringBetween(canvas);
 
     const span = Math.hypot(520 - 300, 260 - 200);
@@ -1229,7 +1556,7 @@ describe("App — pin descriptions", () => {
   it("marks a pin once it has a description", () => {
     const { container } = renderBoard();
     const canvas = screen.getByTestId("board-canvas");
-    fireEvent.click(canvas, { ctrlKey: true, clientX: 300, clientY: 200 });
+    addPin(canvas, 300, 200);
 
     const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
     expect(tack.getAttribute("data-described")).toBeNull();
@@ -1248,11 +1575,7 @@ describe("App — pin descriptions", () => {
 
   it("does not count whitespace as a description", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
     openPinEditor(container);
 
     fireEvent.change(screen.getByLabelText("Pin note"), {
@@ -1267,11 +1590,7 @@ describe("App — pin descriptions", () => {
 
   it("shows a hover card on a pin, far sooner than the native tooltip", async () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
 
     const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
     fireEvent.pointerEnter(tack);
@@ -1282,11 +1601,7 @@ describe("App — pin descriptions", () => {
 
   it("hangs the written description on the pin as a tag", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
     openPinEditor(container);
     fireEvent.change(screen.getByLabelText("Pin note"), {
       target: { value: "The ferryman was lying." },
@@ -1301,11 +1616,7 @@ describe("App — pin descriptions", () => {
 
   it("edits the date on a pin, and the tag on the board follows it", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
     openPinEditor(container);
 
     const field = screen.getByLabelText("Pin date") as HTMLInputElement;
@@ -1324,11 +1635,7 @@ describe("App — pin descriptions", () => {
 
   it("takes the date off a pin when the field is emptied", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
     openPinEditor(container);
     fireEvent.change(screen.getByLabelText("Pin note"), {
       target: { value: "Paid in silver." },
@@ -1348,11 +1655,7 @@ describe("App — pin descriptions", () => {
 
   it("leaves a tag off a pin nobody has written on", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
 
     expect(container.querySelector(".pin-tag")).toBeNull();
   });
@@ -1361,11 +1664,7 @@ describe("App — pin descriptions", () => {
     function describedPin() {
       const rendered = renderBoard();
       const { container } = rendered;
-      fireEvent.click(screen.getByTestId("board-canvas"), {
-        ctrlKey: true,
-        clientX: 300,
-        clientY: 200,
-      });
+      addPin(screen.getByTestId("board-canvas"), 300, 200);
       openPinEditor(container);
       fireEvent.change(screen.getByLabelText("Pin note"), {
         target: { value: "The ferryman was lying." },
@@ -1469,11 +1768,7 @@ describe("App — pin descriptions", () => {
 
   it("drops the hover card when the camera moves under it", async () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
 
     const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
     fireEvent.pointerEnter(tack);
@@ -1490,11 +1785,7 @@ describe("App — pin descriptions", () => {
 
   it("describes each pin by the card it will produce", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
 
     const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
     expect(tack.getAttribute("aria-describedby")).toMatch(/^pin-tooltip-/);
@@ -1502,11 +1793,7 @@ describe("App — pin descriptions", () => {
 
   it("offers Move pin in the editor", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
     openPinEditor(container);
 
     expect(screen.getByText("Move pin")).toBeTruthy();
@@ -1514,11 +1801,7 @@ describe("App — pin descriptions", () => {
 
   it("closes the editor and prompts for the drag when Move pin is chosen", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
     openPinEditor(container);
 
     fireEvent.click(screen.getByText("Move pin"));
@@ -1529,11 +1812,7 @@ describe("App — pin descriptions", () => {
 
   it("finishes the move on Escape", () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
     openPinEditor(container);
     fireEvent.click(screen.getByText("Move pin"));
 
@@ -1543,11 +1822,7 @@ describe("App — pin descriptions", () => {
 
   it("repositions the pin when dragged in move mode", async () => {
     const { container } = renderBoard();
-    fireEvent.click(screen.getByTestId("board-canvas"), {
-      ctrlKey: true,
-      clientX: 300,
-      clientY: 200,
-    });
+    addPin(screen.getByTestId("board-canvas"), 300, 200);
     openPinEditor(container);
     fireEvent.click(screen.getByText("Move pin"));
 
@@ -1666,44 +1941,6 @@ describe("App — mentions", () => {
 });
 
 describe("App — making a page", () => {
-  /** The drag from a palette pad, which is tracked on the window rather than captured.
-      jsdom measures nothing, so the canvas is given a box for the drop to land in. */
-  function padDrag(pad: string, to: { x: number; y: number }): void {
-    const canvas = screen.getByTestId("board-canvas");
-    const box = vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
-      left: 0,
-      top: 0,
-      right: 1200,
-      bottom: 800,
-      width: 1200,
-      height: 800,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect);
-
-    try {
-      fireEvent.pointerDown(screen.getByTestId(pad), {
-        button: 0,
-        pointerId: 9,
-        clientX: 40,
-        clientY: 500,
-      });
-      fireEvent.pointerMove(window, {
-        pointerId: 9,
-        clientX: to.x,
-        clientY: to.y,
-      });
-      fireEvent.pointerUp(window, {
-        pointerId: 9,
-        clientX: to.x,
-        clientY: to.y,
-      });
-    } finally {
-      box.mockRestore();
-    }
-  }
-
   it("makes a page by dragging it off the palette", () => {
     const { container } = renderBoard();
     const before = container.querySelectorAll("[data-article-id]").length;
@@ -2690,3 +2927,577 @@ describe("App — preferences", () => {
     expect(container.querySelectorAll("[data-article-id]").length).toBe(0);
   });
 });
+
+// The store takes its transport when it is built, so a board that turns out to be
+// on the server must not be opened before that transport exists. It was, once:
+// the gate waited to be *told* the transport was pending, React batched that away,
+// and every board — shared or not — silently dropped its edits. Nothing caught it
+// because nothing could see which transport the store had actually been given.
+vi.mock("./realtime/supabase-sync", () => ({
+  supabaseSync: () => recordingSync(),
+}));
+vi.mock("./supabase/session", () => ({
+  ensureSession: async () => ({
+    userId: "11111111-1111-4111-8111-111111111111",
+  }),
+}));
+// There is no server here. Saying so once beats every board-creation test logging
+// a network failure that is the correct, expected fallback.
+vi.mock("./boards/remote", () => ({
+  createRemoteBoard: async () => null,
+  redeemCreatorInvite: async () => false,
+  joinBoard: async () => null,
+  boardName: async () => null,
+  // There is no server here, so a board that lives on one cannot be deleted —
+  // which is the case the library is supposed to be honest about.
+  deleteRemoteBoard: async () => false,
+}));
+
+describe("App — a board with a server behind it", () => {
+  const empty = { entities: [], strings: [] };
+  const local = createBoardRecord("On this device", empty, 1);
+  const remote = {
+    ...createBoardRecord("On the server", empty, 2),
+    remote: true as const,
+  };
+
+  const open = (record: BoardRecord) => {
+    window.history.replaceState(null, "", `/b/${record.id}`);
+    render(<App storage={memoryBoardStorage([record])} />);
+  };
+
+  it("reports the connection once it has one", async () => {
+    open(remote);
+
+    const pill = await screen.findByTestId("connection-status");
+    // `recordingSync` reports itself live; `localSync` would say offline, which is
+    // exactly the state the bug left every board in.
+    expect(pill.getAttribute("data-status")).toBe("live");
+  });
+
+  it("says nothing about a connection it does not have", async () => {
+    open(local);
+
+    await screen.findByTestId("board-canvas");
+    expect(screen.queryByTestId("connection-status")).toBeNull();
+  });
+});
+
+describe("App — pins marked on a picture", () => {
+  const PICTURE = "a-picture";
+  // Board and viewport coordinates are the same number here: the canvas measures zero in
+  // jsdom, so the opening fit finds nothing and the camera never leaves the origin.
+  const CARD = { x: 300, y: 200 };
+  const ON_CARD = { x: 400, y: 300 };
+
+  const openWithPicture = () =>
+    render(
+      <App
+        seed={{
+          entities: [
+            newImage(
+              CARD,
+              "data:image/png;base64,AAAA",
+              { width: 260, height: 200 },
+              { id: PICTURE },
+            ),
+          ],
+          strings: [],
+        }}
+      />,
+    ).container;
+
+  const picture = (container: HTMLElement) =>
+    container.querySelector(`[data-image-id="${PICTURE}"]`) as HTMLElement;
+
+  const marks = (container: HTMLElement) =>
+    container.querySelectorAll('[data-status="marked"]');
+
+  const openPinEditor = (container: HTMLElement): void => {
+    const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
+    fireEvent.pointerDown(tack, {
+      button: 2,
+      pointerId: 4,
+      clientX: 181,
+      clientY: 52,
+    });
+    fireEvent.pointerUp(tack, {
+      button: 2,
+      pointerId: 4,
+      clientX: 181,
+      clientY: 52,
+    });
+  };
+
+  const markByMenu = (container: HTMLElement): void => {
+    rightClick(picture(container), ON_CARD.x, ON_CARD.y);
+    fireEvent.click(screen.getByText("Pin here"));
+  };
+
+  it("marks the picture where it was right-clicked", () => {
+    const container = openWithPicture();
+
+    markByMenu(container);
+
+    expect(marks(container).length).toBe(1);
+  });
+
+  it("offers no such mark on a page, which pins to its words instead", () => {
+    const { container } = renderBoard();
+
+    rightClick(sheet(container, FIRST_PAGE));
+
+    expect(screen.queryByText("Pin here")).toBeNull();
+  });
+
+  it("marks the picture when a pin is dragged onto it", () => {
+    const container = openWithPicture();
+
+    addPin(screen.getByTestId("board-canvas"), 100, 100);
+    openPinEditor(container);
+    fireEvent.click(screen.getByText("Move pin"));
+
+    const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
+    // The tack in hand is on top of the picture at the moment of the drop, as it is for real.
+    withHitStack([tack, picture(container)], () => {
+      fireEvent.pointerDown(tack, {
+        button: 0,
+        pointerId: 31,
+        clientX: 100,
+        clientY: 100,
+      });
+      fireEvent.pointerMove(tack, {
+        pointerId: 31,
+        clientX: ON_CARD.x,
+        clientY: ON_CARD.y,
+      });
+      fireEvent.pointerUp(tack, {
+        pointerId: 31,
+        clientX: ON_CARD.x,
+        clientY: ON_CARD.y,
+      });
+    });
+
+    expect(marks(container).length).toBe(1);
+  });
+
+  it("leaves the pin loose when something else covers the picture", () => {
+    const container = openWithPicture();
+
+    addPin(screen.getByTestId("board-canvas"), 100, 100);
+    openPinEditor(container);
+    fireEvent.click(screen.getByText("Move pin"));
+
+    const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
+    const note = document.createElement("div");
+    note.setAttribute("data-entity-id", "a-note");
+
+    withHitStack([note], () => {
+      fireEvent.pointerDown(tack, {
+        button: 0,
+        pointerId: 32,
+        clientX: 100,
+        clientY: 100,
+      });
+      fireEvent.pointerMove(tack, {
+        pointerId: 32,
+        clientX: ON_CARD.x,
+        clientY: ON_CARD.y,
+      });
+      fireEvent.pointerUp(tack, {
+        pointerId: 32,
+        clientX: ON_CARD.x,
+        clientY: ON_CARD.y,
+      });
+    });
+
+    expect(marks(container).length).toBe(0);
+  });
+
+  it("marks the picture when a pin is dragged onto it from the palette", () => {
+    const container = openWithPicture();
+
+    withHitStack([picture(container)], () => padDrag("palette-pad-0", ON_CARD));
+
+    expect(marks(container).length).toBe(1);
+  });
+
+  it("leaves a palette pin loose when something else covers the picture", () => {
+    const container = openWithPicture();
+    const note = document.createElement("div");
+    note.setAttribute("data-entity-id", "a-note");
+
+    withHitStack([note], () => padDrag("palette-pad-0", ON_CARD));
+
+    expect(marks(container).length).toBe(0);
+    expect(container.querySelectorAll("button[data-pin-id]").length).toBe(1);
+  });
+
+  it("lights the picture a pin from the palette is carried over", () => {
+    const container = openWithPicture();
+    const shadow = () =>
+      picture(container).querySelector(".image-shadow") as HTMLElement;
+
+    fireEvent.pointerDown(screen.getByTestId("palette-pad-0"), {
+      button: 0,
+      pointerId: 12,
+      clientX: 40,
+      clientY: 500,
+    });
+    fireEvent.pointerMove(window, {
+      pointerId: 12,
+      clientX: ON_CARD.x,
+      clientY: ON_CARD.y,
+    });
+    expect(shadow().getAttribute("data-drop")).toBe("onto");
+
+    fireEvent.pointerMove(window, { pointerId: 12, clientX: 50, clientY: 50 });
+    expect(shadow().getAttribute("data-drop")).toBeNull();
+
+    fireEvent.pointerMove(window, {
+      pointerId: 12,
+      clientX: ON_CARD.x,
+      clientY: ON_CARD.y,
+    });
+    fireEvent.pointerCancel(window, { pointerId: 12 });
+    expect(shadow().getAttribute("data-drop")).toBeNull();
+  });
+
+  it("carries the mark when the picture is dragged", () => {
+    const container = openWithPicture();
+    markByMenu(container);
+    const before = (marks(container)[0] as HTMLElement).style.left;
+
+    const card = picture(container);
+    fireEvent.pointerDown(card, {
+      button: 0,
+      pointerId: 41,
+      clientX: ON_CARD.x,
+      clientY: ON_CARD.y,
+    });
+    fireEvent.pointerMove(card, {
+      pointerId: 41,
+      clientX: ON_CARD.x + 60,
+      clientY: ON_CARD.y + 40,
+    });
+    fireEvent.pointerUp(card, {
+      pointerId: 41,
+      clientX: ON_CARD.x + 60,
+      clientY: ON_CARD.y + 40,
+    });
+
+    expect((marks(container)[0] as HTMLElement).style.left).not.toBe(before);
+  });
+
+  it("asks before taking a picture, and names the mark it takes", () => {
+    const container = openWithPicture();
+    markByMenu(container);
+
+    rightClick(picture(container), ON_CARD.x, ON_CARD.y);
+    fireEvent.click(screen.getByText("Delete picture"));
+
+    expect(
+      screen.getByText(
+        "The pin marked on it goes too, and the note written on that pin.",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("entity-delete-confirm"));
+
+    expect(picture(container)).toBeNull();
+    expect(marks(container).length).toBe(0);
+  });
+
+  /** Takes a pin in hand and drags it to a point, leaving the gesture open. */
+  const dragPinTo = (
+    container: HTMLElement,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    pointerId: number,
+  ): void => {
+    const tack = container.querySelector("button[data-pin-id]") as HTMLElement;
+    const at = (p: { x: number; y: number }) => ({
+      clientX: p.x,
+      clientY: p.y,
+    });
+    fireEvent.pointerDown(tack, { button: 0, pointerId, ...at(from) });
+    fireEvent.pointerMove(tack, { pointerId, ...at(to) });
+  };
+
+  it("lights up the picture a pin in hand is over", () => {
+    const container = openWithPicture();
+    addPin(screen.getByTestId("board-canvas"), 100, 100);
+    openPinEditor(container);
+    fireEvent.click(screen.getByText("Move pin"));
+
+    dragPinTo(container, { x: 100, y: 100 }, ON_CARD, 51);
+
+    expect(container.querySelector('[data-drop="onto"]')).toBeTruthy();
+    expect(container.querySelector('[data-drop="leaving"]')).toBeNull();
+  });
+
+  it("greys the picture a mark is being pulled off", () => {
+    const container = openWithPicture();
+    markByMenu(container);
+    openPinEditor(container);
+    fireEvent.click(screen.getByText("Move pin"));
+
+    dragPinTo(container, ON_CARD, { x: 100, y: 100 }, 61);
+
+    expect(container.querySelector('[data-drop="leaving"]')).toBeTruthy();
+    expect(container.querySelector('[data-drop="onto"]')).toBeNull();
+  });
+
+  it("drops the highlight once the pin has settled on the picture", () => {
+    const container = openWithPicture();
+    addPin(screen.getByTestId("board-canvas"), 100, 100);
+    openPinEditor(container);
+    fireEvent.click(screen.getByText("Move pin"));
+
+    dragPinTo(container, { x: 100, y: 100 }, ON_CARD, 71);
+    expect(container.querySelector("[data-drop]")).toBeTruthy();
+
+    fireEvent.pointerUp(
+      container.querySelector("button[data-pin-id]") as HTMLElement,
+      { pointerId: 71, clientX: ON_CARD.x, clientY: ON_CARD.y },
+    );
+
+    // Stuck to the picture now, so there is nothing to warn about.
+    expect(container.querySelector("[data-drop]")).toBeNull();
+    expect(marks(container).length).toBe(1);
+  });
+
+  it("comes away from the picture when it is dragged off it", () => {
+    const container = openWithPicture();
+    markByMenu(container);
+    openPinEditor(container);
+    fireEvent.click(screen.getByText("Move pin"));
+
+    dragPinTo(container, ON_CARD, { x: 100, y: 100 }, 81);
+    fireEvent.pointerUp(
+      container.querySelector("button[data-pin-id]") as HTMLElement,
+      { pointerId: 81, clientX: 100, clientY: 100 },
+    );
+
+    expect(marks(container).length).toBe(0);
+    expect(
+      container
+        .querySelector("button[data-pin-id]")
+        ?.getAttribute("data-status"),
+    ).toBe("free");
+  });
+});
+
+describe("App — pins in words", () => {
+  // The stubbed word box in src/test/setup.ts is 100..180 by 50..70, and the page sits at the
+  // board origin, so these are both screen and page coordinates.
+  const ON_WORD = { x: 120, y: 60 };
+  const OFF_WORDS = { x: 900, y: 700 };
+
+  type CaretDocument = Document & { caretRangeFromPoint?: unknown };
+
+  /** The caret lands at the first word of the first page wherever it is asked, as long as
+      nothing covers it — the word box decides whether the point was really on that word. */
+  function withCaret<T>(
+    container: HTMLElement,
+    run: () => T,
+    covered: () => boolean = () => false,
+  ): T {
+    const article = sheet(container, FIRST_PAGE).querySelector(".article")!;
+    const doc = document as CaretDocument;
+    const had = doc.caretRangeFromPoint;
+    doc.caretRangeFromPoint = () => {
+      if (covered()) return null;
+      const text = document
+        .createTreeWalker(article, NodeFilter.SHOW_TEXT)
+        .nextNode() as Text | null;
+      if (!text) return null;
+      const range = document.createRange();
+      range.setStart(text, 0);
+      range.collapse(true);
+      return range;
+    };
+    try {
+      return run();
+    } finally {
+      doc.caretRangeFromPoint = had;
+    }
+  }
+
+  const tack = (container: HTMLElement) =>
+    container.querySelector("button[data-pin-id]") as HTMLElement;
+
+  const pinWordByMenu = (container: HTMLElement) =>
+    addPin(
+      sheet(container, FIRST_PAGE).querySelector(".article")!,
+      ON_WORD.x,
+      ON_WORD.y,
+    );
+
+  const startMoving = (container: HTMLElement): void => {
+    const pin = tack(container);
+    fireEvent.pointerDown(pin, {
+      button: 2,
+      pointerId: 4,
+      clientX: 181,
+      clientY: 52,
+    });
+    fireEvent.pointerUp(pin, {
+      button: 2,
+      pointerId: 4,
+      clientX: 181,
+      clientY: 52,
+    });
+    fireEvent.click(screen.getByText("Move pin"));
+  };
+
+  it("pins the word that was right-clicked, though the menu opens over it", () => {
+    const { container } = renderBoard();
+
+    withCaret(
+      container,
+      () => pinWordByMenu(container),
+      () => document.querySelector(".context-menu") !== null,
+    );
+
+    expect(tack(container).getAttribute("data-status")).toBe("exact");
+  });
+
+  it("leaves a pin loose when it is made beside the words rather than on them", () => {
+    const { container } = renderBoard();
+
+    withCaret(container, () =>
+      addPin(
+        sheet(container, FIRST_PAGE).querySelector(".article")!,
+        OFF_WORDS.x,
+        OFF_WORDS.y,
+      ),
+    );
+
+    expect(tack(container).getAttribute("data-status")).toBe("free");
+  });
+
+  it("sticks a pin from the palette into the word it is dropped on", () => {
+    const { container } = renderBoard();
+
+    withCaret(container, () => padDrag("palette-pad-0", ON_WORD));
+
+    expect(tack(container).getAttribute("data-status")).toBe("exact");
+  });
+
+  it("outlines the word a pin from the palette is carried over", () => {
+    const { container } = renderBoard();
+    const target = () => screen.queryByTestId("word-drop-target");
+
+    withCaret(container, () => {
+      fireEvent.pointerDown(screen.getByTestId("palette-pad-0"), {
+        button: 0,
+        pointerId: 14,
+        clientX: 40,
+        clientY: 500,
+      });
+      fireEvent.pointerMove(window, {
+        pointerId: 14,
+        clientX: ON_WORD.x,
+        clientY: ON_WORD.y,
+      });
+      expect(target()).toBeTruthy();
+
+      fireEvent.pointerMove(window, {
+        pointerId: 14,
+        clientX: OFF_WORDS.x,
+        clientY: OFF_WORDS.y,
+      });
+      expect(target()).toBeNull();
+
+      fireEvent.pointerCancel(window, { pointerId: 14 });
+    });
+  });
+
+  it("pulls a pin off its words when it is dragged away from them", () => {
+    const { container } = renderBoard();
+    withCaret(container, () => pinWordByMenu(container));
+    startMoving(container);
+
+    withCaret(container, () => {
+      const pin = tack(container);
+      fireEvent.pointerDown(pin, {
+        button: 0,
+        pointerId: 15,
+        clientX: 181,
+        clientY: 52,
+      });
+      fireEvent.pointerMove(pin, { pointerId: 15, ...client(OFF_WORDS) });
+      expect(
+        container.querySelector('.anchor-mark[data-drop="leaving"]'),
+      ).toBeTruthy();
+      fireEvent.pointerUp(pin, { pointerId: 15, ...client(OFF_WORDS) });
+    });
+
+    expect(tack(container).getAttribute("data-status")).toBe("free");
+    expect(container.querySelector("[data-drop]")).toBeNull();
+  });
+
+  it("pulls a pin off its words when it is middle-dragged away", () => {
+    const { container } = renderBoard();
+    withCaret(container, () => pinWordByMenu(container));
+
+    withCaret(container, () => {
+      const pin = tack(container);
+      fireEvent.pointerDown(pin, {
+        button: 1,
+        pointerId: 18,
+        clientX: 181,
+        clientY: 52,
+      });
+      fireEvent.pointerMove(pin, { pointerId: 18, ...client(OFF_WORDS) });
+      fireEvent.pointerUp(pin, { pointerId: 18, ...client(OFF_WORDS) });
+    });
+
+    expect(tack(container).getAttribute("data-status")).toBe("free");
+  });
+
+  it("keeps a pin on its words when it is only nudged", () => {
+    const { container } = renderBoard();
+    withCaret(container, () => pinWordByMenu(container));
+    startMoving(container);
+
+    withCaret(container, () => {
+      const pin = tack(container);
+      fireEvent.pointerDown(pin, {
+        button: 0,
+        pointerId: 16,
+        clientX: 181,
+        clientY: 52,
+      });
+      fireEvent.pointerMove(pin, { pointerId: 16, clientX: 186, clientY: 56 });
+      fireEvent.pointerUp(pin, { pointerId: 16, clientX: 186, clientY: 56 });
+    });
+
+    expect(tack(container).getAttribute("data-status")).toBe("exact");
+  });
+
+  it("sticks a loose pin into a word it is dragged onto", () => {
+    const { container } = renderBoard();
+    addPin(screen.getByTestId("board-canvas"), OFF_WORDS.x, OFF_WORDS.y);
+    startMoving(container);
+
+    withCaret(container, () => {
+      const pin = tack(container);
+      fireEvent.pointerDown(pin, {
+        button: 0,
+        pointerId: 17,
+        ...client(OFF_WORDS),
+      });
+      fireEvent.pointerMove(pin, { pointerId: 17, ...client(ON_WORD) });
+      expect(screen.queryByTestId("word-drop-target")).toBeTruthy();
+      fireEvent.pointerUp(pin, { pointerId: 17, ...client(ON_WORD) });
+    });
+
+    expect(tack(container).getAttribute("data-status")).toBe("exact");
+  });
+});
+
+function client(point: { x: number; y: number }) {
+  return { clientX: point.x, clientY: point.y };
+}

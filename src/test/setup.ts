@@ -3,6 +3,21 @@
  * PointerEvent — without the last, pointer events silently lose `button`.
  */
 
+/**
+ * No test may reach the network. Vitest loads `.env.local`, so the Supabase client
+ * would otherwise be perfectly happy to talk to the real project from a unit test
+ * — quietly, and slowly. Refusing here is what makes "there is no project in
+ * tests" true rather than merely intended; callers already treat a failure as
+ * "no server", which is the behaviour under test anyway.
+ *
+ * A test that wants to exercise the network injects its own fetcher, which is what
+ * the export-font tests do.
+ */
+globalThis.fetch = (() =>
+  Promise.reject(
+    new Error("network is not available in tests"),
+  )) as typeof fetch;
+
 if (typeof window !== "undefined") {
   // jsdom's getContext throws "not implemented"; null is what the component
   // already treats as "no canvas here".

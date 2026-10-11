@@ -1,6 +1,6 @@
 import type { BoardState } from "../board/store";
 import { POST_IT_COLORS } from "../board/tuning";
-import { DEFAULT_SLACK, YARN_COLOR } from "../board/yarn";
+import { DEFAULT_SLACK } from "../board/yarn";
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
 import {
   newArticle,
@@ -12,7 +12,7 @@ import {
 import type { BoardEntity, StringLink } from "../model/types";
 import { COIN_RUBBING, MARSH_MAP, TORN_LEAF } from "./demo-pictures";
 // `?inline` keeps a data: URL: a board file rejects a plain asset path.
-import catSrc from "./cat.png?inline";
+import catSrc from "./cat.jpg?inline";
 
 export const INITIAL_MARKDOWN = `# The Drowned Bell
 
@@ -342,132 +342,135 @@ export function demoBoard(): BoardState {
       from: price.id,
       to: bell.id,
       slack: DEFAULT_SLACK,
-      color: YARN_COLOR,
       style: "solid",
       label: "Molgar paid him",
       labelAt: 0.25,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-missing",
       from: missing.id,
       to: ledger.id,
       slack: DEFAULT_SLACK,
-      color: YARN_COLOR,
       style: "solid",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-ink",
       from: kestrel.id,
       to: ink.id,
       slack: DEFAULT_SLACK,
-      color: YARN_COLOR,
       style: "solid",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-fourth",
       from: fourth.id,
       to: ledger.id,
       slack: 0.3,
-      color: YARN_COLOR,
       style: "solid",
       label: "a third hand",
       labelAt: 0.12,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-account",
       from: ferryman.id,
       to: account.id,
       slack: DEFAULT_SLACK,
-      color: YARN_COLOR,
       style: "solid",
       label: "he never opened it",
       labelAt: 0.3,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-sundries",
       from: name.id,
       to: manifest.id,
       slack: 0.1,
-      color: YARN_COLOR,
       style: "solid",
       label: "consigned to nobody",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-tide",
       from: tide.id,
       to: bell.id,
       slack: DEFAULT_SLACK,
-      color: YARN_COLOR,
       style: "solid",
       label: "which of the two?",
       labelAt: 0.16,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-burned",
       from: burned.id,
       to: manifest.id,
       slack: DEFAULT_SLACK,
-      color: YARN_COLOR,
       style: "solid",
       label: "the third entry",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-map",
       from: map.id,
       to: account.id,
       slack: 0.45,
-      color: YARN_COLOR,
       style: "solid",
       label: "all three docks",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-ebb",
       from: ebb.id,
       to: bell.id,
       slack: 0.12,
-      color: YARN_COLOR,
       style: "solid",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-leaf",
       from: leaf.id,
       to: ledger.id,
       slack: 0.36,
-      color: YARN_COLOR,
       style: "solid",
       label: "the missing entries",
       labelAt: 0.2,
       visibility: "shared",
+      version: 1,
     },
     {
       id: "yarn-ink-ledger",
       from: ink.id,
       to: ledger.id,
       slack: 0.24,
-      color: YARN_COLOR,
       style: "solid",
       labelAt: 0.5,
       visibility: "shared",
+      version: 1,
     },
   ];
 
   return {
+    // Every one of these is made in the same millisecond, so without a rank of their
+    // own their order would be decided by their random ids and the sample would stack
+    // differently on every load. Negative, so anything added to the board lands in front.
     entities: [
       bell,
       ledger,
@@ -493,7 +496,7 @@ export function demoBoard(): BoardState {
       rubbing,
       leaf,
       cat,
-    ],
+    ].map((entity, at, all) => ({ ...entity, zIndex: at - all.length })),
     strings,
   };
 }

@@ -1,4 +1,5 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
 
 import { replaceRange } from "../markdown/format";
 import { MarkdownToolbar } from "./MarkdownToolbar";
@@ -13,13 +14,19 @@ export interface MentionCandidate {
 }
 
 export interface PaperEditorProps {
+  /** The page this is the editor for, so the board knows what a keypress in it is editing. */
+  entityId: string;
   title: string;
   value: string;
   onChange: (next: string) => void;
   /** Committed when the title field is left, not on every keystroke. */
   onRename: (next: string) => void;
   onClose: () => void;
+  /** Takes the page, the pins anchored to it, and the notes on those pins. */
+  onDelete: () => void;
   mentions: readonly MentionCandidate[];
+  /** Somebody else has it; still readable, just not writable. */
+  locked?: boolean;
 }
 
 const MAX_SUGGESTIONS = 8;
@@ -63,12 +70,15 @@ function queryAt(
 }
 
 export const PaperEditor = memo(function PaperEditor({
+  entityId,
   title,
   value,
   onChange,
   onRename,
   onClose,
+  onDelete,
   mentions,
+  locked = false,
 }: PaperEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -212,14 +222,15 @@ export const PaperEditor = memo(function PaperEditor({
       // page was opened for editing. Taken out of the flow, nothing moves.
       // Above the palette (28) and opaque, so it covers the pad rather than letting
       // it ghost through; below the menus (30), which must not be hidden while open.
-      className="absolute inset-y-0 left-0 z-[29] flex flex-col overflow-hidden border-r border-parchment-edge/15 bg-cork-900 shadow-2xl"
+      className="absolute inset-y-0 left-0 z-[29] flex flex-col overflow-hidden border-r border-border/15 bg-cork-900 shadow-2xl"
       style={{ width: `min(${WIDTH_SHARE * 100}vw, ${width}px)` }}
       aria-label="Document editor"
+      data-entity-id={entityId}
       data-testid="paper-editor"
     >
       <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] tracking-[0.14em] text-brass uppercase">
+          <p className="text-[10px] tracking-[0.14em] text-accent uppercase">
             Editing
           </p>
           <TitleField
@@ -228,8 +239,19 @@ export const PaperEditor = memo(function PaperEditor({
             onCommit={onRename}
             label="Page title"
             placeholder="Untitled sheet"
+            locked={locked}
           />
         </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="shrink-0 rounded px-1.5 text-board-ink-soft/60 transition hover:text-danger"
+          aria-label="Delete this page"
+          title="Delete this page"
+          data-testid="paper-editor-delete"
+        >
+          <Trash2 size={13} strokeWidth={2.2} aria-hidden="true" />
+        </button>
         <button
           type="button"
           onClick={onClose}
@@ -282,6 +304,7 @@ export const PaperEditor = memo(function PaperEditor({
         <textarea
           ref={textareaRef}
           value={value}
+          readOnly={locked}
           onChange={(event) => {
             onChange(event.target.value);
             setRun(queryAt(event.target.value, event.target.selectionStart));
@@ -295,8 +318,12 @@ export const PaperEditor = memo(function PaperEditor({
           onScroll={() => setScrolled((tick) => tick + 1)}
           onBlur={close}
           spellCheck={false}
-          className="editor h-full min-h-0 w-full resize-none rounded-b border border-t-0 border-parchment-edge/25 p-5 text-[13px]"
-          aria-label="Article markdown source"
+          className="editor h-full min-h-0 w-full resize-none rounded-b border border-t-0 border-border/25 p-5 text-[13px]"
+          aria-label={
+            locked
+              ? "Article markdown source (locked)"
+              : "Article markdown source"
+          }
           aria-expanded={open}
           aria-controls={open ? LIST_ID : undefined}
           aria-activedescendant={open ? optionId(active) : undefined}

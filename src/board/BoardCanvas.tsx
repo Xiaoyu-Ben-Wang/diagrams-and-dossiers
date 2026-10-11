@@ -41,13 +41,12 @@ export interface BoardCanvasProps {
   overlay?: ReactNode;
   backdrop?: (viewport: Viewport) => ReactNode;
   onViewportChange?: (viewport: Viewport) => void;
-  onBackgroundClick?: (click: {
-    point: Point;
-    ctrlKey: boolean;
-    metaKey: boolean;
-  }) => void;
+  onBackgroundClick?: (click: { point: Point }) => void;
   onMarquee?: (rect: Rect | null) => void;
-  onEntityDrag?: (element: Element, delta: Point) => void;
+  /** `client` is the pointer in screen coords, after the move. */
+  onEntityDrag?: (element: Element, delta: Point, client: Point) => void;
+  /** Where a middle-drag that travelled was let go, or null when the browser took it away. */
+  onEntityDragEnd?: (element: Element, client: Point | null) => void;
   onHover?: (point: Point | null) => void;
   idleCursor?: string;
 }
@@ -119,6 +118,7 @@ export function BoardCanvas({
   onBackgroundClick,
   onMarquee,
   onEntityDrag,
+  onEntityDragEnd,
   onHover,
   idleCursor = "default",
 }: BoardCanvasProps) {
@@ -140,6 +140,7 @@ export function BoardCanvas({
     pointerId: number;
     lastX: number;
     lastY: number;
+    travel: number;
     element: Element;
   } | null>(null);
   const hasFittedRef = useRef(false);
@@ -179,6 +180,8 @@ export function BoardCanvas({
 
   const onEntityDragRef = useRef(onEntityDrag);
   onEntityDragRef.current = onEntityDrag;
+  const onEntityDragEndRef = useRef(onEntityDragEnd);
+  onEntityDragEndRef.current = onEntityDragEnd;
 
   const onHoverRef = useRef(onHover);
   onHoverRef.current = onHover;
@@ -307,6 +310,7 @@ export function BoardCanvas({
           pointerId: event.pointerId,
           lastX: event.clientX,
           lastY: event.clientY,
+          travel: 0,
           element: entity,
         };
         capturePointer(event.currentTarget, event.pointerId);
@@ -360,13 +364,15 @@ export function BoardCanvas({
         const dy = event.clientY - entity.lastY;
         entity.lastX = event.clientX;
         entity.lastY = event.clientY;
+        entity.travel += Math.abs(dx) + Math.abs(dy);
 
         // Pointer deltas are screen px; divide by zoom so the entity keeps up with the cursor.
         const zoom = cameraRef.current.zoom || 1;
-        onEntityDragRef.current?.(entity.element, {
-          x: dx / zoom,
-          y: dy / zoom,
-        });
+        onEntityDragRef.current?.(
+          entity.element,
+          { x: dx / zoom, y: dy / zoom },
+          { x: event.clientX, y: event.clientY },
+        );
         return;
       }
 
@@ -415,6 +421,12 @@ export function BoardCanvas({
       if (entity && entity.pointerId === event.pointerId) {
         entityRef.current = null;
         releasePointer(event.currentTarget, event.pointerId);
+        if (entity.travel >= DRAG_THRESHOLD) {
+          onEntityDragEndRef.current?.(entity.element, {
+            x: event.clientX,
+            y: event.clientY,
+          });
+        }
         return;
       }
 
@@ -463,8 +475,6 @@ export function BoardCanvas({
           x: event.clientX - bounds.left,
           y: event.clientY - bounds.top,
         },
-        ctrlKey: event.ctrlKey,
-        metaKey: event.metaKey,
       });
     },
     [onBackgroundClick],
@@ -476,8 +486,10 @@ export function BoardCanvas({
       if (pan && pan.pointerId === event.pointerId) panRef.current = null;
 
       const entity = entityRef.current;
-      if (entity && entity.pointerId === event.pointerId)
+      if (entity && entity.pointerId === event.pointerId) {
         entityRef.current = null;
+        onEntityDragEndRef.current?.(entity.element, null);
+      }
 
       const band = marqueeRef.current;
       if (band && band.pointerId === event.pointerId) {
@@ -564,7 +576,7 @@ function ZoomReadout({
   onRecentre?: () => void;
 }) {
   return (
-    <div className="absolute right-3 bottom-3 flex items-center gap-1 rounded border border-parchment-edge/30 bg-cork-900/80 px-1 py-1 text-[11px] backdrop-blur-sm">
+    <div className="absolute right-3 bottom-3 flex items-center gap-1 rounded border border-border/30 bg-cork-900/80 px-1 py-1 text-[11px] backdrop-blur-sm">
       {onRecentre ? (
         <button
           type="button"

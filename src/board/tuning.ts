@@ -3,6 +3,9 @@ import { NOTE_SIZE } from "../model/kinds";
 /** Nudge tolerance, in screen px. */
 export const NUDGE_SLOP_PX = 18;
 
+/** Screen px around a word that still count as on it, for a pin let go there. */
+export const WORD_SLOP_PX = 3;
+
 /** How close a string's end must come to a pin to tie, in board px. */
 export const SNAP_RADIUS = 34;
 

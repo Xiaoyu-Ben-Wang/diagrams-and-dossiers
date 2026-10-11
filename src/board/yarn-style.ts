@@ -1,11 +1,13 @@
-import {
-  DEFAULT_SLACK,
-  YARN_COLOR,
-  controlPoint,
-  pointOnYarn,
-  yarnPath,
-} from "./yarn";
+import { DEFAULT_SLACK, controlPoint, pointOnYarn, yarnPath } from "./yarn";
 import type { Point } from "./yarn";
+import {
+  YARN_BASE,
+  YARN_CAST,
+  YARN_CREAM,
+  YARN_DEEP,
+  YARN_LIT,
+  YARN_ROSE,
+} from "./yarn-color";
 
 export const YARN_STYLES = [
   "minimal",
@@ -328,13 +330,6 @@ export function fuzzyStrands(
 const LIGHT_X = -0.55;
 const LIGHT_Y = -0.83;
 
-const DEEP = "#6f1d19";
-const LIT = "#c8664f";
-const CREAM = "#e6d3b3";
-/** A light band that stays in the wool's own family instead of sitting on top of it. */
-const ROSE = "#d08063";
-const CAST = "#140b07";
-
 const MAX_PATTERN_SAMPLES = 200;
 
 /** Each style's gauge, as a multiple of the shared wool width. */
@@ -481,7 +476,7 @@ function castShadow(
     ),
     width: gauge * 1.2,
     opacity: 0.34,
-    color: CAST,
+    color: YARN_CAST,
     cap: "round",
   };
 }
@@ -502,28 +497,28 @@ function pliedStrands(
       d: yarnPath(from, to, slack),
       width: gauge * 0.66,
       opacity: 1,
-      color: DEEP,
+      color: YARN_DEEP,
       cap: "round",
     },
     {
       d: helixPath(twist, gauge * 0.3, pitch, 0),
       width: gauge * 0.6,
       opacity: 0.95,
-      color: YARN_COLOR,
+      color: YARN_BASE,
       cap: "round",
     },
     {
       d: helixPath(twist, gauge * 0.3, pitch, Math.PI),
       width: gauge * 0.6,
       opacity: 0.8,
-      color: LIT,
+      color: YARN_LIT,
       cap: "round",
     },
     {
       d: corePath(body, gauge * 0.16),
       width: gauge * 0.3,
       opacity: 0.5,
-      color: CREAM,
+      color: YARN_CREAM,
     },
   ];
 }
@@ -546,35 +541,35 @@ function cableStrands(
       d: yarnPath(from, to, slack),
       width: gauge * 0.7,
       opacity: 1,
-      color: DEEP,
+      color: YARN_DEEP,
       cap: "round",
     },
     {
       d: helixPath(twist, amplitude, pitch, 0),
       width: gauge * 0.72,
       opacity: 1,
-      color: YARN_COLOR,
+      color: YARN_BASE,
       cap: "round",
     },
     {
       d: helixPath(twist, amplitude, pitch, phase),
       width: gauge * 0.72,
       opacity: 0.7,
-      color: LIT,
+      color: YARN_LIT,
       cap: "round",
     },
     {
       d: helixPath(twist, amplitude, pitch, phase * 2),
       width: gauge * 0.72,
       opacity: 0.9,
-      color: DEEP,
+      color: YARN_DEEP,
       cap: "round",
     },
     {
       d: corePath(body, gauge * 0.18),
       width: gauge * 0.32,
       opacity: 0.45,
-      color: CREAM,
+      color: YARN_CREAM,
     },
   ];
 }
@@ -596,14 +591,14 @@ function plaidStrands(
       d: bands,
       width: gauge * 1.05,
       opacity: 1,
-      color: YARN_COLOR,
+      color: YARN_BASE,
       cap: "round",
     },
     {
       d: bands,
       width: gauge * 1.05,
       opacity: 0.85,
-      color: ROSE,
+      color: YARN_ROSE,
       dash: `${gauge * 1.2} ${gauge * 2.3}`,
       cap: "butt",
     },
@@ -611,7 +606,7 @@ function plaidStrands(
       d: bands,
       width: gauge * 1.05,
       opacity: 0.8,
-      color: DEEP,
+      color: YARN_DEEP,
       dash: `${gauge * 1.1} ${gauge * 4.1}`,
       dashOffset: gauge * 2,
       cap: "butt",
@@ -625,7 +620,7 @@ function plaidStrands(
       ),
       width: gauge * 0.3,
       opacity: 0.4,
-      color: LIT,
+      color: YARN_LIT,
       cap: "round",
     },
   ];

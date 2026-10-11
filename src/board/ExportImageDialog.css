@@ -20,7 +20,7 @@
   max-height: min(88vh, 760px);
   overflow-y: auto;
   padding: 14px 16px 16px;
-  border: 1px solid var(--color-parchment-edge);
+  border: 1px solid var(--color-border);
   border-radius: 5px;
   background: var(--color-parchment-100);
   color: var(--color-ink);
@@ -59,7 +59,7 @@
 }
 
 .export-close:hover {
-  background: rgb(46 31 20 / 0.08);
+  background: color-mix(in srgb, var(--color-ink) 8%, transparent);
   color: var(--color-ink);
 }
 
@@ -71,7 +71,7 @@
   justify-content: center;
   height: 104px;
   overflow: hidden;
-  border: 1px solid var(--color-parchment-edge);
+  border: 1px solid var(--color-border);
   border-radius: 3px;
   background-color: var(--color-parchment-200);
 }
@@ -126,10 +126,20 @@
 
 /* Transparency is not a colour, so it is drawn as the thing it means. */
 .export-swatch-chip[data-transparent="true"] {
-  background-color: #fff;
+  background-color: var(--color-parchment-100);
   background-image:
-    linear-gradient(45deg, #d8d2c4 25%, transparent 25% 75%, #d8d2c4 75%),
-    linear-gradient(45deg, #d8d2c4 25%, transparent 25% 75%, #d8d2c4 75%);
+    linear-gradient(
+      45deg,
+      var(--color-parchment-300) 25%,
+      transparent 25% 75%,
+      var(--color-parchment-300) 75%
+    ),
+    linear-gradient(
+      45deg,
+      var(--color-parchment-300) 25%,
+      transparent 25% 75%,
+      var(--color-parchment-300) 75%
+    );
   background-size: 8px 8px;
   background-position:
     0 0,
@@ -143,7 +153,7 @@
 
 .export-swatch[data-selected="true"] .export-swatch-chip,
 .export-swatch[data-selected="true"] input[type="color"] {
-  box-shadow: 0 0 0 2px var(--color-brass);
+  box-shadow: 0 0 0 2px var(--color-accent);
 }
 
 .export-swatch-custom input[type="color"] {
@@ -174,10 +184,10 @@
 }
 
 .export-pattern[data-selected="true"] {
-  border-color: var(--color-brass);
+  border-color: var(--color-accent);
   background: color-mix(
     in srgb,
-    var(--color-brass) 32%,
+    var(--color-accent) 32%,
     var(--color-parchment-100)
   );
 }
@@ -199,10 +209,10 @@
 }
 
 .export-scale[data-selected="true"] {
-  border-color: var(--color-brass);
+  border-color: var(--color-accent);
   background: color-mix(
     in srgb,
-    var(--color-brass) 32%,
+    var(--color-accent) 32%,
     var(--color-parchment-100)
   );
 }
@@ -225,8 +235,8 @@
   margin: 0;
   padding: 6px 8px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--color-wax) 16%, transparent);
-  color: var(--color-wax);
+  background: color-mix(in srgb, var(--color-danger) 16%, transparent);
+  color: var(--color-danger);
   font-size: 11px;
 }
 
@@ -255,14 +265,14 @@
 }
 
 .export-button-primary {
-  border-color: color-mix(in srgb, var(--color-brass) 70%, var(--color-ink));
-  background: var(--color-brass);
-  color: #2b2109;
+  border-color: color-mix(in srgb, var(--color-accent) 70%, var(--color-ink));
+  background: var(--color-accent);
+  color: var(--color-ink);
   font-weight: 600;
 }
 
 .export-button-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-brass) 85%, #fff);
+  background: color-mix(in srgb, var(--color-accent) 85%, #fff);
 }
 
 .export-button:disabled {

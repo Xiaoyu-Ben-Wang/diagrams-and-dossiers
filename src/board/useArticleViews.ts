@@ -8,11 +8,15 @@ import {
   type DomProjection,
 } from "../anchors/dom";
 import { resolveAnchor } from "../anchors/resolve";
+import { imageMarkPoint } from "../model/image-mark";
 import {
   isAnchoredPin,
+  isImagePin,
   type ArticleEntity,
+  type ImageEntity,
   type PinEntity,
 } from "../model/types";
+import { clampTilt } from "./pivot";
 import { px, type PinView } from "./view";
 import type { Point } from "./yarn";
 
@@ -165,6 +169,7 @@ export function useArticleViews(
 interface CachedPin {
   item: PinEntity;
   article: ArticleEntity | undefined;
+  image: ImageEntity | undefined;
   view: ArticleView | undefined;
   element: HTMLDivElement | null;
   pin: PinView | null;
@@ -174,6 +179,7 @@ interface CachedPin {
 export function usePinViews(
   placed: readonly PinEntity[],
   articlesById: ReadonlyMap<string, ArticleEntity>,
+  imagesById: ReadonlyMap<string, ImageEntity>,
   articleViews: ArticleViews,
   zoomRef: RefObject<number>,
 ): PinView[] {
@@ -190,6 +196,7 @@ export function usePinViews(
     for (const item of placed) {
       const anchored = isAnchoredPin(item);
       const article = anchored ? articlesById.get(item.articleId) : undefined;
+      const image = isImagePin(item) ? imagesById.get(item.imageId) : undefined;
       const view = anchored ? views.get(item.articleId) : undefined;
       const element = anchored
         ? (nodes().get(item.articleId)?.article ?? null)
@@ -200,12 +207,20 @@ export function usePinViews(
         hit &&
         hit.item === item &&
         hit.article === article &&
+        hit.image === image &&
         hit.view === view &&
         hit.element === element
           ? hit.pin
-          : resolvePin(item, article, view, element, zoomRef.current || 1);
+          : resolvePin(
+              item,
+              article,
+              image,
+              view,
+              element,
+              zoomRef.current || 1,
+            );
 
-      cache.set(item.id, { item, article, view, element, pin });
+      cache.set(item.id, { item, article, image, view, element, pin });
       if (pin) resolved.push(pin);
     }
 
@@ -219,12 +234,13 @@ export function usePinViews(
     }
     previousRef.current = resolved;
     return resolved;
-  }, [placed, articlesById, views, nodes, zoomRef]);
+  }, [placed, articlesById, imagesById, views, nodes, zoomRef]);
 }
 
 function resolvePin(
   item: PinEntity,
   article: ArticleEntity | undefined,
+  image: ImageEntity | undefined,
   view: ArticleView | undefined,
   element: HTMLDivElement | null,
   zoom: number,
@@ -236,10 +252,37 @@ function resolvePin(
     nudge: item.nudge,
   };
 
+  if (isImagePin(item)) {
+    const at = image && imageMarkPoint(image, item.spot);
+    if (!at) {
+      return {
+        ...base,
+        articleId: null,
+        imageId: item.imageId,
+        quote: "",
+        status: "orphaned",
+        detail: "the picture it was marked on is gone",
+        rect: null,
+        board: null,
+      };
+    }
+    return {
+      ...base,
+      articleId: null,
+      imageId: item.imageId,
+      quote: "",
+      status: "marked",
+      detail: "held by a picture",
+      rect: null,
+      board: at,
+    };
+  }
+
   if (!isAnchoredPin(item)) {
     return {
       ...base,
       articleId: null,
+      imageId: null,
       quote: "",
       status: "free",
       detail: "loose on the board",
@@ -252,6 +295,7 @@ function resolvePin(
     return {
       ...base,
       articleId: item.articleId,
+      imageId: null,
       quote: item.anchor.quote,
       status: "orphaned",
       detail: "the page it was pinned to is gone",
@@ -269,6 +313,7 @@ function resolvePin(
     return {
       ...base,
       articleId: item.articleId,
+      imageId: null,
       quote: item.anchor.quote,
       status: "orphaned",
       detail:
@@ -281,11 +326,14 @@ function resolvePin(
   }
 
   const range = flatRangeToDomRange(view.projection, result.start, result.end);
-  const rects = range ? rangeToContainerRects(range, element, zoom) : [];
+  const rects = range
+    ? rangeToContainerRects(range, element, zoom, clampTilt(article.rotation))
+    : [];
 
   return {
     ...base,
     articleId: item.articleId,
+    imageId: null,
     quote: item.anchor.quote,
     status: result.status === "exact" ? "exact" : "repaired",
     detail:

@@ -1,9 +1,11 @@
 # pnpm settings live here, not in package.json (pnpm 10+). This is not a multi-package
 # workspace; the file exists because that is where build settings are read from.
 #
-# esbuild's postinstall installs its platform binary. pnpm blocks dependency build
-# scripts by default, so without this vite and vitest have no working esbuild.
+# esbuild and workerd both install a platform binary in a postinstall. pnpm blocks
+# dependency build scripts by default, so without this vite and vitest have no working
+# esbuild and wrangler has no workerd to run a Worker in.
 # The key is `allowBuilds` — pnpm 12 renamed it from `onlyBuiltDependencies`, which is
 # still accepted silently and then ignored.
 allowBuilds:
   esbuild: true
+  workerd: true

@@ -24,6 +24,7 @@ import { copyImageToClipboard, downloadBlob } from "./export-png";
 import { PREVIEW_DEBOUNCE_MS } from "./tuning";
 import {
   SURFACES,
+  folderColor,
   surfaceColor,
   type BoardSurface,
   type ThemeMode,
@@ -73,7 +74,7 @@ export function ExportImageDialog({
   const [background, setBackground] = useState<ExportBackground>({
     fill: "surface",
     surface,
-    custom: "#c9a561",
+    custom: folderColor(surface, theme),
     pattern: "plain",
   });
   const [scale, setScale] = useState<number>(DEFAULT_EXPORT_SCALE);

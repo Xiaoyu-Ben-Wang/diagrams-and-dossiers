@@ -1,5 +1,6 @@
-// Placement is carried by the kind: `AnchoredPin` holds an anchor and no `board`, and the
-// kinds with a `board` hold no anchor, mirroring the schema's anchor-XOR-board CHECK.
+// Placement is carried by the kind: `AnchoredPin` holds an anchor into an article, `ImagePin` a
+// fraction of a picture, `FreePin` a board point — exactly one of the three, mirroring the
+// schema's location CHECK.
 
 import type { AnchorRect } from "../anchors/dom";
 import type { TextAnchor } from "../anchors/types";
@@ -89,7 +90,23 @@ export interface FreePin extends EntityBase {
   board: Point;
 }
 
-export type PinEntity = AnchoredPin | FreePin;
+/** A position on a picture, as a fraction of its photo area: 0,0 top-left, 1,1 bottom-right. */
+export interface Spot {
+  u: number;
+  v: number;
+}
+
+/**
+ * A pin marked onto a picture. The spot is a fraction rather than a board point, which is what
+ * lets it ride out a move, a resize and a swing: all three are derived from the picture's box.
+ */
+export interface ImagePin extends EntityBase {
+  kind: "pin";
+  imageId: string;
+  spot: Spot;
+}
+
+export type PinEntity = AnchoredPin | FreePin | ImagePin;
 
 export interface NoteEntity extends EntityBase {
   kind: "note";
@@ -134,10 +151,15 @@ export interface ImageEntity extends EntityBase {
 
 export type BoardEntity = PinEntity | NoteEntity | ArticleEntity | ImageEntity;
 
-export type PlacedEntity = FreePin | NoteEntity | ArticleEntity | ImageEntity;
+export type PlacedEntity =
+  FreePin | ImagePin | NoteEntity | ArticleEntity | ImageEntity;
 
+/**
+ * A mark on a picture counts as placed: it is drawn on the board at its own derived point, in
+ * the pin band, rather than inside the card the way an anchored pin is drawn inside its page.
+ */
 export function isPlaced(entity: BoardEntity): entity is PlacedEntity {
-  return entity.kind !== "pin" || "board" in entity;
+  return entity.kind !== "pin" || "board" in entity || "imageId" in entity;
 }
 
 export function isPin(entity: BoardEntity): entity is PinEntity {
@@ -148,6 +170,10 @@ export function isAnchoredPin(entity: BoardEntity): entity is AnchoredPin {
   return entity.kind === "pin" && "anchor" in entity;
 }
 
+export function isImagePin(entity: BoardEntity): entity is ImagePin {
+  return entity.kind === "pin" && "imageId" in entity;
+}
+
 /** A strand of yarn; `from`/`to` are entity ids of any kind. */
 export interface StringLink {
   id: string;
@@ -155,13 +181,14 @@ export interface StringLink {
   to: string;
   /** Rope length as a fraction of the gap. */
   slack: number;
-  color: string;
   style: StringStyle;
   /** A tag describing what the string means, or none. */
   label?: string;
   /** Where along the string the tag hangs: 0 at `from`, 1 at `to`. */
   labelAt: number;
   visibility: Visibility;
+  /** The server version this is based on; the database owns it, as on an entity. */
+  version: number;
 }
 
 /** Schema only; no UI yet. */
@@ -183,6 +210,8 @@ export interface EntityContext {
   anchorRect(entityId: string): AnchorRect | null;
   /** Measured footprint; a page sizes itself to its body. */
   articleSize(articleId: string): { width: number; height: number } | null;
+  /** The picture a mark is held by, whose box turns its fraction into a board point. */
+  imageById(imageId: string): ImageEntity | null;
 }
 
 /** `nowhere` is a pin whose anchor no longer resolves. */

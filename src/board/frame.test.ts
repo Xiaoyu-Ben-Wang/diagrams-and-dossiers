@@ -75,6 +75,7 @@ const context = (
   articleToBoard: () => null,
   anchorRect: () => null,
   articleSize: () => size,
+  imageById: () => null,
 });
 
 const at = (

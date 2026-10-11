@@ -1,13 +1,14 @@
 // `pointer-events-none` throughout, or the yarn on top would swallow clicks meant for the pins
 // underneath; the grabbable sag handle is rendered separately by the board.
 
-import { memo, useId, useMemo, type Ref } from "react";
+import { memo, useId, useMemo, type CSSProperties, type Ref } from "react";
 
 import { TACK_RADIUS } from "../model/kinds";
 import { STRING_HALO_PX } from "./tuning";
 import type { DrawableString } from "./view";
 import { seedFromKey, yarnStrands, type YarnStyle } from "./yarn-style";
-import { YARN_COLOR, yarnPath, type Point } from "./yarn";
+import { YARN_BASE, yarnColorCss, type YarnColor } from "./yarn-color";
+import { yarnPath, type Point } from "./yarn";
 import { YarnStrokes } from "./YarnStrokes";
 
 export interface StringLayerProps {
@@ -15,6 +16,8 @@ export interface StringLayerProps {
   selected: ReadonlySet<string>;
   hovered: string | null;
   style: YarnStyle;
+  /** The wool the whole board is strung with; a string has no colour of its own. */
+  color: YarnColor;
   shadow: boolean;
   zoom: number;
   // A ref rather than a prop: the drag runs on rAF and writes `d` directly, keeping a live
@@ -34,6 +37,7 @@ export const StringLayer = memo(function StringLayer({
   selected,
   hovered,
   style,
+  color,
   shadow,
   zoom,
   livePathRef,
@@ -88,6 +92,7 @@ export const StringLayer = memo(function StringLayer({
               from={string.from}
               to={string.to}
               slack={string.slack}
+              color={color}
               halo={halo}
               // Zero without a halo, so a zoom leaves unhighlighted rows alone.
               haloWidth={halo ? STRING_HALO_PX / (zoom || 1) : 0}
@@ -100,8 +105,9 @@ export const StringLayer = memo(function StringLayer({
         <path
           ref={livePathRef}
           data-testid="live-yarn"
+          className="yarn-paint"
           fill="none"
-          stroke={YARN_COLOR}
+          stroke={YARN_BASE}
           strokeWidth={2.5}
           strokeLinecap="round"
           opacity={drawing ? 0.95 : 0}
@@ -116,6 +122,7 @@ interface StringRowProps {
   from: Point;
   to: Point;
   slack: number;
+  color: string;
   halo: "selected" | "hovered" | null;
   haloWidth: number;
   style: YarnStyle;
@@ -127,6 +134,7 @@ const StringRow = memo(function StringRow({
   from,
   to,
   slack,
+  color,
   halo,
   haloWidth,
   style,
@@ -138,13 +146,17 @@ const StringRow = memo(function StringRow({
   );
 
   return (
-    <g data-testid="yarn">
+    <g
+      data-testid="yarn"
+      className="yarn-paint"
+      style={{ "--yarn-base": yarnColorCss(color) } as CSSProperties}
+    >
       {halo ? (
         <path
           data-testid="yarn-halo"
           d={yarnPath(from, to, slack)}
           fill="none"
-          stroke={YARN_COLOR}
+          stroke={YARN_BASE}
           strokeOpacity={halo === "selected" ? 0.22 : 0.12}
           strokeWidth={haloWidth}
           strokeLinecap="round"

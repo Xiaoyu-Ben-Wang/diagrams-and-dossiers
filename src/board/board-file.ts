@@ -1,5 +1,7 @@
 import type { TextAnchor } from "../anchors/types";
 import { parseArticleOptions } from "../model/article-options";
+import { fieldReaders } from "../model/fields";
+import { clampSpot } from "../model/image-mark";
 import {
   DATE_PRECISIONS,
   ENTITY_KINDS,
@@ -15,6 +17,7 @@ import {
   type ItemStatus,
   type NoteFont,
   type NoteStyle,
+  type Spot,
   type StringLink,
   type StringStyle,
   type Visibility,
@@ -28,7 +31,7 @@ import {
   seededTilt,
 } from "../model/kinds";
 import type { BoardState } from "./store";
-import { DEFAULT_SLACK, LABEL_AT_MIDDLE, YARN_COLOR } from "./yarn";
+import { DEFAULT_SLACK, LABEL_AT_MIDDLE } from "./yarn";
 import type { Point } from "./yarn";
 
 export const BOARD_FILE_FORMAT = "diagrams-and-dossiers.board";
@@ -139,51 +142,17 @@ export function parseBoardFile(text: string): BoardFileResult {
   }
 }
 
-// Field readers throw with the field's path; the message is what the person sees.
-function fail(where: string, expected: string): never {
-  throw new Error(`That board could not be read: ${where} is not ${expected}.`);
-}
-
-function asRecord(value: unknown, where: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    fail(where, "an object");
-  }
-  return value as Record<string, unknown>;
-}
-
-function array(value: unknown, where: string): unknown[] {
-  if (!Array.isArray(value)) fail(where, "a list");
-  return value;
-}
-
-function number(value: unknown, where: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value))
-    fail(where, "a number");
-  return value;
-}
-
-function text(value: unknown, where: string): string {
-  if (typeof value !== "string") fail(where, "text");
-  return value;
-}
-
-function optionalText(value: unknown, fallback: string): string {
-  return typeof value === "string" ? value : fallback;
-}
-
-function optionalNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function oneOf<T extends string>(
-  value: unknown,
-  allowed: readonly T[],
-  fallback: T,
-): T {
-  return allowed.includes(value as T) ? (value as T) : fallback;
-}
+const {
+  fail,
+  asRecord,
+  array,
+  number,
+  text,
+  optionalText,
+  optionalNumber,
+  oneOf,
+  record,
+} = fieldReaders("That board could not be read");
 
 /** Both names this paper has had; a board written under either keeps it. */
 function noteStyle(value: unknown): NoteStyle {
@@ -194,10 +163,6 @@ function noteStyle(value: unknown): NoteStyle {
 function point(value: unknown, where: string): Point {
   const raw = asRecord(value, where);
   return { x: number(raw.x, `${where}.x`), y: number(raw.y, `${where}.y`) };
-}
-
-function record(value: unknown, where: string): Record<string, unknown> {
-  return asRecord(value, where);
 }
 
 function commonFields(raw: Record<string, unknown>, where: string) {
@@ -250,6 +215,14 @@ function parseAnchor(value: unknown, where: string): TextAnchor {
   };
 }
 
+function parseSpot(value: unknown, where: string): Spot {
+  const raw = record(value, where);
+  return clampSpot({
+    u: number(raw.u, `${where}.u`),
+    v: number(raw.v, `${where}.v`),
+  });
+}
+
 function parseEntity(value: unknown, where: string): BoardEntity {
   const raw = record(value, where);
   const kind = text(raw.kind, `${where}.kind`);
@@ -260,6 +233,14 @@ function parseEntity(value: unknown, where: string): BoardEntity {
 
   switch (kind) {
     case "pin":
+      if ("imageId" in raw) {
+        return {
+          ...base,
+          kind: "pin",
+          imageId: text(raw.imageId, `${where}.imageId`),
+          spot: parseSpot(raw.spot, `${where}.spot`),
+        };
+      }
       return "anchor" in raw
         ? {
             ...base,
@@ -332,7 +313,6 @@ function parseString(value: unknown, where: string): StringLink {
     from: text(raw.from, `${where}.from`),
     to: text(raw.to, `${where}.to`),
     slack: Math.min(1, Math.max(0, optionalNumber(raw.slack) ?? DEFAULT_SLACK)),
-    color: optionalText(raw.color, YARN_COLOR),
     style: oneOf<StringStyle>(raw.style, STRING_STYLES, "solid"),
     label:
       typeof raw.label === "string" && raw.label !== "" ? raw.label : undefined,
@@ -341,5 +321,6 @@ function parseString(value: unknown, where: string): StringLink {
       Math.max(0, optionalNumber(raw.labelAt) ?? LABEL_AT_MIDDLE),
     ),
     visibility: oneOf<Visibility>(raw.visibility, VISIBILITIES, "shared"),
+    version: optionalNumber(raw.version) ?? 1,
   };
 }

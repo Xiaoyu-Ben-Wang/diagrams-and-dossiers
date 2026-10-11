@@ -13,6 +13,7 @@ const string = () => ({
   style: "solid" as const,
   labelAt: 0.5,
   visibility: "shared" as const,
+  version: 1,
 });
 
 describe("localSync", () => {

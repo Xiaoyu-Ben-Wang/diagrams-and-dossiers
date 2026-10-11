@@ -6,6 +6,7 @@ import {
   domRangeToFlatRange,
   flatRangeToDomRange,
   projectDom,
+  clientToLocal,
   rangeToContainerRects,
   type DomProjection,
 } from "./dom";
@@ -293,5 +294,85 @@ describe("rangeToContainerRects", () => {
     expect(rangeToContainerRects(range, container, 0)).toEqual([
       { x: 50, y: 20, width: 40, height: 20 },
     ]);
+  });
+
+  describe("on a turned page", () => {
+    // A page 400 wide and 200 tall, hung from its top-centre at a screen point, zoomed, and
+    // turned — as a tilted sheet is. The boxes are what a browser would report for it.
+    const PAGE = { width: 400, height: 200 };
+    const HUNG_AT = { x: 500, y: 300 };
+    const WORD = { x: 50, y: 20, width: 40, height: 20 };
+
+    function toScreen(x: number, y: number, zoom: number, turn: number) {
+      const radians = (turn * Math.PI) / 180;
+      const dx = (x - PAGE.width / 2) * zoom;
+      const dy = y * zoom;
+      return {
+        x: HUNG_AT.x + dx * Math.cos(radians) - dy * Math.sin(radians),
+        y: HUNG_AT.y + dx * Math.sin(radians) + dy * Math.cos(radians),
+      };
+    }
+
+    function screenBox(
+      box: { x: number; y: number; width: number; height: number },
+      zoom: number,
+      turn: number,
+    ) {
+      const corners = [
+        toScreen(box.x, box.y, zoom, turn),
+        toScreen(box.x + box.width, box.y, zoom, turn),
+        toScreen(box.x, box.y + box.height, zoom, turn),
+        toScreen(box.x + box.width, box.y + box.height, zoom, turn),
+      ];
+      const left = Math.min(...corners.map((c) => c.x));
+      const top = Math.min(...corners.map((c) => c.y));
+      return {
+        left,
+        top,
+        width: Math.max(...corners.map((c) => c.x)) - left,
+        height: Math.max(...corners.map((c) => c.y)) - top,
+      };
+    }
+
+    function turnedPage(zoom: number, turn: number): Element {
+      return {
+        getBoundingClientRect: () =>
+          screenBox({ x: 0, y: 0, ...PAGE }, zoom, turn),
+        offsetWidth: PAGE.width,
+        offsetHeight: PAGE.height,
+      } as unknown as Element;
+    }
+
+    it.each([
+      [1, 12],
+      [0.68, -8],
+      [2, 30],
+    ])(
+      "finds the word where it is on the page at %sx turned %s°",
+      (zoom, turn) => {
+        const range = fakeRange([screenBox(WORD, zoom, turn)]);
+
+        const [rect] = rangeToContainerRects(
+          range,
+          turnedPage(zoom, turn),
+          zoom,
+          turn,
+        );
+
+        expect(rect.x).toBeCloseTo(WORD.x, 6);
+        expect(rect.y).toBeCloseTo(WORD.y, 6);
+        expect(rect.width).toBeCloseTo(WORD.width, 6);
+        expect(rect.height).toBeCloseTo(WORD.height, 6);
+      },
+    );
+
+    it("maps a point on the page back to where it is on the page", () => {
+      const at = toScreen(73, 41, 1.5, 20);
+
+      const local = clientToLocal(turnedPage(1.5, 20), at.x, at.y, 1.5, 20);
+
+      expect(local.x).toBeCloseTo(73, 6);
+      expect(local.y).toBeCloseTo(41, 6);
+    });
   });
 });

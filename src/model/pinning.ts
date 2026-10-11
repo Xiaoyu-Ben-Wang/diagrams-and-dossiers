@@ -1,6 +1,14 @@
 import type { TextAnchor } from "../anchors/types";
 import type { Point } from "../board/yarn";
-import type { AnchoredPin, EntityBase, FreePin, PinEntity } from "./types";
+import { clampSpot } from "./image-mark";
+import type {
+  AnchoredPin,
+  EntityBase,
+  FreePin,
+  ImagePin,
+  PinEntity,
+  Spot,
+} from "./types";
 
 // Spelled out rather than spread: a free pin spread here would carry its `board` into an
 // anchored pin. A new `EntityBase` field must be added here and to FULL in pinning.test.ts.
@@ -44,6 +52,20 @@ export function pinToBoard(pin: PinEntity, board: Point): FreePin {
     ...shared(pin),
     kind: "pin",
     board,
+    nudge: { x: 0, y: 0 },
+  };
+}
+
+export function pinToImage(
+  pin: PinEntity,
+  imageId: string,
+  spot: Spot,
+): ImagePin {
+  return {
+    ...shared(pin),
+    kind: "pin",
+    imageId,
+    spot: clampSpot(spot),
     nudge: { x: 0, y: 0 },
   };
 }

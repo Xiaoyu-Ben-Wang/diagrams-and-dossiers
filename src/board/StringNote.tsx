@@ -2,16 +2,20 @@
 // accumulate off the end of the rope and leave the note hanging beside the string.
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 
 import type { StringLink } from "../model/types";
 import { DRAG_THRESHOLD } from "./useBoardDrag";
 import { distanceToYarn, pointOnYarn, type Point } from "./yarn";
+import { yarnColorCss, type YarnColor } from "./yarn-color";
 
 export interface StringNoteProps {
   link: StringLink;
   from: Point;
   to: Point;
   selected: boolean;
+  /** The board's wool: the mark on the card is the colour of the string it hangs from. */
+  color: YarnColor;
   toBoard: (clientX: number, clientY: number) => Point;
   onSlide: (id: string, t: number) => void;
   onWrite: (id: string, text: string) => void;
@@ -22,6 +26,7 @@ export const StringNote = memo(function StringNote({
   from,
   to,
   selected,
+  color,
   toBoard,
   onSlide,
   onWrite,
@@ -107,7 +112,13 @@ export const StringNote = memo(function StringNote({
     <div
       className="string-note"
       data-testid="string-note"
-      style={{ left: at.x, top: at.y }}
+      style={
+        {
+          left: at.x,
+          top: at.y,
+          "--yarn-base": yarnColorCss(color),
+        } as CSSProperties
+      }
       // The board must not also see a press meant for the note.
       onPointerDown={(event) => event.stopPropagation()}
     >
