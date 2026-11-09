@@ -8,6 +8,7 @@ import { isLocalOnly } from "./app/env";
 import { EntryScreen } from "./app/JoinScreen";
 import { NotFound } from "./app/NotFound";
 import { OpenByLink } from "./app/OpenByLink";
+import { ServerAsleep, useServerStatus } from "./app/ServerAsleep";
 import { useRoute } from "./app/router";
 import { newBoardOnServer } from "./boards/new-board";
 import { supabaseSync } from "./realtime/supabase-sync";
@@ -40,6 +41,7 @@ export function App({ seed, storage, now }: AppProps = {}) {
     [backing, now, localHistory],
   );
   const records = useLibrary(library);
+  const serverStatus = useServerStatus(!seed && !isLocalOnly());
 
   useEffect(() => {
     if (!library.ready()) void library.refresh();
@@ -194,6 +196,10 @@ export function App({ seed, storage, now }: AppProps = {}) {
   );
 
   if (seed) return <BoardScreen board={seed} />;
+
+  // The demo needs no server, so it stays open while the server is down.
+  if (serverStatus && serverStatus.state !== "up" && route.name !== "demo")
+    return <ServerAsleep initial={serverStatus} />;
 
   if (route.name === "join" || route.name === "invite") {
     if (isLocalOnly()) {

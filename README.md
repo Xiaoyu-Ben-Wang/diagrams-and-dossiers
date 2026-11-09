@@ -56,6 +56,26 @@ Worker (same values as the `VITE_` build variables). The Worker uses them to ask
 whether the uploader can edit the board. `keep_vars` in `wrangler.jsonc` stops a deploy
 from wiping them.
 
+### Waking a paused Supabase project
+
+The free tier pauses a project after a week or so without activity. On load the app asks
+the Worker (`/api/supabase/status`); if the project is paused it shows a page with a
+**Start** button, which calls `/api/supabase/start` to restore it through the Supabase
+Management API, then reloads once it is back. `/demo` stays open throughout.
+
+Starting needs a Supabase personal access token (Account → Access Tokens) stored as a
+Worker secret:
+
+```bash
+pnpm exec wrangler secret put SUPABASE_ACCESS_TOKEN
+```
+
+The token can manage every project on your Supabase account, which is why it lives only
+in the Worker. The start route only ever restores this project, and only when it is
+paused. The project ref is read from `SUPABASE_URL`; set `SUPABASE_PROJECT_REF` if that
+URL is a custom domain. Without the token the page still reports that the server is
+down, and says to restore it from the dashboard.
+
 ### Database
 
 Apply `supabase/migrations` in order (`supabase db push`, or paste each into the SQL

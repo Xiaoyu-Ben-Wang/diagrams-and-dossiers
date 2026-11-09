@@ -8,8 +8,15 @@ import {
   UPLOAD_PATH,
   type ImageEnv,
 } from "./images";
+import {
+  handleStart,
+  handleStatus,
+  START_PATH,
+  STATUS_PATH,
+  type WakeEnv,
+} from "./wake";
 
-interface Env extends ImageEnv {
+interface Env extends ImageEnv, WakeEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
 }
 
@@ -17,6 +24,8 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname === UPLOAD_PATH) return handleUpload(request, env);
+    if (pathname === STATUS_PATH) return handleStatus(env);
+    if (pathname === START_PATH) return handleStart(request, env);
     if (pathname.startsWith("/images/")) return handleImage(request, env);
     return env.ASSETS.fetch(request);
   },
