@@ -25,6 +25,13 @@ export interface BoardRecord {
   editToken?: string;
   /** Read-only, and not yet handed to anyone. */
   viewToken?: string;
+  /** Yours, opened on a device that never held the board's tokens. */
+  owned?: true;
+  /**
+   * Whether the board's link opens for anyone who has it, as its owner last
+   * saw it. Only recorded on boards you own; the server is the authority.
+   */
+  shared?: boolean;
 }
 
 export const DEFAULT_BOARD_NAME = "Untitled board";
@@ -38,7 +45,15 @@ export const DEFAULT_BOARD_NAME = "Untitled board";
  * reached the server is local, and local boards are yours.
  */
 export function isSharedBoard(record: BoardRecord): boolean {
-  return record.remote === true && record.editToken === undefined;
+  return record.remote === true && !isOwnBoard(record);
+}
+
+/** On the server and made by you, whichever device you are on. */
+export function isOwnBoard(record: BoardRecord): boolean {
+  return (
+    record.remote === true &&
+    (record.editToken !== undefined || record.owned === true)
+  );
 }
 
 /** `crypto.randomUUID` where it exists; a v4 from raw bytes where it does not. */
@@ -111,6 +126,8 @@ export function parseBoardRecord(raw: unknown): BoardRecord | null {
   if (editToken !== undefined) record.editToken = editToken;
   const viewToken = optionalId(value.viewToken);
   if (viewToken !== undefined) record.viewToken = viewToken;
+  if (typeof value.shared === "boolean") record.shared = value.shared;
+  if (value.owned === true) record.owned = true;
 
   return record;
 }

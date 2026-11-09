@@ -139,3 +139,72 @@ export async function deleteRemoteBoard(id: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Opens a board by its address. A member walks in; anyone else is made an editor
+ * if the board is shared, and refused if it is private or does not exist.
+ */
+export async function openSharedBoard(
+  boardId: string,
+  displayName: string | null,
+): Promise<(Joined & { name: string }) | null> {
+  try {
+    const { data, error } = await getSupabase().rpc("open_board", {
+      p_board: boardId,
+      p_display_name: displayName,
+    });
+    if (error) return failure("opening a board", error);
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row?.board_id) return failure("opening a board", "no board came back");
+
+    return {
+      boardId: row.board_id as string,
+      role: row.role as Role,
+      name: typeof row.name === "string" ? row.name : "A shared board",
+    };
+  } catch (error) {
+    return failure("opening a board", error);
+  }
+}
+
+/** Owner only, by RLS. A refused update comes back as no rows, so the row count is checked. */
+export async function setBoardShared(
+  boardId: string,
+  shared: boolean,
+): Promise<boolean> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("boards")
+      .update({ shared })
+      .eq("id", boardId)
+      .select("id");
+    if (error) {
+      failed("changing who can open a board", error);
+      return false;
+    }
+    return Array.isArray(data) && data.length === 1;
+  } catch (error) {
+    failed("changing who can open a board", error);
+    return false;
+  }
+}
+
+/** Whether each board is shared, for the boards the server answers about. */
+export async function sharedFlags(
+  boardIds: readonly string[],
+): Promise<Map<string, boolean> | null> {
+  if (boardIds.length === 0) return new Map();
+  try {
+    const { data, error } = await getSupabase()
+      .from("boards")
+      .select("id, shared")
+      .in("id", boardIds);
+    if (error || !Array.isArray(data)) return null;
+    return new Map(
+      data.map((row) => [row.id as string, row.shared === true] as const),
+    );
+  } catch {
+    return null;
+  }
+}

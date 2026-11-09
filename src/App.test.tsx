@@ -433,6 +433,11 @@ describe("App — the boards library", () => {
     editToken: "ledger-edit-token",
   };
   const manifest = { ...createBoardRecord("Manifest", board, 2) };
+  const sharedLedger = {
+    ...ledger,
+    remote: true as const,
+    shared: true,
+  };
 
   const openLibrary = (
     records: readonly BoardRecord[] = [ledger, manifest],
@@ -603,25 +608,41 @@ describe("App — the boards library", () => {
       configurable: true,
       value: { writeText },
     });
-    openLibrary([ledger]);
+    openLibrary([sharedLedger]);
 
     fireEvent.click(screen.getByTestId(`share-${ledger.id}`));
 
     expect(writeText).toHaveBeenCalledWith(
-      expect.stringContaining(`/j/${ledger.editToken}`),
+      expect.stringContaining(`/b/${ledger.id}`),
     );
     Reflect.deleteProperty(navigator, "clipboard");
   });
 
   it("offers the link in a field when the clipboard will not take it", async () => {
-    openLibrary([ledger]);
+    openLibrary([sharedLedger]);
 
     fireEvent.click(screen.getByTestId(`share-${ledger.id}`));
 
     const field = await screen.findByTestId(`link-${ledger.id}`);
-    expect((field as HTMLInputElement).value).toContain(
-      `/j/${ledger.editToken}`,
-    );
+    expect((field as HTMLInputElement).value).toContain(`/b/${ledger.id}`);
+  });
+
+  it("offers to make a shared board private", () => {
+    openLibrary([sharedLedger]);
+
+    expect(screen.getByTestId(`make-private-${ledger.id}`)).toBeTruthy();
+    expect(screen.getByText(/· shared/)).toBeTruthy();
+  });
+
+  it("shares a private board, and says so when the server cannot be told", async () => {
+    openLibrary([{ ...sharedLedger, shared: false }]);
+
+    expect(screen.getByText(/· private/)).toBeTruthy();
+    expect(screen.queryByTestId(`make-private-${ledger.id}`)).toBeNull();
+    fireEvent.click(screen.getByTestId(`share-${ledger.id}`));
+
+    expect(await screen.findByTestId(`share-failed-${ledger.id}`)).toBeTruthy();
+    expect(screen.getByText(/· private/)).toBeTruthy();
   });
 
   it("says so rather than making up a link for a board with no token", async () => {
@@ -2951,6 +2972,9 @@ vi.mock("./boards/remote", () => ({
   // There is no server here, so a board that lives on one cannot be deleted —
   // which is the case the library is supposed to be honest about.
   deleteRemoteBoard: async () => false,
+  openSharedBoard: async () => null,
+  setBoardShared: async () => false,
+  sharedFlags: async () => null,
 }));
 
 describe("App — a board with a server behind it", () => {

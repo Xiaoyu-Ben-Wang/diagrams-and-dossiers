@@ -12,10 +12,10 @@
     "favicon": "node scripts/generate-favicon.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "oxlint src",
-    "lint:fix": "oxlint --fix src",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
+    "lint": "oxlint src worker",
+    "lint:fix": "oxlint --fix src worker",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"worker/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"worker/**/*.ts\""
   },
   "dependencies": {
     "@jsquash/webp": "^1.5.0",

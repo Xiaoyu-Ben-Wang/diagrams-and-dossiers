@@ -35,5 +35,6 @@ export async function newBoardOnServer(
     id: created.id,
     editToken: created.editToken,
     viewToken: created.viewToken,
+    shared: false,
   };
 }

@@ -40,6 +40,28 @@ pnpm build
 pnpm exec wrangler deploy
 ```
 
+### Pictures (R2)
+
+Pictures dropped on a board that lives on the server are uploaded through the Worker
+(`worker/`) into an R2 bucket and served from `/images/<board>/<sha256>.<ext>`. Local
+boards, the dev server and the GitHub Pages build have no Worker, so their pictures stay
+inline as data URLs. Once per account:
+
+```bash
+pnpm exec wrangler r2 bucket create diagrams-and-dossiers-images
+```
+
+Then set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` as **runtime** variables on the
+Worker (same values as the `VITE_` build variables). The Worker uses them to ask Supabase
+whether the uploader can edit the board. `keep_vars` in `wrangler.jsonc` stops a deploy
+from wiping them.
+
+### Database
+
+Apply `supabase/migrations` in order (`supabase db push`, or paste each into the SQL
+editor). `0011` adds private/shared boards; `0012` needs the `pg_cron` extension, which
+it enables, and schedules an hourly snapshot job for version history.
+
 `wrangler` is a devDependency so the deploy runs on the version this repository was tested
 against, and `pnpm exec wrangler deploy --dry-run` checks the configuration without deploying.
 

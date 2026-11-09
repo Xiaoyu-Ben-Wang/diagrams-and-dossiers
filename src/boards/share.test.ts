@@ -7,20 +7,21 @@ import { copyTextToClipboard, shareUrlFor } from "./share";
 const record = {
   ...createBoardRecord("Ledger", { entities: [], strings: [] }, 1),
   id: "abc123",
+  remote: true as const,
   editToken: "an-edit-token",
 };
 const PAGES_BASE = "/diagrams-and-dossiers";
 
 describe("the link to a board", () => {
-  it("carries the edit token, which is what opens the door", () => {
+  it("is the board's own address, with no token in it", () => {
     expect(shareUrlFor(record, "https://example.test", "/")).toBe(
-      "https://example.test/j/an-edit-token",
+      "https://example.test/b/abc123",
     );
   });
 
   it("carries the subpath the app is served from", () => {
     expect(shareUrlFor(record, "https://example.test", PAGES_BASE)).toBe(
-      "https://example.test/diagrams-and-dossiers/j/an-edit-token",
+      "https://example.test/diagrams-and-dossiers/b/abc123",
     );
   });
 

@@ -38,7 +38,7 @@ export default defineConfig({
     // Pure-logic suites run in node; DOM-dependent files opt into jsdom with a
     // `@vitest-environment jsdom` docblock.
     environment: "node",
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "worker/**/*.test.ts"],
     setupFiles: ["src/test/setup.ts"],
     // Needed so @testing-library/react registers its automatic cleanup between
     // tests; without it, renders accumulate and queries match stale trees.

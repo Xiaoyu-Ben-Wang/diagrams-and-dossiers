@@ -217,3 +217,112 @@ describe("the board library", () => {
     expect(createBoardLibrary(memoryBoardStorage()).degraded()).toBe(false);
   });
 });
+
+describe("sharing a board you own", () => {
+  const owned = {
+    ...createBoardRecord("Ledger", board, 1),
+    remote: true as const,
+    editToken: "edit",
+    shared: false,
+  };
+
+  it("opens the board once the server agrees, and leaves its place in the list", async () => {
+    const setShared = vi.fn(async () => true);
+    const storage = memoryBoardStorage([owned]);
+    const library = createBoardLibrary(storage, {
+      remote: { setShared, sharedFlags: async () => new Map() },
+    });
+
+    expect(await library.setShared(owned.id, true)).toBe(true);
+
+    expect(setShared).toHaveBeenCalledWith(owned.id, true);
+    expect(library.get()[0].shared).toBe(true);
+    expect(library.get()[0].updatedAt).toBe(owned.updatedAt);
+    expect((await storage.get(owned.id))?.shared).toBe(true);
+  });
+
+  it("changes nothing when the server refuses", async () => {
+    const library = createBoardLibrary(memoryBoardStorage([owned]), {
+      remote: {
+        setShared: async () => false,
+        sharedFlags: async () => new Map(),
+      },
+    });
+
+    expect(await library.setShared(owned.id, true)).toBe(false);
+    expect(library.get()[0].shared).toBe(false);
+  });
+
+  it("will not share a board that only lives here", async () => {
+    const local = createBoardRecord("Local", board, 1);
+    const setShared = vi.fn(async () => true);
+    const library = createBoardLibrary(memoryBoardStorage([local]), {
+      remote: { setShared, sharedFlags: async () => new Map() },
+    });
+
+    expect(await library.setShared(local.id, true)).toBe(false);
+    expect(setShared).not.toHaveBeenCalled();
+  });
+
+  it("reads the flag back for your own boards only", async () => {
+    const joined = {
+      ...createBoardRecord("Theirs", board, 2),
+      remote: true as const,
+    };
+    const sharedFlags = vi.fn(async () => new Map([[owned.id, true]]));
+    const library = createBoardLibrary(memoryBoardStorage([owned, joined]), {
+      remote: { setShared: async () => true, sharedFlags },
+    });
+
+    await library.refreshShared();
+
+    expect(sharedFlags).toHaveBeenCalledWith([owned.id]);
+    expect(library.get().find((each) => each.id === owned.id)?.shared).toBe(
+      true,
+    );
+  });
+});
+
+describe("keeping versions of local boards", () => {
+  it("offers a local board's previous state to its history, and not a server board's", async () => {
+    const before = { entities: [], strings: [] };
+    const local = createBoardRecord("Local", before, 1);
+    const remote = {
+      ...createBoardRecord("Remote", board, 2),
+      remote: true as const,
+    };
+    const history = {
+      record: vi.fn(),
+      flush: vi.fn(async () => {}),
+      forget: vi.fn(async () => {}),
+      forBoard: vi.fn(),
+    };
+    const library = createBoardLibrary(memoryBoardStorage([local, remote]), {
+      history,
+    });
+
+    const after = { entities: [], strings: [] };
+    await library.saveDocument(local.id, after);
+    await library.saveDocument(remote.id, after);
+
+    expect(history.record).toHaveBeenCalledTimes(1);
+    expect(history.record.mock.calls[0][1]).toBe(before);
+  });
+
+  it("forgets a board's history when the board is removed", async () => {
+    const local = createBoardRecord("Local", board, 1);
+    const history = {
+      record: vi.fn(),
+      flush: vi.fn(async () => {}),
+      forget: vi.fn(async () => {}),
+      forBoard: vi.fn(),
+    };
+    const library = createBoardLibrary(memoryBoardStorage([local]), {
+      history,
+    });
+
+    await library.remove(local.id);
+
+    expect(history.forget).toHaveBeenCalledWith(local.id);
+  });
+});

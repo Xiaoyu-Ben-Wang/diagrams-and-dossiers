@@ -9,11 +9,13 @@ import type { BoardState } from "../board/store";
 import { byUpdatedDesc, type BoardStorage } from "./board-storage";
 import {
   createBoardRecord,
+  isOwnBoard,
   uniqueBoardName,
   type BoardRecord,
 } from "./board-record";
 import { loadLastOpenId, saveLastOpenId } from "./last-open";
-import { deleteRemoteBoard } from "./remote";
+import { deleteRemoteBoard, setBoardShared, sharedFlags } from "./remote";
+import type { LocalHistory } from "../history/local-history";
 
 export interface BoardLibrary {
   get(): BoardRecord[];
@@ -37,10 +39,23 @@ export interface BoardLibrary {
   destroy(id: string): Promise<boolean>;
   /** What autosave writes. Discrete actions above write straight through. */
   saveDocument(id: string, board: BoardState): Promise<void>;
+  /**
+   * Opens or closes a board you own to anyone with its link. Answers `false`
+   * when the server could not be told, and then nothing changes here either.
+   */
+  setShared(id: string, shared: boolean): Promise<boolean>;
+  /** Reads whether your own boards are shared, for records that are out of date. */
+  refreshShared(): Promise<void>;
 }
 
 export interface BoardLibraryOptions {
   now?: () => number;
+  /** Versions of boards that live only here. Server boards keep theirs on the server. */
+  history?: LocalHistory;
+  remote?: {
+    setShared: typeof setBoardShared;
+    sharedFlags: typeof sharedFlags;
+  };
 }
 
 /**
@@ -56,6 +71,8 @@ export interface RemoteIdentity {
   id: string;
   editToken?: string;
   viewToken?: string;
+  shared?: boolean;
+  owned?: boolean;
 }
 
 const EMPTY: BoardState = { entities: [], strings: [] };
@@ -65,6 +82,8 @@ export function createBoardLibrary(
   options: BoardLibraryOptions = {},
 ): BoardLibrary {
   const now = options.now ?? Date.now;
+  const history = options.history;
+  const remote = options.remote ?? { setShared: setBoardShared, sharedFlags };
   const listeners = new Set<() => void>();
 
   // A storage that can answer synchronously — the in-memory one — is answered
@@ -98,6 +117,7 @@ export function createBoardLibrary(
    *  `destroy`'s question, and it asks before getting here. */
   const forgetBoard = async (id: string): Promise<void> => {
     await storage.remove(id);
+    await history?.forget(id);
     commit(records.filter((record) => record.id !== id));
     // Otherwise `/` would try to open a board that is not there any more.
     if (loadLastOpenId() === id) saveLastOpenId(null);
@@ -134,6 +154,8 @@ export function createBoardLibrary(
       if (remote) record.remote = true;
       if (remote?.editToken) record.editToken = remote.editToken;
       if (remote?.viewToken) record.viewToken = remote.viewToken;
+      if (remote?.shared !== undefined) record.shared = remote.shared;
+      if (remote?.owned) record.owned = true;
 
       await storage.put(record);
       replace(record);
@@ -161,7 +183,7 @@ export function createBoardLibrary(
       if (!record) return true;
       // Somebody else's board is only ever forgotten here: RLS would refuse to
       // delete it, and the library says as much rather than pretending.
-      if (record.remote === true && record.editToken !== undefined) {
+      if (isOwnBoard(record)) {
         if (!(await deleteRemoteBoard(id))) return false;
       }
       await forgetBoard(id);
@@ -177,6 +199,33 @@ export function createBoardLibrary(
       const saved = { ...existing, board, updatedAt: now() };
       await storage.put(saved);
       replace(saved);
+      // The board as it stood before this save: a version is the state an hour began with.
+      if (existing.remote !== true) history?.record(id, existing.board);
+    },
+
+    async setShared(id, shared) {
+      const existing = find(id);
+      if (!existing || existing.remote !== true) return false;
+      if (!(await remote.setShared(id, shared))) return false;
+      const current = find(id) ?? existing;
+      const updated = { ...current, shared };
+      await storage.put(updated);
+      replace(updated);
+      return true;
+    },
+
+    async refreshShared() {
+      const owned = records.filter(isOwnBoard);
+      const flags = await remote.sharedFlags(owned.map((record) => record.id));
+      if (!flags) return;
+      for (const record of owned) {
+        const flag = flags.get(record.id);
+        const current = find(record.id);
+        if (flag === undefined || !current || current.shared === flag) continue;
+        const updated = { ...current, shared: flag };
+        await storage.put(updated);
+        replace(updated);
+      }
     },
   };
 }

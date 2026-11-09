@@ -3,7 +3,15 @@
 // boards must not do.
 
 import { useEffect, useRef, useState } from "react";
-import { Link as LinkIcon, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  Globe,
+  Link as LinkIcon,
+  Lock,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { TopBar } from "../app/TopBar";
 import { isLocalOnly } from "../app/env";
@@ -28,6 +36,10 @@ export function LibraryScreen({
   onCreate,
   onOpenDemo,
 }: LibraryScreenProps) {
+  useEffect(() => {
+    if (!isLocalOnly()) void library.refreshShared();
+  }, [library]);
+
   return (
     <div className="app-shell flex h-screen flex-col overflow-hidden">
       <TopBar>
@@ -189,6 +201,9 @@ function BoardRow({
   const [manualLink, setManualLink] = useState<string | null>(null);
   const [localOnly, setLocalOnly] = useState(false);
   const [refused, setRefused] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [switchFailed, setSwitchFailed] = useState(false);
+  const owned = record.remote === true && !shared;
   const fieldRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -215,7 +230,7 @@ function BoardRow({
     setRefused(true);
   };
 
-  const share = async (): Promise<void> => {
+  const copyLink = async (): Promise<void> => {
     const url = shareUrlFor(record, window.location.origin);
     // A board that never reached the server has no token and so no door to offer.
     if (url === null) {
@@ -230,6 +245,20 @@ function BoardRow({
     } else {
       setManualLink(url);
     }
+  };
+
+  /** Sharing also copies the link, since that is what sharing is for. */
+  const setSharing = async (next: boolean): Promise<void> => {
+    setSwitching(true);
+    setSwitchFailed(false);
+    const done = await library.setShared(record.id, next);
+    setSwitching(false);
+    if (!done) {
+      setSwitchFailed(true);
+      return;
+    }
+    if (next) await copyLink();
+    else setManualLink(null);
   };
 
   return (
@@ -264,6 +293,11 @@ function BoardRow({
       <p className="library-meta">
         {whenLabel(record.updatedAt)} · {record.board.entities.length} things ·{" "}
         {record.board.strings.length} strings
+        {owned && !isLocalOnly()
+          ? record.shared
+            ? " · shared"
+            : " · private"
+          : null}
       </p>
 
       {armed ? (
@@ -308,11 +342,23 @@ function BoardRow({
             <Pencil size={12} strokeWidth={2.2} aria-hidden="true" />
             Rename
           </button>
-          {shared || isLocalOnly() ? null : (
+          {shared || isLocalOnly() ? null : owned && !record.shared ? (
             <button
               type="button"
               className="library-button"
-              onClick={() => void share()}
+              onClick={() => void setSharing(true)}
+              disabled={switching}
+              aria-label={`Share ${record.name} with anyone who has the link`}
+              data-testid={`share-${record.id}`}
+            >
+              <Globe size={12} strokeWidth={2.2} aria-hidden="true" />
+              Share
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="library-button"
+              onClick={() => void copyLink()}
               aria-label={`Copy a link to ${record.name}`}
               data-testid={`share-${record.id}`}
             >
@@ -320,6 +366,19 @@ function BoardRow({
               {copied ? "Copied" : "Copy link"}
             </button>
           )}
+          {owned && record.shared && !isLocalOnly() ? (
+            <button
+              type="button"
+              className="library-button"
+              onClick={() => void setSharing(false)}
+              disabled={switching}
+              aria-label={`Make ${record.name} private`}
+              data-testid={`make-private-${record.id}`}
+            >
+              <Lock size={12} strokeWidth={2.2} aria-hidden="true" />
+              Make private
+            </button>
+          ) : null}
           <button
             type="button"
             className="library-button"
@@ -357,6 +416,15 @@ function BoardRow({
         </div>
       ) : null}
 
+      {switchFailed ? (
+        <p
+          className="library-link-hint"
+          data-testid={`share-failed-${record.id}`}
+        >
+          The server could not be reached, so nothing changed.
+        </p>
+      ) : null}
+
       {refused ? (
         <p
           className="library-link-hint"
@@ -376,9 +444,7 @@ function BoardRow({
 
       {localOnly ? (
         <p className="library-link-hint" data-testid={`local-${record.id}`}>
-          No share link from this device. Either the board never reached the
-          server, or you arrived by someone else's link and hold none of your
-          own.
+          This board is only on this device, so there is no link to share.
         </p>
       ) : null}
     </li>

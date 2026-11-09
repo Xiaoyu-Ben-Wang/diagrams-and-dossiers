@@ -1,0 +1,42 @@
+.history-dialog {
+  max-width: 28rem;
+  max-height: min(36rem, calc(100vh - 48px));
+}
+
+.history-scroll {
+  min-height: 0;
+  margin-bottom: 12px;
+  overflow-y: auto;
+}
+
+.history-list {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.history-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 12%, transparent);
+  font-size: 13px;
+}
+
+.history-when {
+  min-width: 7.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-meta {
+  flex: 1;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+  font-size: 11px;
+}
+
+.history-confirm {
+  display: flex;
+  gap: 6px;
+}

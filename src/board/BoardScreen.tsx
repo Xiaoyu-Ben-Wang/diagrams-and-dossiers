@@ -92,13 +92,15 @@ import {
   readBoardFile,
   serializeBoard,
 } from "./board-file";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, History } from "lucide-react";
 
 import { boardNameFrom } from "../boards/board-record";
 
 import { DEFAULT_ARTICLE_OPTIONS } from "../model/article-options";
 import { moveInStack, stackingRanks, type LayerMove } from "../model/layering";
 import { ImageLinkDialog } from "./ImageLinkDialog";
+import { HistoryPanel } from "./HistoryPanel";
+import type { BoardHistory } from "../history/types";
 import { ImportChoice } from "./ImportChoice";
 import { ConfirmDelete } from "./ConfirmDelete";
 import { attachAutosave } from "../boards/autosave";
@@ -261,6 +263,13 @@ export interface BoardScreenProps {
   sync?: BoardSync;
   /** Who is looking. The server's RLS is the authority; this mirrors it for the UI. */
   viewer?: Viewer;
+  /**
+   * Stores a dropped or pasted picture somewhere other than the board, answering
+   * its URL. Absent, or answering null, keeps the picture inline as a data URL.
+   */
+  uploadImage?: (blob: Blob) => Promise<string | null>;
+  /** Earlier versions of this board. Absent where there are none to keep. */
+  history?: BoardHistory;
 }
 
 export function BoardScreen({
@@ -273,6 +282,8 @@ export function BoardScreen({
   onAddBoard,
   sync,
   viewer,
+  uploadImage,
+  history,
 }: BoardScreenProps) {
   const preferences = usePreferences();
 
@@ -545,6 +556,7 @@ export function BoardScreen({
     | null
   >(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [imageLink, setImageLink] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -877,6 +889,8 @@ export function BoardScreen({
         return;
       }
 
+      const src = (await uploadImage?.(decoded.blob)) ?? decoded.src;
+
       const footprint = imageFootprint(decoded.width, decoded.height);
       const at = worldPoint(clientX, clientY);
       const board = {
@@ -885,14 +899,14 @@ export function BoardScreen({
       };
 
       store.addEntities((state) => [
-        newImage(board, decoded.src, footprint, {
+        newImage(board, src, footprint, {
           alt: decoded.name,
           title: uniqueName(pictureName(decoded.name), state.entities),
           dateLabel: nextDateLabel(state.entities.length),
         }),
       ]);
     },
-    [nextDateLabel, worldPoint],
+    [nextDateLabel, worldPoint, uploadImage],
   );
 
   const addImageFromUrl = useCallback(
@@ -2571,8 +2585,28 @@ export function BoardScreen({
             )}
           </span>
         ) : null}
+        {history && can(viewer ?? LOCAL_VIEWER, "create") ? (
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            data-testid="open-history"
+            aria-expanded={historyOpen}
+            className="flex items-center gap-1.5 rounded border border-border/25 px-2.5 py-1 text-[13px] text-board-ink-soft transition hover:border-accent hover:text-board-ink"
+          >
+            <History size={13} strokeWidth={2.2} aria-hidden="true" />
+            History
+          </button>
+        ) : null}
         <PresenceBar presence={presence} self={self} onJump={jumpTo} />
       </TopBar>
+
+      {history && historyOpen ? (
+        <HistoryPanel
+          history={history}
+          onRestore={(restored) => store.replaceAll(restored)}
+          onClose={() => setHistoryOpen(false)}
+        />
+      ) : null}
 
       {imageLink ? (
         <ImageLinkDialog

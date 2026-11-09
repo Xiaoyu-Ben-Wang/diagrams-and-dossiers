@@ -7,6 +7,7 @@ import { ARTICLE_TITLE, demoBoard } from "./app/demo";
 import { isLocalOnly } from "./app/env";
 import { EntryScreen } from "./app/JoinScreen";
 import { NotFound } from "./app/NotFound";
+import { OpenByLink } from "./app/OpenByLink";
 import { useRoute } from "./app/router";
 import { newBoardOnServer } from "./boards/new-board";
 import { supabaseSync } from "./realtime/supabase-sync";
@@ -19,6 +20,9 @@ import { getBoardStorage, type BoardStorage } from "./boards/board-storage";
 import { createBoardLibrary, useLibrary } from "./boards/library";
 import { loadLastOpenId, saveLastOpenId } from "./boards/last-open";
 import { LibraryScreen } from "./boards/LibraryScreen";
+import { createLocalHistory } from "./history/local-history";
+import { remoteHistory } from "./history/remote-history";
+import { uploadImage } from "./images/upload";
 
 export interface AppProps {
   /** Opens this document with no library behind it, which is what the tests want. */
@@ -30,9 +34,10 @@ export interface AppProps {
 export function App({ seed, storage, now }: AppProps = {}) {
   const { route, navigate } = useRoute();
   const backing = useMemo(() => storage ?? getBoardStorage(), [storage]);
+  const localHistory = useMemo(() => createLocalHistory(), []);
   const library = useMemo(
-    () => createBoardLibrary(backing, { now }),
-    [backing, now],
+    () => createBoardLibrary(backing, { now, history: localHistory }),
+    [backing, now, localHistory],
   );
   const records = useLibrary(library);
 
@@ -119,6 +124,24 @@ export function App({ seed, storage, now }: AppProps = {}) {
     // Keyed on the board, not the record: a records refresh must not rebuild the
     // socket, and `initial` is only ever read once, to seed what is known.
   }, [resolved?.id, resolved?.remote]);
+
+  const history = useMemo(
+    () =>
+      resolved
+        ? resolved.remote === true
+          ? remoteHistory(resolved.id)
+          : localHistory.forBoard(resolved.id)
+        : undefined,
+    [resolved?.id, resolved?.remote, localHistory],
+  );
+
+  const upload = useMemo(
+    () =>
+      resolved?.remote === true
+        ? (blob: Blob) => uploadImage(blob, resolved.id)
+        : undefined,
+    [resolved?.id, resolved?.remote],
+  );
 
   const openBoard = useCallback(
     (id: string) => navigate({ name: "board", id }),
@@ -227,6 +250,17 @@ export function App({ seed, storage, now }: AppProps = {}) {
     );
   }
 
+  if (!resolved && wantId !== null && library.ready() && !isLocalOnly()) {
+    return (
+      <OpenByLink
+        key={wantId}
+        boardId={wantId}
+        library={library}
+        onHome={() => navigate({ name: "library" })}
+      />
+    );
+  }
+
   if (!resolved) return <Opening ready={library.ready()} />;
 
   if (transport === "pending") return <Opening ready={library.ready()} />;
@@ -247,6 +281,8 @@ export function App({ seed, storage, now }: AppProps = {}) {
       // Whoever holds a link may edit it — permissions are the server's business,
       // and `editor` is everything the client checks for short of ownership.
       viewer={isRemote ? { role: "editor", userId } : undefined}
+      uploadImage={upload}
+      history={history}
     />
   );
 }

@@ -2,6 +2,8 @@ import { shrinkImageFile } from "./image-compress";
 
 export interface DecodedImage {
   src: string;
+  /** The bytes behind `src`, for an upload that replaces it. */
+  blob: Blob;
   width: number;
   height: number;
   name: string;
@@ -45,6 +47,7 @@ export async function decodeImageFile(file: File): Promise<DecodedImage> {
   if (shrunk) {
     return {
       src: await readAsDataUrl(shrunk.blob),
+      blob: shrunk.blob,
       width: shrunk.width,
       height: shrunk.height,
       name: file.name,
@@ -53,7 +56,7 @@ export async function decodeImageFile(file: File): Promise<DecodedImage> {
 
   const src = await readAsDataUrl(file);
   const { width, height } = await measure(src);
-  return { src, width, height, name: file.name };
+  return { src, blob: file, width, height, name: file.name };
 }
 
 export function firstImage(files: Iterable<File>): File | null {
