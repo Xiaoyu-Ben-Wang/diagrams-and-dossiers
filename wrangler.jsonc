@@ -2,6 +2,8 @@
   "name": "diagrams-and-dossiers",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-10-07",
+  // Cloudflare creates the DNS record and certificate for this on deploy.
+  "routes": [{ "pattern": "diagrams.wxyben.dev", "custom_domain": true }],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
