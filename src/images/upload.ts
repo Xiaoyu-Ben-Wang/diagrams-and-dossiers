@@ -19,15 +19,25 @@ export function uploadEndpoint(
   return url.toString();
 }
 
+/**
+ * `limit` means the upload quota is spent, and the picture must not go in at
+ * all: keeping it inline would only move the same bytes into the database.
+ * `failed` means there was no Worker to take it, and inline is the fallback.
+ */
+export type UploadResult =
+  { kind: "stored"; url: string } | { kind: "limit" } | { kind: "failed" };
+
+const FAILED: UploadResult = { kind: "failed" };
+
 export async function uploadImage(
   blob: Blob,
   boardId: string,
   fetcher: typeof fetch = fetch,
   accessToken: () => Promise<string | null> = currentAccessToken,
-): Promise<string | null> {
+): Promise<UploadResult> {
   try {
     const token = await accessToken();
-    if (!token) return null;
+    if (!token) return FAILED;
 
     const response = await fetcher(uploadEndpoint(boardId), {
       method: "POST",
@@ -37,15 +47,16 @@ export async function uploadImage(
       },
       body: blob,
     });
-    if (!response.ok) return null;
+    if (response.status === 429) return { kind: "limit" };
+    if (!response.ok) return FAILED;
 
     const body = (await response.json()) as { url?: unknown };
     return typeof body.url === "string" && isHttpImageSrc(body.url)
-      ? body.url
-      : null;
+      ? { kind: "stored", url: body.url }
+      : FAILED;
   } catch (error) {
     console.warn("board: could not upload a picture", error);
-    return null;
+    return FAILED;
   }
 }
 

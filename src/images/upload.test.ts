@@ -18,7 +18,10 @@ describe("uploadImage", () => {
     const url = `https://boards.example/images/${BOARD}/${"a".repeat(64)}.webp`;
     const fetcher = answering(201, { url });
 
-    expect(await uploadImage(blob, BOARD, fetcher, token)).toBe(url);
+    expect(await uploadImage(blob, BOARD, fetcher, token)).toEqual({
+      kind: "stored",
+      url,
+    });
 
     const [endpoint, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(endpoint).toBe(uploadEndpoint(BOARD));
@@ -32,10 +35,10 @@ describe("uploadImage", () => {
     );
   });
 
-  it("answers null so the caller keeps the picture inline", async () => {
+  it("reports a failure so the caller keeps the picture inline", async () => {
     expect(
       await uploadImage(blob, BOARD, answering(403, { error: "no" }), token),
-    ).toBeNull();
+    ).toEqual({ kind: "failed" });
     expect(
       await uploadImage(
         blob,
@@ -43,14 +46,22 @@ describe("uploadImage", () => {
         answering(201, { url: "javascript:1" }),
         token,
       ),
-    ).toBeNull();
+    ).toEqual({ kind: "failed" });
     expect(
       await uploadImage(blob, BOARD, answering(201, {}), async () => null),
-    ).toBeNull();
+    ).toEqual({ kind: "failed" });
     const offline = vi.fn(async () => {
       throw new Error("offline");
     }) as unknown as typeof fetch;
-    expect(await uploadImage(blob, BOARD, offline, token)).toBeNull();
+    expect(await uploadImage(blob, BOARD, offline, token)).toEqual({
+      kind: "failed",
+    });
+  });
+
+  it("tells a spent quota apart from a failure", async () => {
+    expect(
+      await uploadImage(blob, BOARD, answering(429, { error: "limit" }), token),
+    ).toEqual({ kind: "limit" });
   });
 
   it("puts the board in the address", () => {

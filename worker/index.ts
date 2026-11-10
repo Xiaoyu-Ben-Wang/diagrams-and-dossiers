@@ -21,12 +21,16 @@ interface Env extends ImageEnv, WakeEnv {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: { waitUntil(promise: Promise<unknown>): void },
+  ): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname === UPLOAD_PATH) return handleUpload(request, env);
     if (pathname === STATUS_PATH) return handleStatus(env);
     if (pathname === START_PATH) return handleStart(request, env);
-    if (pathname.startsWith("/images/")) return handleImage(request, env);
+    if (pathname.startsWith("/images/")) return handleImage(request, env, ctx);
     return env.ASSETS.fetch(request);
   },
 };

@@ -46,13 +46,20 @@ function envWith(bucket: ImageBucket): ImageEnv {
   };
 }
 
-/** Answers `is_editor` with `allowed`, and records what it was asked. */
-function supabase(allowed: boolean | "error") {
+/**
+ * Answers `is_editor` with `allowed` and `reserve_upload` with `reservation`,
+ * and records what it was asked.
+ */
+function supabase(
+  allowed: boolean | "error",
+  reservation: "ok" | "limit" | "not_allowed" = "ok",
+) {
   const calls: { url: string; init: RequestInit }[] = [];
   const fetcher = (async (url: string, init: RequestInit) => {
     calls.push({ url, init });
     if (allowed === "error") return new Response("{}", { status: 401 });
-    return new Response(JSON.stringify(allowed), { status: 200 });
+    const answer = url.endsWith("/reserve_upload") ? reservation : allowed;
+    return new Response(JSON.stringify(answer), { status: 200 });
   }) as unknown as typeof fetch;
   return { fetcher, calls };
 }
@@ -116,6 +123,62 @@ describe("handleUpload", () => {
 
     expect(second).toEqual(first);
     expect(puts()).toBe(1);
+  });
+
+  it("counts a new picture against the uploader's quota, with their IP", async () => {
+    const { bucket } = memoryBucket();
+    const { fetcher, calls } = supabase(true);
+    const request = upload();
+    request.headers.set("cf-connecting-ip", "203.0.113.7");
+
+    await handleUpload(request, envWith(bucket), fetcher);
+
+    const reserve = calls.find((call) => call.url.endsWith("/reserve_upload"))!;
+    expect(JSON.parse(String(reserve.init.body))).toEqual({
+      p_board: BOARD,
+      p_bytes: PNG.byteLength,
+      p_ip: "203.0.113.7",
+    });
+    expect((reserve.init.headers as Record<string, string>).authorization).toBe(
+      "Bearer user-jwt",
+    );
+  });
+
+  it("refuses an upload over the quota and stores nothing", async () => {
+    const { bucket, objects } = memoryBucket();
+    const response = await handleUpload(
+      upload(),
+      envWith(bucket),
+      supabase(true, "limit").fetcher,
+    );
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: "limit" });
+    expect(objects.size).toBe(0);
+  });
+
+  it("does not count a picture R2 already holds", async () => {
+    const { bucket } = memoryBucket();
+    const env = envWith(bucket);
+    await handleUpload(upload(), env, supabase(true).fetcher);
+
+    const { fetcher, calls } = supabase(true, "limit");
+    const again = await handleUpload(upload(), env, fetcher);
+
+    expect(again.status).toBe(201);
+    expect(calls.some((call) => call.url.endsWith("/reserve_upload"))).toBe(
+      false,
+    );
+  });
+
+  it("refuses when the reservation is refused", async () => {
+    const { bucket, objects } = memoryBucket();
+    const response = await handleUpload(
+      upload(),
+      envWith(bucket),
+      supabase(true, "not_allowed").fetcher,
+    );
+    expect(response.status).toBe(403);
+    expect(objects.size).toBe(0);
   });
 
   it("refuses someone who cannot edit the board", async () => {
@@ -230,6 +293,52 @@ describe("handleImage", () => {
     expect(response.headers.get("content-security-policy")).toContain(
       "sandbox",
     );
+  });
+
+  it("reads R2 once and the edge cache after that", async () => {
+    const { bucket } = memoryBucket();
+    const env = envWith(bucket);
+    const { url } = (await (
+      await handleUpload(upload(), env, supabase(true).fetcher)
+    ).json()) as { url: string };
+
+    let reads = 0;
+    const counting: ImageBucket = {
+      ...bucket,
+      get: async (key) => {
+        reads += 1;
+        return bucket.get(key);
+      },
+    };
+    const stored = new Map<string, Response>();
+    const cache = {
+      match: async (request: Request) => stored.get(request.url)?.clone(),
+      put: async (request: Request, response: Response) => {
+        stored.set(request.url, response);
+      },
+    };
+    const waited: Promise<unknown>[] = [];
+    const ctx = {
+      waitUntil: (promise: Promise<unknown>) => waited.push(promise),
+    };
+
+    const first = await handleImage(
+      new Request(url),
+      { ...env, IMAGES: counting },
+      ctx,
+      cache,
+    );
+    await Promise.all(waited);
+    const second = await handleImage(
+      new Request(url),
+      { ...env, IMAGES: counting },
+      ctx,
+      cache,
+    );
+
+    expect(reads).toBe(1);
+    expect(new Uint8Array(await first.arrayBuffer())).toEqual(PNG);
+    expect(new Uint8Array(await second.arrayBuffer())).toEqual(PNG);
   });
 
   it("answers 304 to a matching etag", async () => {

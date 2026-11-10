@@ -101,6 +101,7 @@ import { moveInStack, stackingRanks, type LayerMove } from "../model/layering";
 import { ImageLinkDialog } from "./ImageLinkDialog";
 import { HistoryPanel } from "./HistoryPanel";
 import type { BoardHistory } from "../history/types";
+import type { UploadResult } from "../images/upload";
 import { ImportChoice } from "./ImportChoice";
 import { ConfirmDelete } from "./ConfirmDelete";
 import { attachAutosave } from "../boards/autosave";
@@ -264,10 +265,10 @@ export interface BoardScreenProps {
   /** Who is looking. The server's RLS is the authority; this mirrors it for the UI. */
   viewer?: Viewer;
   /**
-   * Stores a dropped or pasted picture somewhere other than the board, answering
-   * its URL. Absent, or answering null, keeps the picture inline as a data URL.
+   * Stores a dropped or pasted picture somewhere other than the board. Absent, or
+   * failing, keeps the picture inline as a data URL; over the quota, it is not added.
    */
-  uploadImage?: (blob: Blob) => Promise<string | null>;
+  uploadImage?: (blob: Blob) => Promise<UploadResult>;
   /** Earlier versions of this board. Absent where there are none to keep. */
   history?: BoardHistory;
 }
@@ -557,6 +558,12 @@ export function BoardScreen({
   >(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [uploadNotice, setUploadNotice] = useState(false);
+  useEffect(() => {
+    if (!uploadNotice) return;
+    const timer = window.setTimeout(() => setUploadNotice(false), 6000);
+    return () => window.clearTimeout(timer);
+  }, [uploadNotice]);
   const [imageLink, setImageLink] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -889,7 +896,12 @@ export function BoardScreen({
         return;
       }
 
-      const src = (await uploadImage?.(decoded.blob)) ?? decoded.src;
+      const uploaded = await uploadImage?.(decoded.blob);
+      if (uploaded?.kind === "limit") {
+        setUploadNotice(true);
+        return;
+      }
+      const src = uploaded?.kind === "stored" ? uploaded.url : decoded.src;
 
       const footprint = imageFootprint(decoded.width, decoded.height);
       const at = worldPoint(clientX, clientY);
@@ -2905,6 +2917,18 @@ export function BoardScreen({
         }
         anchor={hovered?.element ?? null}
       />
+
+      {uploadNotice && (
+        <div
+          className="pointer-events-none fixed inset-x-0 top-14 z-40 flex justify-center"
+          role="alert"
+          data-testid="upload-limit"
+        >
+          <span className="rounded-full border border-accent/50 bg-cork-900/90 px-3 py-1 text-xs text-board-ink shadow-lg">
+            Picture upload limit reached. Try again in an hour.
+          </span>
+        </div>
+      )}
 
       {movingPin && (
         <div

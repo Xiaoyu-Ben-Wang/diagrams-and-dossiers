@@ -4,6 +4,9 @@
   "compatibility_date": "2026-10-07",
   // Cloudflare creates the DNS record and certificate for this on deploy.
   "routes": [{ "pattern": "diagrams.wxyben.dev", "custom_domain": true }],
+  // Listing a route turns workers.dev off unless it is asked for, and links
+  // shared before the custom domain point there.
+  "workers_dev": true,
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

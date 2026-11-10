@@ -50,11 +50,30 @@ const IMAGE_PATH = /^\/images\/([0-9a-f]{64})\.([a-z]{3,4})$/;
 
 export const UPLOAD_PATH = "/api/images";
 
-function json(body: unknown, status: number): Response {
+function json(
+  body: unknown,
+  status: number,
+  extra: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...extra },
   });
+}
+
+/** The Workers edge cache, where it exists; tests and other runtimes have none. */
+export interface EdgeCache {
+  match(request: Request): Promise<Response | undefined>;
+  put(request: Request, response: Response): Promise<void>;
+}
+
+export interface WaitUntil {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+function edgeCache(): EdgeCache | null {
+  const caches = (globalThis as { caches?: { default?: EdgeCache } }).caches;
+  return caches?.default ?? null;
 }
 
 /**
@@ -82,6 +101,40 @@ export async function canEdit(
   );
   if (!response.ok) return false;
   return (await response.json()) === true;
+}
+
+export type Reservation = "ok" | "limit" | "refused";
+
+/**
+ * Asks Supabase to count a new upload against the caller's quota, as the caller.
+ * `reserve_upload` checks edit rights and the per-user and per-IP limits, and
+ * records the upload only when it fits.
+ */
+export async function reserveUpload(
+  env: ImageEnv,
+  token: string,
+  boardId: string,
+  bytes: number,
+  ip: string | null,
+  fetcher: typeof fetch = fetch,
+): Promise<Reservation> {
+  const response = await fetcher(
+    `${env.SUPABASE_URL.replace(/\/+$/, "")}/rest/v1/rpc/reserve_upload`,
+    {
+      method: "POST",
+      headers: {
+        apikey: env.SUPABASE_PUBLISHABLE_KEY,
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ p_board: boardId, p_bytes: bytes, p_ip: ip }),
+    },
+  );
+  if (!response.ok) return "refused";
+  const answer = await response.json();
+  if (answer === "ok") return "ok";
+  if (answer === "limit") return "limit";
+  return "refused";
 }
 
 async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
@@ -130,16 +183,34 @@ export async function handleUpload(
     return json({ error: "too large" }, 413);
 
   const key = `${await sha256Hex(bytes)}.${ext}`;
+  // A picture R2 already holds costs nothing more, so only a new one is counted.
   if (!(await env.IMAGES.head(key))) {
+    const reserved = await reserveUpload(
+      env,
+      token,
+      boardId.toLowerCase(),
+      bytes.byteLength,
+      request.headers.get("cf-connecting-ip"),
+      fetcher,
+    );
+    if (reserved === "limit")
+      return json({ error: "limit" }, 429, { "retry-after": "3600" });
+    if (reserved !== "ok") return json({ error: "not allowed" }, 403);
     await env.IMAGES.put(key, bytes, { httpMetadata: { contentType: type } });
   }
 
   return json({ url: `${url.origin}/images/${key}` }, 201);
 }
 
+/**
+ * Served through the edge cache, so a picture loaded over and over is read from
+ * R2 once per data centre rather than once per view.
+ */
 export async function handleImage(
   request: Request,
   env: ImageEnv,
+  ctx?: WaitUntil,
+  cache: EdgeCache | null = edgeCache(),
 ): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD")
     return new Response(null, { status: 405 });
@@ -153,20 +224,34 @@ export async function handleImage(
   if (request.headers.get("if-none-match") === etag)
     return new Response(null, { status: 304, headers: { etag } });
 
+  if (request.method === "GET" && cache) {
+    const hit = await cache.match(request);
+    if (hit) return hit;
+  }
+
   const object = await env.IMAGES.get(key);
   if (!object) return new Response(null, { status: 404 });
 
-  return new Response(request.method === "HEAD" ? null : object.body, {
-    headers: {
-      "content-type": contentType,
-      "cache-control": "public, max-age=31536000, immutable",
-      etag,
-      // Readable from any origin so a board exported to PNG does not taint its canvas.
-      "access-control-allow-origin": "*",
-      "x-content-type-options": "nosniff",
-      // An uploaded SVG opened on its own must not run script on this origin.
-      "content-security-policy":
-        "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+  const response = new Response(
+    request.method === "HEAD" ? null : object.body,
+    {
+      headers: {
+        "content-type": contentType,
+        "cache-control": "public, max-age=31536000, immutable",
+        etag,
+        // Readable from any origin so a board exported to PNG does not taint its canvas.
+        "access-control-allow-origin": "*",
+        "x-content-type-options": "nosniff",
+        // An uploaded SVG opened on its own must not run script on this origin.
+        "content-security-policy":
+          "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      },
     },
-  });
+  );
+  if (request.method === "GET" && cache) {
+    const stored = cache.put(request, response.clone());
+    if (ctx) ctx.waitUntil(stored);
+    else await stored;
+  }
+  return response;
 }
